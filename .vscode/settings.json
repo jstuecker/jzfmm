@@ -1,0 +1,10 @@
+{
+    "python.testing.pytestArgs": [
+        "src/tests",
+        "-s",
+        "-v"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.terminal.executeInFileDir": true
+}

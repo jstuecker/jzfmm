@@ -1,0 +1,9 @@
+[project]
+name = "fm-dj"
+version = "0.1.0"
+description = "Fast Multipoles Done with Jax"
+authors = [
+    { name="Jens Stücker", email="jens.stuecker@univie.ac.at" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
