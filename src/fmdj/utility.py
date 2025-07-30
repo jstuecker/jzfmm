@@ -1,5 +1,6 @@
 import time
 import jax
+from .octree import BinaryTree, Octree
 
 class Tee(object):
     def __init__(self, *streams):
@@ -39,12 +40,16 @@ class Timer():
         if self.verbose:
             self.print_time_of(name)
 
-    def timeit_jit(self, func, *args, name="step", loops=10, static_argnames=None, only_run=False,  **kwargs):
+    def timeit_jit(self, func, *args, name="step", loops=10, static_argnames=None, only_print_run=False,  **kwargs):
         func_jit = jax.jit(func, static_argnames=static_argnames)
         def call_func():
             res = func_jit(*args, **kwargs)
             if isinstance(res, tuple):
                 res[0].block_until_ready()
+            elif isinstance(res, BinaryTree):
+                res.lchild.block_until_ready()
+            elif isinstance(res, Octree):
+                res.lchild.block_until_ready()
             else:
                 res.block_until_ready()
             return res
@@ -58,7 +63,7 @@ class Timer():
             call_func()
         t3 = time.time()
 
-        if not only_run:    
+        if not only_print_run:    
             self.add_time(name + "_compile", t1 - t0)
             self.add_time(name + "_warmup", t2 - t1)
         self.add_time(name + "_run[10]", (t3 - t2) / loops)
