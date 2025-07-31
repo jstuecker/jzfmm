@@ -38,12 +38,8 @@ lbound, rbound = timer.timeit_jit(
     name="determine_children", loops=10, only_print_run=only_print_run)
 
 btree = timer.timeit_jit(
-    fmdj.octree.get_compressed_binary_tree, morton, version=1, static_argnames=("version"), 
-    name="get_compressed_binary_tree_v1", loops=10, only_print_run=only_print_run)
-
-btree = timer.timeit_jit(
-    fmdj.octree.get_compressed_binary_tree, morton, version=2, static_argnames=("version"), 
-    name="get_compressed_binary_tree_v2", loops=10, only_print_run=only_print_run)
+    fmdj.octree.get_compressed_binary_tree, morton,
+    name="get_compressed_binary_tree", loops=10, only_print_run=only_print_run)
 
 print("-------------")
 
