@@ -356,3 +356,13 @@ def put_nodes_in_level_order(octree : Octree) -> Octree:
     )
     
     return newtree, isort, inv_i
+
+# =================================== Some utility functions ===================================== #
+
+def get_oct_level_info(octree):
+    level_oct = octree.level_binary // 3
+    is_intermediate = jnp.where(octree.level_binary > 0, level_oct[octree.parent] == level_oct, False)
+    parent_oct = octree.parent
+    for i in range(0, 3):
+        parent_oct = jnp.where(is_intermediate[parent_oct], parent_oct[parent_oct], parent_oct)
+    return level_oct, parent_oct, is_intermediate

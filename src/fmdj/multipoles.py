@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from .octree import Octree, get_parent_binary
+from .octree import Octree, get_oct_level_info
 import numpy as np
 
 # ============================= Some fixed Combinatorical Computations =============================
@@ -157,11 +157,3 @@ def multipoles_via_levels(octree : Octree, pos, mass, p=2, xcom=None):
     mp = jax.lax.fori_loop(-jnp.max(level_oct)+1, 1, handle_level, mp)
 
     return mp
-
-def get_oct_level_info(octree):
-    level_oct = octree.level_binary // 3
-    is_intermediate = jnp.where(octree.level_binary > 0, level_oct[octree.parent] == level_oct, False)
-    parent_oct = octree.parent
-    for i in range(0, 3):
-        parent_oct = jnp.where(is_intermediate[parent_oct], parent_oct[parent_oct], parent_oct)
-    return level_oct, parent_oct, is_intermediate
