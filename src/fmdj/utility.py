@@ -40,7 +40,7 @@ class Timer():
         if self.verbose:
             self.print_time_of(name)
 
-    def timeit_jit(self, func, *args, name="step", loops=10, static_argnames=None, only_print_run=False,  **kwargs):
+    def timeit_jit(self, func, *args, name="step", loops=40, static_argnames=None, only_print_run=False,  **kwargs):
         func_jit = jax.jit(func, static_argnames=static_argnames)
         def call_func():
             res = func_jit(*args, **kwargs)
@@ -66,6 +66,6 @@ class Timer():
         if not only_print_run:    
             self.add_time(name + "_compile", t1 - t0)
             self.add_time(name + "_warmup", t2 - t1)
-        self.add_time(name + "_run[10]", (t3 - t2) / loops)
+        self.add_time(name + "_run[%d]" % loops, (t3 - t2) / loops)
 
         return res

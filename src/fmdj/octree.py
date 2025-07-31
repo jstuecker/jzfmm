@@ -315,3 +315,40 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
     newtree.xleaf = get_new_leaf_positions(leaf_of_part, xpart, mpart, max_new_leaves)
     
     return newtree
+
+def put_nodes_in_level_order(octree : Octree) -> Octree:
+    """Sorts nodes so that all nodes of the same level are next to each other."""
+    max_nodes = len(octree.level_binary)
+    inode = jnp.arange(len(octree.level_binary), dtype=jnp.int32)
+    # lvels, but modified so that we keep the last node and invalid nodes at the end when sorting
+    level = octree.level_binary.at[jnp.where(inode >= octree.nnodes-1, inode, max_nodes)].set(100)
+
+    # For a given new node index, which original index it came from:
+    isort = jnp.lexsort((inode, level)) # With lexsort nodes of the same level keep their rel. order
+    # For a given original index, which new index it is at:
+    inv_i = jnp.empty_like(isort).at[isort].set(jnp.arange(isort.size))
+
+    # Children may be leaves -- only map their indices if they are nodes
+    lchild = jnp.where(octree.lchild > 0, inv_i[octree.lchild], octree.lchild)
+    rchild = jnp.where(octree.rchild > 0, inv_i[octree.rchild], octree.rchild)
+
+    assert octree.xnode is None, "Have not considered xnode sorting here"
+    assert octree.mp is None, "Have not considered mp sorting here"
+
+    newtree = Octree(
+        lchild=lchild[isort],
+        rchild=rchild[isort],
+        level_binary=octree.level_binary[isort],
+        is_valid=octree.is_valid[isort],
+        nnodes=octree.nnodes,
+        
+        leaf_particle_bounds=octree.leaf_particle_bounds,
+        node_of_particle=inv_i[octree.node_of_particle],
+
+        xleaf = octree.xleaf,
+
+        max_leaf_size=octree.max_leaf_size, 
+        p=octree.p
+    )
+    
+    return newtree

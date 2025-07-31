@@ -15,12 +15,12 @@ def create_pos():
     return jnp.clip(pos0, -0.5, 0.5)
 
 timer = Timer(verbose=True)
-pos0 = timer.timeit_jit(create_pos, name="create_pos", loops=10, only_print_run=only_print_run)
+pos0 = timer.timeit_jit(create_pos, name="create_pos", only_print_run=only_print_run)
 mass = jnp.ones(N, dtype=jnp.float32)
 
 morton, pos, isort = timer.timeit_jit(
     fmdj.octree.organize_particles, pos0, static_argnames=("return_sorted"), 
-    name="organize_particles", loops=10, only_print_run=only_print_run)
+    name="organize_particles", only_print_run=only_print_run)
 
 # btree = timer.timeit_jit(
 #     fmdj.octree.get_compressed_binary_tree, morton,
@@ -28,42 +28,37 @@ morton, pos, isort = timer.timeit_jit(
 
 levels = timer.timeit_jit(
     fmdj.octree.morton_diff_level, morton[1:], morton[:-1],
-    name="morton_diff_level", loops=10, only_print_run=only_print_run)
+    name="morton_diff_level", only_print_run=only_print_run)
 
 lbound, rbound = timer.timeit_jit(
     fmdj.octree.find_previous_and_next_lower, levels,
-    name="find_previous_and_next_lower", loops=10, only_print_run=only_print_run)
+    name="find_previous_and_next_lower", only_print_run=only_print_run)
 
 lbound, rbound = timer.timeit_jit(
     fmdj.octree.determine_children, levels, lbound, rbound,
-    name="determine_children", loops=10, only_print_run=only_print_run)
+    name="determine_children", only_print_run=only_print_run)
 
 btree = timer.timeit_jit(
     fmdj.octree.get_compressed_binary_tree, morton,
-    name="get_compressed_binary_tree", loops=10, only_print_run=only_print_run)
+    name="get_compressed_binary_tree", only_print_run=only_print_run)
 
 octree = timer.timeit_jit(
     fmdj.octree.get_reduced_octree, btree, pos, mass,
-    static_argnames=("max_leaf_size",), name="get_reduced_octree", loops=10, 
+    static_argnames=("max_leaf_size",), name="get_reduced_octree", 
     only_print_run=only_print_run, max_leaf_size=64)
 
+octree2 = timer.timeit_jit(
+    fmdj.octree.put_nodes_in_level_order, octree, name="level_sort_octree", 
+    only_print_run=only_print_run)
 
 print("-------------")
 
-def organize_and_build_tree(pos0, mass):
+def sort_and_build_tree(pos0, mass):
     morton, pos = fmdj.octree.organize_particles(pos0)[0:2]
     btree = fmdj.octree.get_compressed_binary_tree(morton)
     octree = fmdj.octree.get_reduced_octree(btree, pos, mass, max_leaf_size=64)
     return octree
 
 octree = timer.timeit_jit(
-    organize_and_build_tree, pos0, mass, name="organize_and_build_tree", 
-    loops=10, only_print_run=only_print_run)
-
-
-# btree = fmdj.octree.get_compressed_binary_tree(morton, version=1)
-# print(btree.lbound[0:10])
-# print(btree.lchild[0:10])
-# btree = fmdj.octree.get_compressed_binary_tree(morton, version=2)
-# print(btree.lbound[0:10])
-# print(btree.lchild[0:10])
+    sort_and_build_tree, pos0, mass, name="sort_and_build_tree", 
+    loops=100, only_print_run=only_print_run)
