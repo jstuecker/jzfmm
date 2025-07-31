@@ -26,6 +26,13 @@ octree = timer.timeit_jit(
     sort_and_build_tree, pos0, mass, name="sort_and_build_tree", 
     loops=100, only_print_run=only_print_run)
 
-m, com = timer.timeit_jit(
+m, xcom = timer.timeit_jit(
     fmdj.multipoles.com_via_levels, octree, pos0, mass,
     name="com_via_levels", only_print_run=only_print_run)
+
+for p in (2,3,4,5):
+    mp = timer.timeit_jit(
+        fmdj.multipoles.multipoles_via_levels, octree, pos0, mass,
+        static_argnames=("p",), p=p, xcom=xcom,
+        name="mp_via_levels_p%d"%p, only_print_run=only_print_run)
+    

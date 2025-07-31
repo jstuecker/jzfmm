@@ -3,7 +3,7 @@ import fmdj
 import jax
 import jax.numpy as jnp
 
-def setup_particles(N=233, duplicate=False):
+def setup_particles(N=5555, duplicate=False):
     pos0 = jax.random.uniform(jax.random.PRNGKey(0), (N,3), dtype=jnp.float32, minval=-0.5, maxval=0.5)
     if duplicate:
         pos0 = jnp.concatenate((pos0, pos0, pos0, pos0))
