@@ -114,7 +114,7 @@ def organize_particles(pos, return_sorted=True):
     else:
         return morton, isort
 
-# ====================================== Tree building =========================================== #
+# ================================== Binary Tree building ======================================== #
 
 def get_parent_binary(levels, lbound, rbound):
     """Decides which of the two bounding nodes is the parent of the node"""
@@ -184,6 +184,8 @@ def get_compressed_binary_tree(morton) -> BinaryTree:
     tree.lchild, tree.rchild = determine_children(tree.level_binary, tree.lbound, tree.rbound)
 
     return tree
+
+# ===================================== Tree Reduction =========================================== #
 
 def offset_sum(num):
     cs = jnp.cumsum(num, axis=0)
@@ -257,7 +259,6 @@ def get_new_leaf_positions(leaf_of_part, xpart, mpart, max_new_leaves):
 
     return x_leaf
 
-# @partial(jax.jit, static_argnames=('max_leaf_size',))
 def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octree:
     """Defines a reduced octree, where all internal nodes have n > max_leaf_size and 
     all leaves have n <= max_leaf_size. (This rule may be violated for leaves at the highest level,

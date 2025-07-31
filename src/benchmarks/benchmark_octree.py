@@ -7,7 +7,7 @@ import jax
 sys.stdout = Tee(sys.stdout, open("logs/octree.log", "a+"))
 
 N = 1024*1024
-only_print_run = False
+only_print_run = True
 print(f"============== Starting Octree Tests (N={N:.1e})  ==============")
 
 def create_pos():
@@ -42,7 +42,7 @@ btree = timer.timeit_jit(
     fmdj.octree.get_compressed_binary_tree, morton,
     name="get_compressed_binary_tree", loops=10, only_print_run=only_print_run)
 
-otree = timer.timeit_jit(
+octree = timer.timeit_jit(
     fmdj.octree.get_reduced_octree, btree, pos, mass,
     static_argnames=("max_leaf_size",), name="get_reduced_octree", loops=10, 
     only_print_run=only_print_run, max_leaf_size=64)
@@ -50,6 +50,15 @@ otree = timer.timeit_jit(
 
 print("-------------")
 
+def organize_and_build_tree(pos0, mass):
+    morton, pos = fmdj.octree.organize_particles(pos0)[0:2]
+    btree = fmdj.octree.get_compressed_binary_tree(morton)
+    octree = fmdj.octree.get_reduced_octree(btree, pos, mass, max_leaf_size=64)
+    return octree
+
+octree = timer.timeit_jit(
+    organize_and_build_tree, pos0, mass, name="organize_and_build_tree", 
+    loops=10, only_print_run=only_print_run)
 
 
 # btree = fmdj.octree.get_compressed_binary_tree(morton, version=1)
