@@ -7,7 +7,7 @@ import jax
 sys.stdout = Tee(sys.stdout, open("logs/octree.log", "a+"))
 
 N = 1024*1024
-only_print_run = True
+only_print_run = False
 print(f"============== Starting Octree Tests (N={N:.1e})  ==============")
 
 def create_pos():
@@ -16,6 +16,7 @@ def create_pos():
 
 timer = Timer(verbose=True)
 pos0 = timer.timeit_jit(create_pos, name="create_pos", loops=10, only_print_run=only_print_run)
+mass = jnp.ones(N, dtype=jnp.float32)
 
 morton, pos, isort = timer.timeit_jit(
     fmdj.octree.organize_particles, pos0, static_argnames=("return_sorted"), 
@@ -40,6 +41,12 @@ lbound, rbound = timer.timeit_jit(
 btree = timer.timeit_jit(
     fmdj.octree.get_compressed_binary_tree, morton,
     name="get_compressed_binary_tree", loops=10, only_print_run=only_print_run)
+
+otree = timer.timeit_jit(
+    fmdj.octree.get_reduced_octree, btree, pos, mass,
+    static_argnames=("max_leaf_size",), name="get_reduced_octree", loops=10, 
+    only_print_run=only_print_run, max_leaf_size=4)
+
 
 print("-------------")
 

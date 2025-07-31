@@ -4,6 +4,7 @@ from functools import partial
 from jax.experimental import checkify
 import jax.numpy as jnp
 from dataclasses import dataclass, fields
+import numpy as np
 
 if jax.__version__ <= "0.4.2":
     raise ImportError("This code requires JAX version 0.4.2 or higher. " \
@@ -27,22 +28,23 @@ class BinaryTree:
     max_level: int = 90  # Maximum level of the tree
 
 @partial(jax.tree_util.register_dataclass, 
-         data_fields=["lchild", "rchild", "is_valid", "level_binary", "xnode", 
-                      "xleaf", "mp", "leaf_particle_bounds"], 
+         data_fields=["lchild", "rchild", "level_binary", "is_valid", "nnodes",
+                      "leaf_particle_bounds", "node_of_particle", "xnode", "xleaf", "mp",], 
          meta_fields=["p"])
 @dataclass
 class Octree:
     lchild: jnp.ndarray = None
     rchild: jnp.ndarray = None
-    is_valid: jnp.ndarray = None
-
     level_binary: jnp.ndarray = None
+    is_valid: jnp.ndarray = None
+    nnodes: jnp.ndarray = None
+
+    leaf_particle_bounds: jnp.ndarray = None
+    node_of_particle: jnp.ndarray = None
 
     xnode: jnp.ndarray = None
     xleaf: jnp.ndarray = None
-
     mp: jnp.ndarray = None
-    leaf_particle_bounds: jnp.ndarray = None
 
     p: int = 0
 
@@ -181,3 +183,128 @@ def get_compressed_binary_tree(morton) -> BinaryTree:
     tree.lchild, tree.rchild = determine_children(tree.level_binary, tree.lbound, tree.rbound)
 
     return tree
+
+def offset_sum(num):
+    cs = jnp.cumsum(num, axis=0)
+    return cs - num, cs[-1]
+
+def define_reduced_tree_masks(tree, max_leaf_size=4):
+    nodesize = tree.rbound - tree.lbound
+    parent = get_parent_binary(tree.level_binary, tree.lbound, tree.rbound)[0]
+
+    # We keep all valid nodes whose parents exceed the max_leaf_size
+    keep = (nodesize[parent] > max_leaf_size) & (tree.level_binary < tree.max_level)
+    # For nodes that we keep, we can identify leaves as those that are smaller than max_leaf_size
+    # Additionally we need to keep any leaves that may be at maxlevel-1, since they can't be split
+    # (Find a testcase later to check that this handles max-level cases correctly)
+    keep_as_leaf = keep & ((nodesize <= max_leaf_size) | (tree.level_binary == tree.max_level-1))
+    
+    keep_as_node = keep & ~keep_as_leaf
+
+    # Beyond that, we also need to transport some leaves directly from the old to the new tree.
+    # These will generally be single particles
+    keep_lchild_leaf = keep_as_node & (tree.lchild <= 0) & (tree.level_binary >= 0)
+    keep_rchild_leaf = keep_as_node & (tree.rchild <= 0) & (tree.level_binary >= 0)
+
+    return keep_as_node, keep_as_leaf, keep_lchild_leaf, keep_rchild_leaf
+
+def define_leaf_maps(tree, keep_as_node, keep_as_leaf, keep_lchild_leaf, keep_rchild_leaf, max_new_leaves):
+    max_old_leaves = len(keep_as_node) - 1
+    max_old_nodes = len(keep_as_node)
+
+    parent = get_parent_binary(tree.level_binary, tree.lbound, tree.rbound)[0]
+
+    # Figure out where leaves must be put in the new leaf-array
+    imap_leaf, num_new_leaves = offset_sum(1*keep_as_leaf + 1*keep_lchild_leaf + 1*keep_rchild_leaf)
+
+    def masked_update(ar, mask, value, right=False):
+        ind = imap_leaf if right else imap_leaf + 1*keep_lchild_leaf
+        return ar.at[jnp.where(mask, ind, max_new_leaves+1)].set(value, indices_are_sorted=True)
+
+    # Create pointers to the old parents of new leaves
+    parent_of_leaf = jnp.full(max_new_leaves+1, fill_value=max_old_leaves, dtype=jnp.int32)
+    parent_of_leaf = masked_update(parent_of_leaf, keep_as_leaf, parent)
+    parent_of_leaf = masked_update(parent_of_leaf, keep_lchild_leaf, jnp.arange(max_old_nodes))
+    parent_of_leaf = masked_update(parent_of_leaf, keep_rchild_leaf, jnp.arange(max_old_nodes), 
+                                   right=True)
+
+    # Keep track of the first particle that belongs to each new leaf
+    # we make the array one larger, so that the extend of each leaf is always given by i[1:]-i[:-1]
+    lbound_leaf = jnp.full(max_new_leaves+1, fill_value=max_old_leaves, dtype=jnp.int32) 
+    lbound_leaf = masked_update(lbound_leaf, keep_as_leaf, tree.lbound)
+    lbound_leaf = masked_update(lbound_leaf, keep_lchild_leaf, -tree.lchild)
+    lbound_leaf = masked_update(lbound_leaf, keep_rchild_leaf, -tree.rchild, right=True)
+
+    # Determine which new leaf an old particle belongs to
+    part_leaf_starting_points = jnp.zeros(max_old_leaves, dtype=jnp.int32).at[lbound_leaf].set(1)
+    leaf_of_part = jnp.cumsum(part_leaf_starting_points) - 1
+
+    return (imap_leaf, parent_of_leaf, lbound_leaf, leaf_of_part)
+
+def get_new_leaf_positions(leaf_of_part, xpart, mpart, max_new_leaves):
+    """Determines the center of mass of new summarized leaf particles."""
+    m_in_leaf = jnp.zeros(max_new_leaves, dtype=jnp.float32
+                          ).at[leaf_of_part].add(mpart, indices_are_sorted=True)
+    mx_in_leaf = jnp.zeros((max_new_leaves,3), dtype=jnp.float32
+                           ).at[leaf_of_part].add(xpart*mpart[:,None], indices_are_sorted=True)
+    x_leaf = mx_in_leaf / m_in_leaf[:,None]
+
+    return x_leaf
+
+# @partial(jax.jit, static_argnames=('max_leaf_size',))
+def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octree:
+    """Defines a reduced octree, where all internal nodes have n > max_leaf_size and 
+    all leaves have n <= max_leaf_size. (This rule may be violated for leaves at the highest level,
+    where particles below have identical morton keys and can't be split)
+    We summarize leaves as pseudo-particles, represented through the center of mass of the 
+    particles in the leaf.
+    """
+    # Something that creates noteworthy complexity in this function is that new leaves can be
+    # (1) nodes in the original tree
+    # (2) left leaves of the original tree
+    # (3) right leaves of the original tree
+
+    max_old_leaves = len(tree.level_binary) - 1
+    max_old_nodes = len(tree.level_binary)
+
+    assert max_old_leaves > max_leaf_size, "Please use smaller leaves or more particles"
+
+    # A worst case estimate of the number of new leaves
+    max_new_leaves = np.ceil(max_old_leaves /  np.clip((max_leaf_size//2),1, None)).astype(np.int32)
+    max_new_nodes = max_new_leaves + 1
+
+    # Determine which nodes and leaves we keep in the new tree
+    (keep_as_node, keep_as_leaf, keep_lchild_leaf, keep_rchild_leaf
+     ) = define_reduced_tree_masks(tree, max_leaf_size=max_leaf_size)
+
+    # Define maps that relate new and old leave positions
+    (imap_leaf, parent_of_leaf, lbound_leaf, leaf_of_part
+     ) = define_leaf_maps(tree, keep_as_node, keep_as_leaf, keep_lchild_leaf, keep_rchild_leaf, max_new_leaves)
+
+    # Find out where to put new internal nodes
+    imap_node, nnodes = offset_sum(1*keep_as_node)
+    imap_node = jnp.where(keep_as_node, imap_node, max_new_nodes)
+    # With the inverse map it is easier to construct the new tree
+    ifrom_node = jnp.zeros(max_new_nodes, dtype=jnp.int32
+                           ).at[imap_node].set(jnp.arange(max_old_nodes), indices_are_sorted=True)
+
+    def map_node(id): # Returns the node index in the new tree of an old node id
+        inew = jnp.where(id <= 0, -leaf_of_part[-id], max_new_leaves)
+        inew = jnp.where((id > 0) & keep_as_node[id], imap_node[id], inew)
+        inew = jnp.where((id > 0) & keep_as_leaf[id], -imap_leaf[id], inew)
+        return inew
+
+    newtree = Octree(nnodes=nnodes)
+
+    newtree.lchild = map_node(tree.lchild[ifrom_node])
+    newtree.rchild = map_node(tree.rchild[ifrom_node])
+
+    newtree.level_binary = tree.level_binary[ifrom_node]
+    newtree.is_valid = (newtree.level_binary >= 0) & (jnp.arange(max_new_nodes) < nnodes)
+
+    newtree.leaf_particle_bounds = lbound_leaf
+    newtree.node_of_particle = imap_node[parent_of_leaf][leaf_of_part]
+    
+    newtree.xleaf = get_new_leaf_positions(leaf_of_part, xpart, mpart, max_new_leaves)
+    
+    return newtree
