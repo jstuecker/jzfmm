@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from .octree import Octree, get_oct_level_info
 import numpy as np
 
-# ============================= Some fixed Combinatorical Computations =============================
+# ============================= Some fixed Combinatorical Computations =========================== #
 
 def generate_combinations(p):
     """Generate unique triples (i, j, k) such that i + j + k = p."""
@@ -41,7 +41,7 @@ def multipole_powers(p : int):
 def define_index_maps(p):
     return combinations[:p_to_ncomb[p]], index_map[:p + 1, :p + 1, :p + 1]
 
-# =============================== Multipole to Multipole  Operators ================================
+# =============================== Multipole to Multipole  Operators ============================== #
 
 def save_divide(a, b):
     return jnp.where(b != 0, a / b, 0.)
@@ -157,3 +157,14 @@ def multipoles_via_levels(octree : Octree, pos, mass, p=2, xcom=None):
     mp = jax.lax.fori_loop(-jnp.max(level_oct)+1, 1, handle_level, mp)
 
     return mp
+
+# ============================= Tree build convenience functions ================================= #
+
+def calculate_multipoles_for_tree(octree : Octree, pos, mass, p=2) -> Octree:
+    """Calculates octree.mp and octree.xnode"""
+    
+    octree.p = p
+    m, octree.xnode = com_via_levels(octree, pos, mass)
+    octree.mp = multipoles_via_levels(octree, pos, mass, p=p, xcom=octree.xnode)
+    
+    return octree

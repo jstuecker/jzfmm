@@ -45,8 +45,8 @@ class Timer():
         def call_func():
             val = func_jit(*args, **kwargs)
             res = val
-            if isinstance(val, tuple):
-                val = val[0]
+            while isinstance(val, tuple):
+                val = val[1]
             if isinstance(val, BinaryTree):
                 val.lchild.block_until_ready()
             elif isinstance(val, Octree):

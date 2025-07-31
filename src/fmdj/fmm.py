@@ -1,7 +1,33 @@
 import jax
 import jax.numpy as jnp
 from jax.experimental import checkify
-from .octree import Octree, get_oct_level_info
+from .octree import Octree, organize_particles, get_compressed_binary_tree, get_reduced_octree
+from .multipoles import calculate_multipoles_for_tree
+
+# ================================ Tree Preperation functions===================================== #
+
+def build_octree_with_multipoles(pos, mass, max_leaf_size=64, p=2):
+    """Build an octree with multipoles for the given positions and masses.
+    
+    This function organizes the particles, builds a binary tree, reduces it to an octree,
+    and calculates the multipoles for each node in the octree.
+    
+    Args:
+        pos: Particle positions.
+        mass: Particle masses.
+        max_leaf_size: Maximum number of particles per leaf node.
+        p: Order of multipole moments to calculate.
+    
+    Returns: (octree, pos_sorted, mass_sorted, isort)
+    """
+    morton, pos_sorted, isort = organize_particles(pos)
+    mass_sorted = jnp.broadcast_to(mass, pos_sorted.shape[0])[isort]
+
+    btree = get_compressed_binary_tree(morton)
+    octree = get_reduced_octree(btree, pos_sorted, mass_sorted, max_leaf_size=max_leaf_size)
+    octree = calculate_multipoles_for_tree(octree, pos_sorted, mass_sorted, p=p)
+    
+    return octree, pos_sorted, mass_sorted, isort
 
 # ================================== Some utility methods ======================================== #
 
