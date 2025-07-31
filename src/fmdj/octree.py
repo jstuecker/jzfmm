@@ -28,11 +28,12 @@ class BinaryTree:
     max_level: int = 90  # Maximum level of the tree
 
 @partial(jax.tree_util.register_dataclass, 
-         data_fields=["lchild", "rchild", "level_binary", "is_valid", "nnodes",
+         data_fields=["parent", "lchild", "rchild", "level_binary", "is_valid", "nnodes",
                       "leaf_particle_bounds", "node_of_particle", "xnode", "xleaf", "mp",], 
          meta_fields=["max_leaf_size", "p"])
 @dataclass
 class Octree:
+    parent: jnp.ndarray = None
     lchild: jnp.ndarray = None
     rchild: jnp.ndarray = None
     level_binary: jnp.ndarray = None
@@ -303,6 +304,8 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
 
     newtree = Octree(nnodes=nnodes, max_leaf_size=max_leaf_size)
 
+    iparent = get_parent_binary(tree.level_binary, tree.lbound, tree.rbound)[0]
+    newtree.parent = map_node(iparent[ifrom_node])
     newtree.lchild = map_node(tree.lchild[ifrom_node])
     newtree.rchild = map_node(tree.rchild[ifrom_node])
 
@@ -336,6 +339,7 @@ def put_nodes_in_level_order(octree : Octree) -> Octree:
     assert octree.mp is None, "Have not considered mp sorting here"
 
     newtree = Octree(
+        parent=inv_i[octree.parent[isort]],
         lchild=lchild[isort],
         rchild=rchild[isort],
         level_binary=octree.level_binary[isort],
