@@ -30,7 +30,7 @@ class BinaryTree:
 @partial(jax.tree_util.register_dataclass, 
          data_fields=["lchild", "rchild", "level_binary", "is_valid", "nnodes",
                       "leaf_particle_bounds", "node_of_particle", "xnode", "xleaf", "mp",], 
-         meta_fields=["p"])
+         meta_fields=["max_leaf_size", "p"])
 @dataclass
 class Octree:
     lchild: jnp.ndarray = None
@@ -46,6 +46,7 @@ class Octree:
     xleaf: jnp.ndarray = None
     mp: jnp.ndarray = None
 
+    max_leaf_size: int = 1
     p: int = 0
 
 # ===================================== Morton sorting =========================================== #
@@ -193,13 +194,18 @@ def define_reduced_tree_masks(tree, max_leaf_size=4):
     parent = get_parent_binary(tree.level_binary, tree.lbound, tree.rbound)[0]
 
     # We keep all valid nodes whose parents exceed the max_leaf_size
-    keep = (nodesize[parent] > max_leaf_size) & (tree.level_binary < tree.max_level)
+    keep = nodesize[parent] > max_leaf_size
     # For nodes that we keep, we can identify leaves as those that are smaller than max_leaf_size
-    # Additionally we need to keep any leaves that may be at maxlevel-1, since they can't be split
-    # (Find a testcase later to check that this handles max-level cases correctly)
-    keep_as_leaf = keep & ((nodesize <= max_leaf_size) | (tree.level_binary == tree.max_level-1))
+    keep_as_leaf = keep & (nodesize <= max_leaf_size) & (tree.level_binary < tree.max_level)
+    # Additionally we may need to keep as leaves nodes at max_level, even if they have more
+    # than max_leaf_size particles, since we cannot split them further
+    # Since they all share a parent, we have to make sure to keep only the one of them
+    # that the parent knows about
+    inode = jnp.arange(len(tree.level_binary))
+    is_a_child = (tree.lchild[tree.rbound] == inode) | (tree.rchild[tree.lbound] == inode)
+    keep_as_leaf = keep_as_leaf | (keep & (tree.level_binary == tree.max_level) & is_a_child)
     
-    keep_as_node = keep & ~keep_as_leaf
+    keep_as_node = keep & (tree.level_binary < tree.max_level) & ~keep_as_leaf
 
     # Beyond that, we also need to transport some leaves directly from the old to the new tree.
     # These will generally be single particles
@@ -218,7 +224,7 @@ def define_leaf_maps(tree, keep_as_node, keep_as_leaf, keep_lchild_leaf, keep_rc
     imap_leaf, num_new_leaves = offset_sum(1*keep_as_leaf + 1*keep_lchild_leaf + 1*keep_rchild_leaf)
 
     def masked_update(ar, mask, value, right=False):
-        ind = imap_leaf if right else imap_leaf + 1*keep_lchild_leaf
+        ind = imap_leaf if not right else imap_leaf + 1*keep_lchild_leaf
         return ar.at[jnp.where(mask, ind, max_new_leaves+1)].set(value, indices_are_sorted=True)
 
     # Create pointers to the old parents of new leaves
@@ -294,7 +300,7 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
         inew = jnp.where((id > 0) & keep_as_leaf[id], -imap_leaf[id], inew)
         return inew
 
-    newtree = Octree(nnodes=nnodes)
+    newtree = Octree(nnodes=nnodes, max_leaf_size=max_leaf_size)
 
     newtree.lchild = map_node(tree.lchild[ifrom_node])
     newtree.rchild = map_node(tree.rchild[ifrom_node])

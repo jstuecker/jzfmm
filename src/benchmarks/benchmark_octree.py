@@ -45,7 +45,7 @@ btree = timer.timeit_jit(
 otree = timer.timeit_jit(
     fmdj.octree.get_reduced_octree, btree, pos, mass,
     static_argnames=("max_leaf_size",), name="get_reduced_octree", loops=10, 
-    only_print_run=only_print_run, max_leaf_size=4)
+    only_print_run=only_print_run, max_leaf_size=64)
 
 
 print("-------------")
