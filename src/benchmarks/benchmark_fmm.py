@@ -12,20 +12,13 @@ pos0 = jnp.clip(pos0, -0.5, 0.5).block_until_ready()
 mass = jnp.ones(N, dtype=jnp.float32)
 
 print(f"============== Starting FMM Tests (N={N:.1e})  ==============")
-only_print_run = False
-loops = 40
-
-timer = Timer(verbose=True)
+timer = Timer(verbose=True, print_compile=False, print_warmup=False)
 
 octree, pos, mass, isort = timer.timeit_jit(
-    fmdj.fmm.build_octree_with_multipoles, pos0, mass,
-    static_argnames=("max_leaf_size", "p"), max_leaf_size=64, p=3,
-    name="build_octree_with_multipoles_p3", only_print_run=only_print_run, loops=loops)
+    fmdj.fmm.build_octree_with_multipoles.jit, pos0, mass, max_leaf_size=64, p=3)
 
 for thetamax in (0.5, 0.75, 1.0):
-    err, (ilist, nilist) = timer.timeit_jit(
-        fmdj.fmm.build_interaction_list, octree, thetamax=thetamax, ilist_fac=1024,
-        static_argnames=("thetamax", "ilist_fac", "clist_fac", "check_fac"),
-        name="build_interaction_list_th%.2f"%thetamax, only_print_run=only_print_run, loops=loops)
+    err, (ilist, nilist) = timer.timeit_jit(fmdj.fmm.build_interaction_list.jit, 
+        octree, thetamax=thetamax, ilist_fac=1024, name="build_interaction_list_th%.2f"%thetamax)
     print(f"Ilist size: {nilist:.1e} for thetamax={thetamax}")
     err.throw()

@@ -17,30 +17,22 @@ def sort_and_build_tree(pos0, mass):
     octree = fmdj.octree.get_reduced_octree(btree, pos, mass, max_leaf_size=64)
     return octree, pos
 
-only_print_run = True
 print(f"============== Starting Multipole Tests (N={N:.1e})  ==============")
 
 loops = 40
 
-timer = Timer(verbose=True)
+timer = Timer(verbose=True, loops=40, print_compile=False, print_warmup=False)
 
-octree, pos = timer.timeit_jit(
-    sort_and_build_tree, pos0, mass, name="sort_and_build_tree", 
-    loops=loops, only_print_run=only_print_run)
+octree, pos = timer.timeit_jit(sort_and_build_tree, pos0, mass)
 
-m, xcom = timer.timeit_jit(
-    fmdj.multipoles.com_via_levels, octree, pos, mass,
-    name="com_via_levels", only_print_run=only_print_run, loops=loops)
+m, xcom = timer.timeit_jit(fmdj.multipoles.com_via_levels, octree, pos, mass)
 
 for p in (2,3,4,5):
-    mp = timer.timeit_jit(
-        fmdj.multipoles.multipoles_via_levels, octree, pos, mass,
-        static_argnames=("p",), p=p, xcom=xcom,
-        name="mp_via_levels_p%d"%p, only_print_run=only_print_run, loops=loops)
+    mp = timer.timeit_jit(fmdj.multipoles.multipoles_via_levels.jit, 
+                          octree, pos, mass, p=p, xcom=xcom, name="mp_via_levels_p%d"%p)
 
 print("------------- Combined:  ")
 
 octree, pos_sorted, mass_sorted, isort = timer.timeit_jit(
-    fmdj.fmm.build_octree_with_multipoles, pos0, mass,
-    static_argnames=("max_leaf_size", "p"), max_leaf_size=64, p=3,
-    name="build_octree_with_multipoles_p3", only_print_run=only_print_run, loops=loops)
+    fmdj.fmm.build_octree_with_multipoles.jit, pos0, mass, max_leaf_size=64, p=3, 
+    name="build_octree_with_multipoles_p3")

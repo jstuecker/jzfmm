@@ -157,6 +157,7 @@ def multipoles_via_levels(octree : Octree, pos, mass, p=2, xcom=None):
     mp = jax.lax.fori_loop(-jnp.max(level_oct)+1, 1, handle_level, mp)
 
     return mp
+multipoles_via_levels.jit = jax.jit(multipoles_via_levels, static_argnames=("p",))
 
 # ============================= Tree build convenience functions ================================= #
 

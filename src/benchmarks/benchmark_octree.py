@@ -7,49 +7,33 @@ import jax
 sys.stdout = Tee(sys.stdout, open("logs/octree.log", "a+"))
 
 N = 1024*1024
-only_print_run = True
 print(f"============== Starting Octree Tests (N={N:.1e})  ==============")
 
 def create_pos():
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (N, 3), dtype=jnp.float32) * 0.1
     return jnp.clip(pos0, -0.5, 0.5)
 
-timer = Timer(verbose=True)
-pos0 = timer.timeit_jit(create_pos, name="create_pos", only_print_run=only_print_run)
+timer = Timer(verbose=True, print_compile=False, print_warmup=False)
+pos0 = timer.timeit_jit(create_pos, name="create_pos")
 mass = jnp.ones(N, dtype=jnp.float32)
 
-morton, pos, isort = timer.timeit_jit(
-    fmdj.octree.organize_particles, pos0, static_argnames=("return_sorted"), 
-    name="organize_particles", only_print_run=only_print_run)
+morton, pos, isort = timer.timeit_jit(fmdj.octree.organize_particles.jit, pos0, return_sorted=True)
 
-# btree = timer.timeit_jit(
-#     fmdj.octree.get_compressed_binary_tree, morton,
-#     name="binary_tree", loops=10, only_print_run=only_print_run)
+morton_unsorted = fmdj.octree.organize_particles(pos0, return_sorted=False)[0].block_until_ready()
+timer.timeit_jit(jnp.lexsort, morton_unsorted.T)
+timer.timeit_jit(jnp.argsort, morton_unsorted[...,2], stable=False,  name="argsort_i32")
 
-levels = timer.timeit_jit(
-    fmdj.octree.morton_diff_level, morton[1:], morton[:-1],
-    name="morton_diff_level", only_print_run=only_print_run)
+levels = timer.timeit_jit(fmdj.octree.morton_diff_level, morton[1:], morton[:-1])
 
-lbound, rbound = timer.timeit_jit(
-    fmdj.octree.find_previous_and_next_lower, levels,
-    name="find_previous_and_next_lower", only_print_run=only_print_run)
+lbound, rbound = timer.timeit_jit(fmdj.octree.find_previous_and_next_lower.jit, levels)
 
-lbound, rbound = timer.timeit_jit(
-    fmdj.octree.determine_children, levels, lbound, rbound,
-    name="determine_children", only_print_run=only_print_run)
+lbound, rbound = timer.timeit_jit(fmdj.octree.determine_children.jit, levels, lbound, rbound)
 
-btree = timer.timeit_jit(
-    fmdj.octree.get_compressed_binary_tree, morton,
-    name="get_compressed_binary_tree", only_print_run=only_print_run)
+btree = timer.timeit_jit(fmdj.octree.get_compressed_binary_tree.jit, morton)
 
-octree = timer.timeit_jit(
-    fmdj.octree.get_reduced_octree, btree, pos, mass,
-    static_argnames=("max_leaf_size",), name="get_reduced_octree", 
-    only_print_run=only_print_run, max_leaf_size=64)
+octree = timer.timeit_jit(fmdj.octree.get_reduced_octree.jit, btree, pos, mass, max_leaf_size=64)
 
-octree2 = timer.timeit_jit(
-    fmdj.octree.put_nodes_in_level_order, octree, name="level_sort_octree", 
-    only_print_run=only_print_run)
+octree2 = timer.timeit_jit(fmdj.octree.put_nodes_in_level_order.jit, octree)
 
 print("-------------")
 
@@ -59,6 +43,4 @@ def sort_and_build_tree(pos0, mass):
     octree = fmdj.octree.get_reduced_octree(btree, pos, mass, max_leaf_size=64)
     return octree
 
-octree = timer.timeit_jit(
-    sort_and_build_tree, pos0, mass, name="sort_and_build_tree", 
-    loops=100, only_print_run=only_print_run)
+octree = timer.timeit_jit(sort_and_build_tree, pos0, mass, loops=100)

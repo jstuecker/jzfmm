@@ -16,11 +16,14 @@ class Tee(object):
             s.flush()
 
 class Timer():
-    def __init__(self, verbose=True):
+    def __init__(self, verbose=True, print_compile=True, print_warmup=True, print_run=True, loops=40):
         self.dts = {}
         self.verbose = verbose
 
-        self.tstart = self.tlast = time.time()
+        self.print_compile = print_compile
+        self.print_warmup = print_warmup
+        self.print_run = print_run
+        self.loops = loops
 
     def add_time(self, name, dt):
         self.dts[name] = dt
@@ -30,18 +33,17 @@ class Timer():
     def print_time_of(self, name=None):
         if name is None: name = list(self.dts.keys())[-1]
         print(f"Time for {name}: {(self.dts[name])*1000.:.1f} ms")
-    
-    def measure(self, array, name="step"):
-        array.block_until_ready()
-        newt = time.time()
-        self.dts[name] = newt - self.tlast
-        self.tlast = newt
-        
-        if self.verbose:
-            self.print_time_of(name)
 
-    def timeit_jit(self, func, *args, name="step", loops=40, static_argnames=None, only_print_run=False,  **kwargs):
-        func_jit = jax.jit(func, static_argnames=static_argnames)
+    def timeit_jit(self, func, *args, name=None, loops=None, static_argnames=None, **kwargs):
+        loops = loops if loops is not None else self.loops
+
+        if hasattr(func, "lower"): # Function is already jitted
+            func_jit = func
+        else:
+            func_jit = jax.jit(func, static_argnames=static_argnames)
+        if name is None:
+            name = func.__name__
+
         def call_func():
             val = func_jit(*args, **kwargs)
             res = val
@@ -64,9 +66,11 @@ class Timer():
             call_func()
         t3 = time.time()
 
-        if not only_print_run:    
+        if self.print_compile:
             self.add_time(name + "_compile", t1 - t0)
+        if self.print_warmup:
             self.add_time(name + "_warmup", t2 - t1)
-        self.add_time(name + "_run[%d]" % loops, (t3 - t2) / loops)
+        if self.print_run:
+            self.add_time(name + "_run[%d]" % loops, (t3 - t2) / loops)
 
         return res

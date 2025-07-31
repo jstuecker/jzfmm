@@ -28,6 +28,8 @@ def build_octree_with_multipoles(pos, mass, max_leaf_size=64, p=2):
     octree = calculate_multipoles_for_tree(octree, pos_sorted, mass_sorted, p=p)
     
     return octree, pos_sorted, mass_sorted, isort
+build_octree_with_multipoles.jit = jax.jit(build_octree_with_multipoles, 
+                                           static_argnames=("max_leaf_size", "p"))
 
 # ================================== Some utility methods ======================================== #
 
@@ -163,3 +165,5 @@ def build_interaction_list(octree : Octree, thetamax=0.75, ilist_fac=512, clist_
     checkify.check(nclist == 0, "Something went wrong... Checklist wasn't emptied properly")
 
     return ilist, nilist
+build_interaction_list.jit = jax.jit(
+    build_interaction_list, static_argnames=("ilist_fac", "clist_fac", "check_fac"))

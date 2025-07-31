@@ -114,6 +114,7 @@ def organize_particles(pos, return_sorted=True):
         return morton[isort], pos[isort], isort
     else:
         return morton, isort
+organize_particles.jit = jax.jit(organize_particles, static_argnames=("return_sorted",))
 
 # ================================== Binary Tree building ======================================== #
 
@@ -153,6 +154,7 @@ def find_previous_and_next_lower(lvls):
                                             (iprev, inext, jnp.zeros(nnodes, dtype=bool)))
     
     return iprev, inext
+find_previous_and_next_lower.jit = jax.jit(find_previous_and_next_lower)
 
 def determine_children(lvls, lbound, rbound):
     """Determines the children by assigning the index through the children"""
@@ -174,6 +176,7 @@ def determine_children(lvls, lbound, rbound):
     rchild = rchild.at[-1].set(nnodes-1).at[0].set(rootnode)
 
     return lchild, rchild
+determine_children.jit = jax.jit(determine_children)
 
 def get_compressed_binary_tree(morton) -> BinaryTree:
     tree = BinaryTree(max_level=90)
@@ -185,6 +188,7 @@ def get_compressed_binary_tree(morton) -> BinaryTree:
     tree.lchild, tree.rchild = determine_children(tree.level_binary, tree.lbound, tree.rbound)
 
     return tree
+get_compressed_binary_tree.jit = jax.jit(get_compressed_binary_tree)
 
 # ===================================== Tree Reduction =========================================== #
 
@@ -318,6 +322,7 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
     newtree.xleaf = get_new_leaf_positions(leaf_of_part, xpart, mpart, max_new_leaves)
     
     return newtree
+get_reduced_octree.jit = jax.jit(get_reduced_octree, static_argnames=("max_leaf_size",))
 
 def put_nodes_in_level_order(octree : Octree) -> Octree:
     """Sorts nodes so that all nodes of the same level are next to each other."""
@@ -356,6 +361,7 @@ def put_nodes_in_level_order(octree : Octree) -> Octree:
     )
     
     return newtree, isort, inv_i
+put_nodes_in_level_order.jit = jax.jit(put_nodes_in_level_order)
 
 # =================================== Some utility functions ===================================== #
 
