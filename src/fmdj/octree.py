@@ -355,4 +355,4 @@ def put_nodes_in_level_order(octree : Octree) -> Octree:
         p=octree.p
     )
     
-    return newtree
+    return newtree, isort, inv_i

@@ -51,3 +51,15 @@ def test_otree_reduction(duplicate):
     # All leaf positions should be valid
     assert jnp.all(~jnp.isnan(octree.xleaf[:octree.nnodes-1]))
 
+def test_octree_sorting():
+    morton, pos, mass = setup_particles()
+    btree = fmdj.octree.get_compressed_binary_tree(morton)
+    octree1 = fmdj.octree.get_reduced_octree(btree, pos, mass, max_leaf_size=3)
+
+    octree2, isort, iinv = fmdj.octree.put_nodes_in_level_order(octree1)
+    
+    m1,x1 = fmdj.multipoles.com_via_levels(octree1, pos, mass)
+    m2,x2 = fmdj.multipoles.com_via_levels(octree2, pos, mass)
+
+    assert jnp.allclose(m1[isort], m2)
+    assert jnp.allclose(x1[isort], x2, rtol=1e-3)

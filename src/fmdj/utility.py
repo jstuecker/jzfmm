@@ -43,15 +43,16 @@ class Timer():
     def timeit_jit(self, func, *args, name="step", loops=40, static_argnames=None, only_print_run=False,  **kwargs):
         func_jit = jax.jit(func, static_argnames=static_argnames)
         def call_func():
-            res = func_jit(*args, **kwargs)
-            if isinstance(res, tuple):
-                res[0].block_until_ready()
-            elif isinstance(res, BinaryTree):
-                res.lchild.block_until_ready()
-            elif isinstance(res, Octree):
-                res.lchild.block_until_ready()
+            val = func_jit(*args, **kwargs)
+            res = val
+            if isinstance(val, tuple):
+                val = val[0]
+            if isinstance(val, BinaryTree):
+                val.lchild.block_until_ready()
+            elif isinstance(val, Octree):
+                val.lchild.block_until_ready()
             else:
-                res.block_until_ready()
+                val.block_until_ready()
             return res
 
         t0 = time.time()

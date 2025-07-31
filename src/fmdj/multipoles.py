@@ -136,20 +136,32 @@ def multipoles_via_levels(octree : Octree, pos, mass, p=2, xcom=None):
 
     mp = jnp.stack(mp, axis=-1)
 
-    # Next we propagate multipoles up the tree
-    def handle_level(i, mp):
-        level_parent = -i
+    # Next we need to propagate multipoles up the tree
 
-        sel = (octree.level_binary[octree.parent] == level_parent) & octree.is_valid
-        ipar = jnp.where(sel, octree.parent, max_nodes)
+    # To save some time, we may skip the calculation for intermediate levels
+    # intermediate levels do not represent cubes, but rather rectangular intermediate splits
+    # and we anyways always open them in the tree walk
+    level_oct, parent_oct, is_intermediate = get_oct_level_info(octree)
+    
+    def handle_level(i, mp):
+        sel = (level_oct[parent_oct] == -i) & octree.is_valid
 
         if xcom is not None:
-            mpnew = shift_multipoles(mp, x0[octree.parent] - x0, p=p)
+            mpnew = shift_multipoles(mp, x0[parent_oct] - x0, p=p)
         else:
             mpnew = mp
 
-        return mp.at[ipar].add(mpnew)
-
-    mp = jax.lax.fori_loop(-90, 1, handle_level, mp)
+        iparent = jnp.where(sel, parent_oct, max_nodes)
+        return mp.at[iparent].add(mpnew)
+    
+    mp = jax.lax.fori_loop(-jnp.max(level_oct)+1, 1, handle_level, mp)
 
     return mp
+
+def get_oct_level_info(octree):
+    level_oct = octree.level_binary // 3
+    is_intermediate = jnp.where(octree.level_binary > 0, level_oct[octree.parent] == level_oct, False)
+    parent_oct = octree.parent
+    for i in range(0, 3):
+        parent_oct = jnp.where(is_intermediate[parent_oct], parent_oct[parent_oct], parent_oct)
+    return level_oct, parent_oct, is_intermediate
