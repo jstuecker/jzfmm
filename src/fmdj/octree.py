@@ -9,7 +9,7 @@ if jax.__version__ <= "0.4.2":
     raise ImportError("This code requires JAX version 0.4.2 or higher. " \
                       "However, we could define a custom decorator for this case")
 
-# ================================ Tree class and functions ====================================== #
+# ======================================= Tree class ============================================= #
 
 @partial(jax.tree_util.register_dataclass, 
          data_fields=["lbound", "rbound", "lchild", "rchild", "level_binary"], 
@@ -43,12 +43,6 @@ class Octree:
     leaf_particle_bounds: jnp.ndarray = None
 
     p: int = 0
-
-def get_parent_binary(levels, lbound, rbound):
-    """Decides which of the two bounding nodes is the parent of the node"""
-    nnodes = levels.shape[0]
-    mask = (levels[lbound] >= levels[rbound]) & (lbound > 0)
-    return jnp.where(mask | (rbound >= nnodes-1), lbound, rbound)
 
 # ===================================== Morton sorting =========================================== #
 
@@ -117,7 +111,65 @@ def organize_particles(pos, return_sorted=True):
 
 # ====================================== Tree building =========================================== #
 
-def get_compressed_binary_tree(morton) -> BinaryTree:
+def get_parent_binary(levels, lbound, rbound):
+    """Decides which of the two bounding nodes is the parent of the node"""
+    nnodes = levels.shape[0]
+    is_left = ((levels[lbound] >= levels[rbound]) & (lbound > 0)) | (rbound >= nnodes-1)
+    return jnp.where(is_left, lbound, rbound), is_left
+
+def find_previous_and_next_lower(lvls):
+    """Given a 1d array of integers, find the previous and next lower integer for each element.
+    if lvls corresponds to the levels of a binary tree, this gives the extend of each node
+    """
+    nnodes = len(lvls)
+    iarange = jnp.arange(nnodes)
+    iprev = jnp.clip(iarange - 1,0,None)
+    inext = jnp.clip(iarange + 1,0,nnodes-1)
+
+    def loop_body(args):
+        iprev, inext, done = args
+
+        is_lower_prev = (lvls[iprev] < lvls) | (iprev == 0)
+        iprev = jnp.where(is_lower_prev, iprev, iprev[iprev])
+
+        is_lower_next = (lvls[inext] < lvls) | (inext == len(lvls)-1)
+        inext = jnp.where(is_lower_next, inext, inext[inext])
+
+        done = is_lower_prev & is_lower_next
+
+        return iprev, inext, done
+    
+    def loop_cond(args):
+        iprev, inext, done = args
+        return jnp.any(~done)
+    
+    iprev, inext, done = jax.lax.while_loop(loop_cond, loop_body, 
+                                            (iprev, inext, jnp.zeros(nnodes, dtype=bool)))
+    
+    return iprev, inext
+
+def determine_children(lvls, lbound, rbound):
+    """Determines the children by assigning the index through the children"""
+    iparent, is_left = get_parent_binary(jnp.array(lvls), lbound, rbound)
+
+    nnodes = len(lvls)
+    iarange = jnp.arange(nnodes)
+
+    lchild = -jnp.arange(nnodes) + 1
+    rchild = -jnp.arange(nnodes)
+
+    rchild = rchild.at[jnp.where(is_left, iparent, nnodes)].set(iarange)
+    lchild = lchild.at[jnp.where(~is_left, iparent, nnodes)].set(iarange)
+
+    # Handle our two fake nodes at the boundary:
+    # We can always find the rootnode as rchild[0]
+    rootnode = jnp.argmin(lvls[1:-1]) + 1
+    lchild = lchild.at[0].set(0).at[-1].set(rootnode)
+    rchild = rchild.at[-1].set(nnodes-1).at[0].set(rootnode)
+
+    return lchild, rchild
+
+def get_compressed_binary_tree(morton, version=1) -> BinaryTree:
     max_level = 90
 
     levels = morton_diff_level(morton[1:], morton[:-1])
@@ -133,45 +185,48 @@ def get_compressed_binary_tree(morton) -> BinaryTree:
     next_lower = jnp.full_like(levels, nnodes-1, dtype=jnp.int32) # Right Parent
     next_lowest_above = jnp.full_like(levels, nnodes-1, dtype=jnp.int32) # Right Child
 
-    def iteration(lvl, args):
-        last_lower, last_lowest_above, next_lower, next_lowest_above = args
-        last_seen = jax.lax.cummax(iarange * (lvl == levels)) # last seen occurance of the value "lvl"
-
-        # last occurence that is lower than the current level
-        last_lower = jnp.where((lvl < levels) & (last_seen > last_lower), last_seen, last_lower)
-
-        # the location of the lowest value between last_lower and the current value
-        mask = (last_seen > last_lower) & (lvl > levels) & (last_lowest_above <= 0)
-        last_lowest_above = jnp.where(mask, last_seen, last_lowest_above)
-        
-        # Now the same, but other way around
-        next_seen = jax.lax.cummin(iarange * (lvl == levels) + nnodes * (lvl != levels), reverse=True)
-
-        next_lower = jnp.where((lvl < levels) & (next_seen < next_lower), next_seen, next_lower)
-
-        mask = (next_seen < next_lower) & (lvl > levels) & (next_lowest_above >= nnodes-1)
-        next_lowest_above = jnp.where(mask, next_seen, next_lowest_above)
-
-        return last_lower, last_lowest_above, next_lower, next_lowest_above
-    
-    last_lower, last_lowest_above, next_lower, next_lowest_above = jax.lax.fori_loop(
-        0, max_level+1, iteration, (last_lower, last_lowest_above, next_lower, next_lowest_above))
-
     tree = BinaryTree()
-
     tree.level_binary = levels
 
-    # Now interprete these in a tree structure
-    # A nodes extend is between the last and next lower refinement level
-    tree.lbound = last_lower
-    tree.rbound = next_lower
+    if version == 1:
+        def iteration(lvl, args):
+            last_lower, last_lowest_above, next_lower, next_lowest_above = args
+            last_seen = jax.lax.cummax(iarange * (lvl == levels)) # last seen occurance of the value "lvl"
 
-    # The children are the lowest elements between our node and ilbound and irbound
-    # If there are no child-nodes, then the child corresponds to a leaf (=particle here)
-    # In that case we use a negative index that indicates the location in the leaf array
-    tree.lchild = jnp.where(last_lowest_above > 0, 
-                            last_lowest_above, -(iarange-1)).at[0].set(0)
-    tree.rchild = jnp.where(next_lowest_above < nnodes-1, 
-                            next_lowest_above, -iarange).at[-1].set(nnodes-1)
+            # last occurence that is lower than the current level
+            last_lower = jnp.where((lvl < levels) & (last_seen > last_lower), last_seen, last_lower)
+
+            # the location of the lowest value between last_lower and the current value
+            mask = (last_seen > last_lower) & (lvl > levels) & (last_lowest_above <= 0)
+            last_lowest_above = jnp.where(mask, last_seen, last_lowest_above)
+            
+            # Now the same, but other way around
+            next_seen = jax.lax.cummin(iarange * (lvl == levels) + nnodes * (lvl != levels), reverse=True)
+
+            next_lower = jnp.where((lvl < levels) & (next_seen < next_lower), next_seen, next_lower)
+
+            mask = (next_seen < next_lower) & (lvl > levels) & (next_lowest_above >= nnodes-1)
+            next_lowest_above = jnp.where(mask, next_seen, next_lowest_above)
+
+            return last_lower, last_lowest_above, next_lower, next_lowest_above
+        
+        last_lower, last_lowest_above, next_lower, next_lowest_above = jax.lax.fori_loop(
+            0, max_level+1, iteration, (last_lower, last_lowest_above, next_lower, next_lowest_above))
+
+        # Now interprete these in a tree structure
+        # A nodes extend is between the last and next lower refinement level
+        tree.lbound = last_lower
+        tree.rbound = next_lower
+
+        # The children are the lowest elements between our node and ilbound and irbound
+        # If there are no child-nodes, then the child corresponds to a leaf (=particle here)
+        # In that case we use a negative index that indicates the location in the leaf array
+        tree.lchild = jnp.where(last_lowest_above > 0, 
+                                last_lowest_above, -(iarange-1)).at[0].set(0)
+        tree.rchild = jnp.where(next_lowest_above < nnodes-1, 
+                                next_lowest_above, -iarange).at[-1].set(nnodes-1)
+    else:
+        tree.lbound, tree.rbound = find_previous_and_next_lower(levels)
+        tree.lchild, tree.rchild = determine_children(levels, tree.lbound, tree.rbound)
 
     return tree

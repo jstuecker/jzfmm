@@ -19,8 +19,39 @@ pos0 = timer.timeit_jit(create_pos, name="create_pos", loops=10, only_print_run=
 
 morton, pos, isort = timer.timeit_jit(
     fmdj.octree.organize_particles, pos0, static_argnames=("return_sorted"), 
-    name="organize_pos", loops=10, only_print_run=only_print_run)
+    name="organize_particles", loops=10, only_print_run=only_print_run)
+
+# btree = timer.timeit_jit(
+#     fmdj.octree.get_compressed_binary_tree, morton,
+#     name="binary_tree", loops=10, only_print_run=only_print_run)
+
+levels = timer.timeit_jit(
+    fmdj.octree.morton_diff_level, morton[1:], morton[:-1],
+    name="morton_diff_level", loops=10, only_print_run=only_print_run)
+
+lbound, rbound = timer.timeit_jit(
+    fmdj.octree.find_previous_and_next_lower, levels,
+    name="find_previous_and_next_lower", loops=10, only_print_run=only_print_run)
+
+lbound, rbound = timer.timeit_jit(
+    fmdj.octree.determine_children, levels, lbound, rbound,
+    name="determine_children", loops=10, only_print_run=only_print_run)
 
 btree = timer.timeit_jit(
-    fmdj.octree.get_compressed_binary_tree, morton,
-    name="binary_tree", loops=10, only_print_run=only_print_run)
+    fmdj.octree.get_compressed_binary_tree, morton, version=1, static_argnames=("version"), 
+    name="get_compressed_binary_tree_v1", loops=10, only_print_run=only_print_run)
+
+btree = timer.timeit_jit(
+    fmdj.octree.get_compressed_binary_tree, morton, version=2, static_argnames=("version"), 
+    name="get_compressed_binary_tree_v2", loops=10, only_print_run=only_print_run)
+
+print("-------------")
+
+
+
+# btree = fmdj.octree.get_compressed_binary_tree(morton, version=1)
+# print(btree.lbound[0:10])
+# print(btree.lchild[0:10])
+# btree = fmdj.octree.get_compressed_binary_tree(morton, version=2)
+# print(btree.lbound[0:10])
+# print(btree.lchild[0:10])
