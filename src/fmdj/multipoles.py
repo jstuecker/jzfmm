@@ -73,6 +73,32 @@ def com_via_levels(octree : Octree, pos, mass):
 
     return m, save_divide(mx, m[:,None])
 
+def com_via_height(octree : Octree, pos, mass):
+    """Computes the mass and the center of mass of each node in the octree"""
+    max_nodes = len(octree.lchild)
+
+    # First add particles into their parent nodes
+    m = jnp.zeros(max_nodes, dtype=jnp.float32
+                  ).at[octree.node_of_particle].add(mass)
+    mx = jnp.zeros((max_nodes, 3), dtype=jnp.float32
+                   ).at[octree.node_of_particle].add(pos * mass[:,None])
+
+    # Next propagate information up the tree
+    def handle_height_level(hlvl, carry):
+        m, mx = carry
+
+        sel = (octree.height[octree.parent] == hlvl) & octree.is_valid
+        ipar = jnp.where(sel, octree.parent, max_nodes)
+        
+        m = m.at[ipar].add(m)
+        mx = mx.at[ipar].add(mx)
+
+        return m, mx
+    
+    m, mx = jax.lax.fori_loop(2, octree.maxheight+1, handle_height_level, (m, mx))
+
+    return m, save_divide(mx, m[:,None])
+com_via_height.jit = jax.jit(com_via_height)
 
 def shift_multipoles(m, x0, p=2):
     """m[...,i] corresponds to the expectation value of x**c[0] * y**c[1] * z**c[2]
@@ -158,6 +184,41 @@ def multipoles_via_levels(octree : Octree, pos, mass, p=2, xcom=None):
 
     return mp
 multipoles_via_levels.jit = jax.jit(multipoles_via_levels, static_argnames=("p",))
+
+def multipoles_via_height(octree : Octree, pos, mass, p=2, xcom=None):
+    x0 = xcom if xcom is not None else jnp.zeros((octree.max_nodes, 3), dtype=jnp.float32)
+
+    max_nodes = len(octree.lchild)
+    comb = multipole_powers(p)
+    parent_of_part = octree.node_of_particle
+    
+    # We make an array for each multipole moment, this way we can avoid copying the others on each individual update
+    mp = []
+
+    # First, we add each particle to its parent node
+    for i,c in enumerate(comb):
+        mppart = x_moment(pos - x0[parent_of_part], c) * mass
+
+        mp.append(jax.ops.segment_sum(mppart, parent_of_part, num_segments=max_nodes, indices_are_sorted=True))
+
+    mp = jnp.stack(mp, axis=-1)
+
+    # Next we need to propagate multipoles up the tree
+    def handle_height_level(hlvl, mp):
+        sel = (octree.height[octree.parent] == hlvl) & octree.is_valid
+        ipar = jnp.where(sel, octree.parent, max_nodes)
+
+        if xcom is not None:
+            mpnew = shift_multipoles(mp, x0[octree.parent] - x0, p=p)
+        else:
+            mpnew = mp
+        
+        return mp.at[ipar].add(mpnew)
+    
+    mp = jax.lax.fori_loop(2, octree.maxheight+1, handle_height_level, mp)
+
+    return mp
+multipoles_via_height.jit = jax.jit(multipoles_via_height, static_argnames=("p",))
 
 # ============================= Tree build convenience functions ================================= #
 

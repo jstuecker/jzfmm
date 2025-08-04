@@ -28,7 +28,8 @@ class BinaryTree:
     max_level: int = 90  # Maximum level of the tree
 
 @partial(jax.tree_util.register_dataclass, 
-         data_fields=["parent", "lchild", "rchild", "level_binary", "is_valid", "nnodes",
+         data_fields=["parent", "lchild", "rchild", "level_binary", "is_valid", "height",  
+                      "maxheight", "nnodes",
                       "leaf_particle_bounds", "node_of_particle", "xnode", "xleaf", "mp",], 
          meta_fields=["max_leaf_size", "p"])
 @dataclass
@@ -38,6 +39,8 @@ class Octree:
     rchild: jnp.ndarray = None
     level_binary: jnp.ndarray = None
     is_valid: jnp.ndarray = None
+    height: jnp.ndarray = None
+    maxheight: jnp.ndarray = None
     nnodes: jnp.ndarray = None
 
     leaf_particle_bounds: jnp.ndarray = None
@@ -351,6 +354,7 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
 
     newtree.level_binary = tree.level_binary[ifrom_node]
     newtree.is_valid = (newtree.level_binary >= 0) & (jnp.arange(max_new_nodes) < nnodes)
+    newtree.height, newtree.maxheight = get_tree_height(newtree)
 
     newtree.leaf_particle_bounds = lbound_leaf
     newtree.node_of_particle = imap_node[parent_of_leaf][leaf_of_part]
@@ -362,6 +366,8 @@ get_reduced_octree.jit = jax.jit(get_reduced_octree, static_argnames=("max_leaf_
 
 def put_nodes_in_level_order(octree : Octree) -> Octree:
     """Sorts nodes so that all nodes of the same level are next to each other."""
+    print("Warning, I should update this method to sort by height rather than level!")
+
     max_nodes = len(octree.level_binary)
     inode = jnp.arange(len(octree.level_binary), dtype=jnp.int32)
     # lvels, but modified so that we keep the last node and invalid nodes at the end when sorting
@@ -385,6 +391,8 @@ def put_nodes_in_level_order(octree : Octree) -> Octree:
         rchild=rchild[isort],
         level_binary=octree.level_binary[isort],
         is_valid=octree.is_valid[isort],
+        height=octree.height[isort],
+        maxheight=octree.maxheight,
         nnodes=octree.nnodes,
         
         leaf_particle_bounds=octree.leaf_particle_bounds,
