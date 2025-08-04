@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from .octree import Octree, get_oct_level_info
+from .octree import Octree
 import numpy as np
 
 # ============================= Some fixed Combinatorical Computations =========================== #
@@ -45,33 +45,6 @@ def define_index_maps(p):
 
 def save_divide(a, b):
     return jnp.where(b != 0, a / b, 0.)
-
-def com_via_levels(octree : Octree, pos, mass):
-    """Computes the mass and the center of mass of each node in the octree"""
-    max_nodes = len(octree.lchild)
-
-    # First add particles into their parent nodes
-    m = jnp.zeros(max_nodes, dtype=jnp.float32
-                  ).at[octree.node_of_particle].add(mass)
-    mx = jnp.zeros((max_nodes, 3), dtype=jnp.float32
-                   ).at[octree.node_of_particle].add(pos * mass[:,None])
-
-    # Next propagate information up the tree
-    def handle_level(i, carry):
-        level_parent = -i
-        m, mx = carry
-
-        sel = (octree.level_binary[octree.parent] == level_parent) & octree.is_valid
-        ipar = jnp.where(sel, octree.parent, max_nodes)
-        
-        m = m.at[ipar].add(m)
-        mx = mx.at[ipar].add(mx)
-
-        return m, mx
-    
-    m, mx = jax.lax.fori_loop(-90, 1, handle_level, (m, mx))
-
-    return m, save_divide(mx, m[:,None])
 
 def com_via_height(octree : Octree, pos, mass):
     """Computes the mass and the center of mass of each node in the octree"""
@@ -144,47 +117,6 @@ def shift_multipoles(m, x0, p=2):
 def x_moment(x, c):
     return x[...,0]**c[0] * x[...,1]**c[1] * x[...,2]**c[2]
 
-def multipoles_via_levels(octree : Octree, pos, mass, p=2, xcom=None):
-    x0 = xcom if xcom is not None else jnp.zeros((octree.max_nodes, 3), dtype=jnp.float32)
-
-    max_nodes = len(octree.lchild)
-    comb = multipole_powers(p)
-    parent_of_part = octree.node_of_particle
-    
-    # We make an array for each multipole moment, this way we can avoid copying the others on each individual update
-    mp = []
-
-    # First, we add each particle to its parent node
-    for i,c in enumerate(comb):
-        mppart = x_moment(pos - x0[parent_of_part], c) * mass
-
-        mp.append(jax.ops.segment_sum(mppart, parent_of_part, num_segments=max_nodes, indices_are_sorted=True))
-
-    mp = jnp.stack(mp, axis=-1)
-
-    # Next we need to propagate multipoles up the tree
-
-    # To save some time, we may skip the calculation for intermediate levels
-    # intermediate levels do not represent cubes, but rather rectangular intermediate splits
-    # and we anyways always open them in the tree walk
-    level_oct, parent_oct, is_intermediate = get_oct_level_info(octree)
-    
-    def handle_level(i, mp):
-        sel = (level_oct[parent_oct] == -i) & octree.is_valid
-
-        if xcom is not None:
-            mpnew = shift_multipoles(mp, x0[parent_oct] - x0, p=p)
-        else:
-            mpnew = mp
-
-        iparent = jnp.where(sel, parent_oct, max_nodes)
-        return mp.at[iparent].add(mpnew)
-    
-    mp = jax.lax.fori_loop(-jnp.max(level_oct)+1, 1, handle_level, mp)
-
-    return mp
-multipoles_via_levels.jit = jax.jit(multipoles_via_levels, static_argnames=("p",))
-
 def multipoles_via_height(octree : Octree, pos, mass, p=2, xcom=None):
     x0 = xcom if xcom is not None else jnp.zeros((octree.max_nodes, 3), dtype=jnp.float32)
 
@@ -226,7 +158,7 @@ def calculate_multipoles_for_tree(octree : Octree, pos, mass, p=2) -> Octree:
     """Calculates octree.mp and octree.xnode"""
     
     octree.p = p
-    m, octree.xnode = com_via_levels(octree, pos, mass)
-    octree.mp = multipoles_via_levels(octree, pos, mass, p=p, xcom=octree.xnode)
+    m, octree.xnode = com_via_height(octree, pos, mass)
+    octree.mp = multipoles_via_height(octree, pos, mass, p=p, xcom=octree.xnode)
     
     return octree

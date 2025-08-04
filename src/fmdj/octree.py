@@ -14,7 +14,7 @@ if jax.__version__ <= "0.4.2":
 
 @partial(jax.tree_util.register_dataclass, 
          data_fields=["lbound", "rbound", "lchild", "rchild", "level_binary"], 
-         meta_fields=["max_level"])
+         meta_fields=["min_level", "max_level"])
 @dataclass
 class BinaryTree:
     # Jax arrays
@@ -25,7 +25,10 @@ class BinaryTree:
     level_binary: jnp.ndarray = None
 
     # Meta fields
-    max_level: int = 90  # Maximum level of the tree
+    # Nodes with particles at identical positions have this level (-(127+23)*3):
+    min_level: int = -450 
+    # Nodes with particles with different signs have this level (128+1)*3
+    max_level: int =  387
 
 @partial(jax.tree_util.register_dataclass, 
          data_fields=["parent", "lchild", "rchild", "level_binary", "is_valid", "height",  
@@ -124,11 +127,11 @@ organize_particles.jit = jax.jit(organize_particles, static_argnames=("return_so
 def get_parent_binary(levels, lbound, rbound):
     """Decides which of the two bounding nodes is the parent of the node"""
     nnodes = levels.shape[0]
-    is_left = ((levels[lbound] >= levels[rbound]) & (lbound > 0)) | (rbound >= nnodes-1)
+    is_left = ((levels[lbound] <= levels[rbound]) & (lbound > 0)) | (rbound >= nnodes-1)
     return jnp.where(is_left, lbound, rbound), is_left
 
-def find_previous_and_next_lower(lvls):
-    """Given a 1d array of integers, find the previous and next lower integer for each element.
+def find_previous_and_next_higher(lvls):
+    """Given a 1d array of integers, find the previous and next higher integer for each element.
     if lvls corresponds to the levels of a binary tree, this gives the extend of each node
     """
     nnodes = len(lvls)
@@ -139,13 +142,13 @@ def find_previous_and_next_lower(lvls):
     def loop_body(args):
         iprev, inext, done = args
 
-        is_lower_prev = (lvls[iprev] < lvls) | (iprev == 0)
-        iprev = jnp.where(is_lower_prev, iprev, iprev[iprev])
+        is_higher_prev = (lvls[iprev] > lvls) | (iprev == 0)
+        iprev = jnp.where(is_higher_prev, iprev, iprev[iprev])
 
-        is_lower_next = (lvls[inext] < lvls) | (inext == len(lvls)-1)
-        inext = jnp.where(is_lower_next, inext, inext[inext])
+        is_higher_next = (lvls[inext] > lvls) | (inext == len(lvls)-1)
+        inext = jnp.where(is_higher_next, inext, inext[inext])
 
-        done = is_lower_prev & is_lower_next
+        done = is_higher_prev & is_higher_next
 
         return iprev, inext, done
     
@@ -157,7 +160,7 @@ def find_previous_and_next_lower(lvls):
                                             (iprev, inext, jnp.zeros(nnodes, dtype=bool)))
     
     return iprev, inext
-find_previous_and_next_lower.jit = jax.jit(find_previous_and_next_lower)
+find_previous_and_next_higher.jit = jax.jit(find_previous_and_next_higher)
 
 def determine_children(lvls, lbound, rbound):
     """Determines the children by assigning the index through the children"""
@@ -174,7 +177,7 @@ def determine_children(lvls, lbound, rbound):
 
     # Handle our two fake nodes at the boundary:
     # We can always find the rootnode as rchild[0]
-    rootnode = jnp.argmin(lvls[1:-1]) + 1
+    rootnode = jnp.argmax(lvls[1:-1]) + 1
     lchild = lchild.at[0].set(0).at[-1].set(rootnode)
     rchild = rchild.at[-1].set(nnodes-1).at[0].set(rootnode)
 
@@ -182,12 +185,13 @@ def determine_children(lvls, lbound, rbound):
 determine_children.jit = jax.jit(determine_children)
 
 def get_compressed_binary_tree(morton) -> BinaryTree:
-    tree = BinaryTree(max_level=90)
-    tree.level_binary = morton_diff_level(morton[1:], morton[:-1])
+    tree = BinaryTree(min_level=-90, max_level=0)
+    tree.level_binary = -morton_diff_level(morton[1:], morton[:-1])
     # We put fake levels -1 at the start and end so that all nodes have well defined boundaries
-    tree.level_binary = jnp.concatenate((jnp.array((-1,)), tree.level_binary,  jnp.array((-1,))))
+    tree.level_binary = jnp.concatenate((jnp.array((tree.max_level+1,)), tree.level_binary,  
+                                         jnp.array((tree.max_level+1,))))
 
-    tree.lbound, tree.rbound = find_previous_and_next_lower(tree.level_binary)
+    tree.lbound, tree.rbound = find_previous_and_next_higher(tree.level_binary)
     tree.lchild, tree.rchild = determine_children(tree.level_binary, tree.lbound, tree.rbound)
 
     return tree
@@ -235,28 +239,28 @@ def offset_sum(num):
     cs = jnp.cumsum(num, axis=0)
     return cs - num, cs[-1]
 
-def define_reduced_tree_masks(tree, max_leaf_size=4):
+def define_reduced_tree_masks(tree : BinaryTree, max_leaf_size=4):
     nodesize = tree.rbound - tree.lbound
     parent = get_parent_binary(tree.level_binary, tree.lbound, tree.rbound)[0]
 
     # We keep all valid nodes whose parents exceed the max_leaf_size
     keep = nodesize[parent] > max_leaf_size
     # For nodes that we keep, we can identify leaves as those that are smaller than max_leaf_size
-    keep_as_leaf = keep & (nodesize <= max_leaf_size) & (tree.level_binary < tree.max_level)
-    # Additionally we may need to keep as leaves nodes at max_level, even if they have more
-    # than max_leaf_size particles, since we cannot split them further
+    keep_as_leaf = keep & (nodesize <= max_leaf_size) & (tree.level_binary > tree.min_level)
+    # Additionally we may need to keep as leaves nodes that are at identical positions, 
+    # even if they have more than max_leaf_size particles, since we cannot split them further
     # Since they all share a parent, we have to make sure to keep only the one of them
     # that the parent knows about
     inode = jnp.arange(len(tree.level_binary))
     is_a_child = (tree.lchild[tree.rbound] == inode) | (tree.rchild[tree.lbound] == inode)
-    keep_as_leaf = keep_as_leaf | (keep & (tree.level_binary == tree.max_level) & is_a_child)
+    keep_as_leaf = keep_as_leaf | (keep & (tree.level_binary == tree.min_level) & is_a_child)
     
-    keep_as_node = keep & (tree.level_binary < tree.max_level) & ~keep_as_leaf
+    keep_as_node = keep & (tree.level_binary > tree.min_level) & ~keep_as_leaf
 
     # Beyond that, we also need to transport some leaves directly from the old to the new tree.
     # These will generally be single particles
-    keep_lchild_leaf = keep_as_node & (tree.lchild <= 0) & (tree.level_binary >= 0)
-    keep_rchild_leaf = keep_as_node & (tree.rchild <= 0) & (tree.level_binary >= 0)
+    keep_lchild_leaf = keep_as_node & (tree.lchild <= 0) & (tree.level_binary <= tree.max_level)
+    keep_rchild_leaf = keep_as_node & (tree.rchild <= 0) & (tree.level_binary <= tree.max_level)
 
     return keep_as_node, keep_as_leaf, keep_lchild_leaf, keep_rchild_leaf
 
@@ -346,6 +350,7 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
         return inew
 
     newtree = Octree(nnodes=nnodes, max_leaf_size=max_leaf_size)
+    inewnode = jnp.arange(max_new_nodes)
 
     iparent = get_parent_binary(tree.level_binary, tree.lbound, tree.rbound)[0]
     newtree.parent = map_node(iparent[ifrom_node])
@@ -353,7 +358,7 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
     newtree.rchild = map_node(tree.rchild[ifrom_node])
 
     newtree.level_binary = tree.level_binary[ifrom_node]
-    newtree.is_valid = (newtree.level_binary >= 0) & (jnp.arange(max_new_nodes) < nnodes)
+    newtree.is_valid = (inewnode > 0) & (inewnode < nnodes-1)
     newtree.height, newtree.maxheight = get_tree_height(newtree)
 
     newtree.leaf_particle_bounds = lbound_leaf
@@ -374,7 +379,7 @@ def put_nodes_in_level_order(octree : Octree) -> Octree:
     level = octree.level_binary.at[jnp.where(inode >= octree.nnodes-1, inode, max_nodes)].set(100)
 
     # For a given new node index, which original index it came from:
-    isort = jnp.lexsort((inode, level)) # With lexsort nodes of the same level keep their rel. order
+    isort = jnp.lexsort((inode, -level)) # With lexsort nodes of the same level keep their rel. order
     # For a given original index, which new index it is at:
     inv_i = jnp.empty_like(isort).at[isort].set(jnp.arange(isort.size))
 
@@ -409,10 +414,10 @@ put_nodes_in_level_order.jit = jax.jit(put_nodes_in_level_order)
 
 # =================================== Some utility functions ===================================== #
 
-def get_oct_level_info(octree):
-    level_oct = octree.level_binary // 3
-    is_intermediate = jnp.where(octree.level_binary > 0, level_oct[octree.parent] == level_oct, False)
-    parent_oct = octree.parent
-    for i in range(0, 3):
-        parent_oct = jnp.where(is_intermediate[parent_oct], parent_oct[parent_oct], parent_oct)
-    return level_oct, parent_oct, is_intermediate
+# def get_oct_level_info(octree):
+#     level_oct = octree.level_binary // 3
+#     is_intermediate = jnp.where(octree.level_binary > 0, level_oct[octree.parent] == level_oct, False)
+#     parent_oct = octree.parent
+#     for i in range(0, 3):
+#         parent_oct = jnp.where(is_intermediate[parent_oct], parent_oct[parent_oct], parent_oct)
+#     return level_oct, parent_oct, is_intermediate

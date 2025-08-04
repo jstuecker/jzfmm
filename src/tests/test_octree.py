@@ -22,7 +22,7 @@ def test_btree_children():
     inode = jnp.where(tree.lchild > 0)[0]
     assert jnp.all(inode == tree.rbound[tree.lchild[inode]])
 
-    inode = jnp.where((tree.rchild > 0) & (tree.level_binary >= 0))[0]
+    inode = jnp.where((tree.rchild > 0) & (tree.level_binary <= tree.max_level))[0]
     assert jnp.all(inode == tree.lbound[tree.rchild[inode]])
 
 @pytest.mark.parametrize("duplicate", [False, True])
@@ -58,8 +58,8 @@ def test_octree_sorting():
 
     octree2, isort, iinv = fmdj.octree.put_nodes_in_level_order(octree1)
     
-    m1,x1 = fmdj.multipoles.com_via_levels(octree1, pos, mass)
-    m2,x2 = fmdj.multipoles.com_via_levels(octree2, pos, mass)
+    m1,x1 = fmdj.multipoles.com_via_height(octree1, pos, mass)
+    m2,x2 = fmdj.multipoles.com_via_height(octree2, pos, mass)
 
     assert jnp.allclose(m1[isort], m2)
     assert jnp.allclose(x1[isort], x2, rtol=1e-3)

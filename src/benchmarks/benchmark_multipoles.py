@@ -25,15 +25,11 @@ for N in (int(1e4), int(1e5), int(1e6), int(3e6), int(1e7)):
 
     octree, pos = timer.timeit_jit(sort_and_build_tree, pos0, mass)
 
-    m, xcom = timer.timeit_jit(fmdj.multipoles.com_via_levels, octree, pos, mass)
-    m2, xcom2 = timer.timeit_jit(fmdj.multipoles.com_via_height, octree, pos, mass)
+    m, xcom = timer.timeit_jit(fmdj.multipoles.com_via_height, octree, pos, mass)
 
     for p in (2,3,4,5):
-        mp = timer.timeit_jit(fmdj.multipoles.multipoles_via_levels.jit, 
-                            octree, pos, mass, p=p, xcom=xcom, name="mp_via_levels_p%d"%p)
-        mp2 = timer.timeit_jit(fmdj.multipoles.multipoles_via_height.jit, 
-                            octree, pos, mass, p=p, xcom=xcom2, name="mp_via_height_p%d"%p)
-
+        mp = timer.timeit_jit(fmdj.multipoles.multipoles_via_height.jit, 
+                            octree, pos, mass, p=p, xcom=xcom, name="mp_via_height_p%d"%p)
 
     print("------------- Combined:  ")
 

@@ -25,7 +25,7 @@ timer.timeit_jit(jnp.argsort, morton_unsorted[...,2], stable=False,  name="argso
 
 levels = timer.timeit_jit(fmdj.octree.morton_diff_level, morton[1:], morton[:-1])
 
-lbound, rbound = timer.timeit_jit(fmdj.octree.find_previous_and_next_lower.jit, levels)
+lbound, rbound = timer.timeit_jit(fmdj.octree.find_previous_and_next_higher.jit, levels)
 
 lbound, rbound = timer.timeit_jit(fmdj.octree.determine_children.jit, levels, lbound, rbound)
 

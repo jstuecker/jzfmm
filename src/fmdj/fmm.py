@@ -57,6 +57,8 @@ def opening_criterion(octree : Octree, nodeA, nodeB, thetamax=0.75):
     """
     isleafA, isleafB = nodeA <= 0, nodeB <= 0
 
+    assert 0, "This method needs to be adapted to new level sign"
+
     lvl_oct = octree.level_binary // 3
     is_intermediate = jnp.where(octree.level_binary > 0, lvl_oct[octree.parent] == lvl_oct, False)
 
