@@ -152,6 +152,12 @@ def multipoles_via_height(octree : Octree, pos, mass, p=2, xcom=None):
     return mp
 multipoles_via_height.jit = jax.jit(multipoles_via_height, static_argnames=("p",))
 
+# ============================== Multipole Evaluation Functions ================================== #
+
+
+
+
+
 # ============================= Tree build convenience functions ================================= #
 
 def calculate_multipoles_for_tree(octree : Octree, pos, mass, p=2) -> Octree:

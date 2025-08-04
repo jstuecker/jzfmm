@@ -31,6 +31,9 @@ build_octree_with_multipoles.jit = jax.jit(build_octree_with_multipoles,
 
 # ================================== Some utility methods ======================================== #
 
+def cumsum_starting_with_zero(x):
+    return jnp.concatenate((jnp.zeros((1,) + x.shape[1:], dtype=x.dtype), jnp.cumsum(x, axis=0)))
+
 def offset_sum(num):
     cs = jnp.cumsum(num, axis=0)
     return cs - num, cs[-1]
@@ -166,3 +169,33 @@ def build_interaction_list(octree : Octree, thetamax=0.75, ilist_fac=512, clist_
     return ilist, nilist
 build_interaction_list.jit = jax.jit(
     build_interaction_list, static_argnames=("ilist_fac", "clist_fac", "check_fac"))
+
+def organize_interactions(interaction_list, nfilled, sort=False):
+    """Organizes the interactions. """
+    inodeA, inodeB = interaction_list.T
+
+    # Interaction types: # 0: node-node, 1: node-leaf, 2: leaf-node, 3: leaf-leaf 4: invalid
+    itype = 2*(inodeA <= 0) + 1*(inodeB <= 0) + 4*(jnp.arange(len(interaction_list)) >= nfilled)
+
+    if sort:
+        # Sort interactions by type and receiving nodes inodeA
+        interactions = interaction_list[jnp.lexsort((inodeB, inodeA, itype))]
+
+        iend = jnp.array([jnp.sum(itype <= i) for i in (0,1,2,3,8)])
+        istart = jnp.concatenate((jnp.array([0]), iend))[:-1]
+    else:
+        # Only sort by type. Since we have only 4 types, we can do this manually with prefix sums
+        offsets = 0
+        istart, iend = [0], []
+        for i in range(0, 4):
+            offs, num = offset_sum(itype == i)
+            offsets = jnp.where(itype == i, istart[-1] + offs, offsets)
+            iend.append(istart[-1] + num)
+            istart.append(iend[-1])
+        offsets = jnp.where(itype > 3, len(interaction_list), offsets)
+
+        interactions = interaction_list.at[offsets].set(interaction_list)
+        istart, iend = jnp.array(istart[:-1]), jnp.array(iend)
+
+    return interactions, istart, iend
+organize_interactions.jit = jax.jit(organize_interactions, static_argnames=("sort",))
