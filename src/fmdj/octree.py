@@ -10,6 +10,12 @@ if jax.__version__ <= "0.4.2":
     raise ImportError("This code requires JAX version 0.4.2 or higher. " \
                       "However, we could define a custom decorator for this case")
 
+try:
+    import custom_jax as cj
+except ImportError:
+    print("No custom JAX found, using fall-back solutions. This may significantly degrade performance.")
+    cj = None
+
 # ======================================= Tree class ============================================= #
 
 @partial(jax.tree_util.register_dataclass, 
@@ -196,6 +202,21 @@ def get_compressed_binary_tree(morton) -> BinaryTree:
 
     return tree
 get_compressed_binary_tree.jit = jax.jit(get_compressed_binary_tree)
+
+def cj_build_ztree(pos_zsorted : jnp.ndarray) -> BinaryTree:
+    """Builds a binary tree from zsorted-positions of particles
+    
+    returns (tree, morton, isort)
+    """
+    assert cj is not None
+
+    tree_info = cj.tree.build_ztree(pos_zsorted)
+
+    tree = BinaryTree(level_binary=tree_info[0], lbound=tree_info[1], rbound=tree_info[2],
+                      lchild=tree_info[3], rchild=tree_info[4], min_level=-450, max_level=387)
+
+    return tree
+cj_build_ztree.jit = jax.jit(cj_build_ztree)
 
 def get_tree_height(tree : Octree | BinaryTree) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Maximum number of children that can be passed to reach a leaf
