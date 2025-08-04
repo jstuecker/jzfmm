@@ -202,7 +202,7 @@ organize_interactions.jit = jax.jit(organize_interactions, static_argnames=("sor
 
 # ============================= Evaluate Interaction Lists ======================================= #
 
-def evaluate_interaction_lists(octree : Octree, posz, massz, ilist, nilist, sort=False):
+def evaluate_interaction_lists(octree : Octree, posz, massz, ilist, nilist, sort=False, use_cj=True, eps=1e-5):
     ilist, istart, iend = organize_interactions(ilist, nilist, sort=sort)
     
     Loc = multipoles.evaluate_ilists_node_node(
@@ -219,7 +219,40 @@ def evaluate_interaction_lists(octree : Octree, posz, massz, ilist, nilist, sort
         istart[2], iend[2], p=octree.p, max_leaf_size=octree.max_leaf_size)
     phi = phi + multipoles.evaluate_ilists_leaf_leaf(
         posz, massz, octree.leaf_particle_bounds, ilist, istart[3], iend[3], 
-        max_leaf_size=octree.max_leaf_size, use_cj=True)
+        max_leaf_size=octree.max_leaf_size, use_cj=use_cj, eps=eps)
     
     return phi
-evaluate_interaction_lists.jit = jax.jit(evaluate_interaction_lists, static_argnames=("sort",))
+evaluate_interaction_lists.jit = jax.jit(evaluate_interaction_lists, static_argnames=("sort", "use_cj"))
+
+# =================================== Master functions =========================================== #
+
+def fast_multipole_potential(pos, mass, eps=1e-5, thetamax=0.75, max_leaf_size=64, p=2, use_cj=True, return_sorted=False):
+    """Fast Multipole Method for calculating potentials and forces.
+    
+    This function builds an octree with multipoles, constructs an interaction list,
+    and evaluates the interaction lists to compute the potential and forces.
+    
+    Args:
+        pos: Particle positions.
+        mass: Particle masses.
+        thetamax: Opening angle for the FMM.
+        max_leaf_size: Maximum number of particles per leaf node.
+        p: Order of multipole moments to calculate.
+        use_cj: Whether to use custom JAX for performance optimizations.
+    
+    Returns: (phi, force)
+    """
+    octree, posz, massz, isortz = build_octree_with_multipoles.jit(
+        pos, mass, max_leaf_size=max_leaf_size, p=p, use_cj=use_cj)
+    
+    err, (ilist, nilist) = build_interaction_list.jit(octree, thetamax=thetamax)
+    ilist, istart, iend = organize_interactions.jit(ilist, nilist, sort=False)
+    
+    phiz = evaluate_interaction_lists.jit(octree, posz, massz, ilist, nilist, use_cj=use_cj)
+
+    if return_sorted:
+        return posz, massz, isortz, phiz
+    else:
+        return jnp.zeros_like(phiz).at[isortz].set(phiz)
+fast_multipole_potential.jit = jax.jit(fast_multipole_potential, 
+    static_argnames=("eps", "thetamax", "max_leaf_size", "p", "use_cj", "return_sorted"))
