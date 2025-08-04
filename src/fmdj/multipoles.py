@@ -3,6 +3,12 @@ import jax.numpy as jnp
 from .octree import Octree
 import numpy as np
 
+try:
+    import custom_jax as cj
+except ImportError:
+    print("No custom JAX found, using fall-back solutions. This may significantly degrade performance.")
+    cj = None
+
 # ============================= Some fixed Combinatorical Computations =========================== #
 
 def generate_combinations(p):
@@ -334,6 +340,38 @@ def ilist_monopoles_to_local(xnodes, xpart, mass, ibounds, interactions, imask=N
     
     return loc
 
+def ilists_monopoles_to_points(pos, mass, ibounds, interactions, imask=None, max_size=100):
+    """
+    Directly compute the potential via interaction lists.
+    ibounds are the splitting indices of different bins in the pos array
+    interactions is of shape (n_interactions, 2) and contains pairs of bin-indices
+    """
+    if imask is None: imask = jnp.ones(len(interactions), dtype=bool)
+
+    i1, i2 = interactions.T
+    
+    iarange = jnp.arange(max_size)
+
+    phi = jnp.zeros(pos.shape[0], dtype=jnp.float32)
+
+    n1s = ibounds[i1 + 1] - ibounds[i1]
+    n2s = ibounds[i2 + 1] - ibounds[i2]
+
+    i1s = ibounds[i1,None,None] + iarange[:,None]
+    i2s = ibounds[i2,None,None] + iarange[None,:]
+    
+    x1s, x2s = pos[i1s], pos[i2s]
+
+    dxmat = x1s - x2s  # Has shape (len(interactions), max_size, max_size, 3)
+    rmat = jnp.linalg.norm(dxmat, axis=-1)
+
+    i1valid = iarange[:,None] < n1s[:,None,None]
+    i2valid = iarange[None,:] < n2s[:,None,None]
+    
+    rinv = jnp.where((rmat > 0) & i1valid & i2valid & imask[:,None,None], 1. / rmat, 0.0)
+    phi = phi.at[i1s[...,0]].add(jnp.sum(-mass[i2s]*rinv, axis=2))
+    
+    return phi
 
 # ==================== Functions for evaluating interaction lists in loops ======================= #
 
@@ -394,5 +432,18 @@ def evaluate_ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interac
         return phi + ilist_multipole_to_points(multipoles, xnodes, xpart, leaf_bounds, jnp.abs(iab), 
                                                imask=mask, max_size=max_leaf_size, p=p)
     phi = reduce_fsum_chunked(eval_leaf_node, phi, interactions, istart, iend, chunk_size=chunk_size)
+
+    return phi
+
+def evaluate_ilists_leaf_leaf(xpart, mpart, leaf_bounds, interactions, istart, iend, max_leaf_size=64, chunk_fac=4., use_cj=True, eps=1e-5):
+    if use_cj:
+        f, phi = cj.forces.ilist_force(xpart, leaf_bounds, -interactions, iminmax=jnp.array((istart, iend)),
+                                       mass=mpart, eps=eps)
+    else:
+        phi = jnp.zeros(xpart.shape[0], dtype=jnp.float32)
+        chunk_size = int(len(leaf_bounds) * chunk_fac)
+        def eval_leaf_leaf(phi, iab, mask):
+            return phi + ilists_monopoles_to_points(xpart, mpart, leaf_bounds, jnp.abs(iab), imask=mask, max_size=max_leaf_size)
+        phi = reduce_fsum_chunked(eval_leaf_leaf, phi, interactions, istart, iend, chunk_size=chunk_size)
 
     return phi

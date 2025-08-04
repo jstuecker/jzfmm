@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from jax.experimental import checkify
 from .octree import Octree, sort_and_build_octree
-from .multipoles import calculate_multipoles_for_tree
+from . import multipoles
 
 # ================================ Tree Preperation functions===================================== #
 
@@ -23,7 +23,7 @@ def build_octree_with_multipoles(pos, mass, max_leaf_size=64, p=2, use_cj=True):
 
     octree, posz, massz, isortz = sort_and_build_octree(pos, mass, use_cj=use_cj)
 
-    octree = calculate_multipoles_for_tree(octree, posz, massz, p=p)
+    octree = multipoles.calculate_multipoles_for_tree(octree, posz, massz, p=p)
     
     return octree, posz, massz, isortz
 build_octree_with_multipoles.jit = jax.jit(build_octree_with_multipoles, 
@@ -199,3 +199,23 @@ def organize_interactions(interaction_list, nfilled, sort=False):
 
     return interactions, istart, iend
 organize_interactions.jit = jax.jit(organize_interactions, static_argnames=("sort",))
+
+# ============================= Evaluate Interaction Lists ======================================= #
+
+def evaluate_interaction_lists(octree : Octree, posz, massz, ilist, nilist, sort=False):
+    ilist, istart, iend = organize_interactions(ilist, nilist, sort=sort)
+    
+    Loc = multipoles.evaluate_ilists_node_node(
+        octree.xnode, octree.mp, ilist, istart[0], iend[0], p=octree.p)
+    Loc = Loc + multipoles.evaluate_ilists_leaf_to_node(
+        octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, 
+        istart[1], iend[1], p=octree.p, max_leaf_size=octree.max_leaf_size)
+    phi = phi + multipoles.evaluate_ilists_node_to_leaf(
+        octree.xnode, octree.mp, posz, octree.leaf_particle_bounds, ilist, 
+        istart[2], iend[2], p=octree.p, max_leaf_size=octree.max_leaf_size)
+    phi = phi + multipoles.evaluate_ilists_leaf_leaf(
+        posz, massz, octree.leaf_particle_bounds, ilist, istart[3], iend[3], 
+        max_leaf_size=octree.max_leaf_size, use_cj=True)
+    
+    return Loc, phi
+
