@@ -18,7 +18,10 @@ octree, pos, mass, isort = timer.timeit_jit(
     fmdj.fmm.build_octree_with_multipoles.jit, pos0, mass, max_leaf_size=64, p=3)
 
 for thetamax in (0.5, 0.75, 1.0):
-    err, (ilist, nilist) = timer.timeit_jit(fmdj.fmm.build_interaction_list.jit, 
-        octree, thetamax=thetamax, ilist_fac=1024, name="build_interaction_list_th%.2f"%thetamax)
+    timer.set_tag(opening_angle=thetamax)
+    err, (ilist, nilist) = timer.timeit_jit(fmdj.fmm.build_interaction_list.jit,
+        octree, thetamax=thetamax, ilist_fac=1024)
     print(f"Ilist size: {nilist:.1e} for thetamax={thetamax}")
     err.throw()
+
+timer.plot_timings("opening_angle", save="logs/fmm_timings.pdf", logx=False)

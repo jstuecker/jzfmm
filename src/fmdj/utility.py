@@ -1,6 +1,7 @@
 import time
 import jax
 from .octree import BinaryTree, Octree
+import numpy as np
 
 class Tee(object):
     def __init__(self, *streams):
@@ -17,7 +18,6 @@ class Tee(object):
 
 class Timer():
     def __init__(self, verbose=True, print_compile=True, print_warmup=True, print_run=True, loops=40):
-        self.dts = {}
         self.verbose = verbose
 
         self.print_compile = print_compile
@@ -25,14 +25,22 @@ class Timer():
         self.print_run = print_run
         self.loops = loops
 
+        self.dts = [{}]
+        self.group_tags = [{}]
+
+    def set_tag(self, **kwargs):
+        self.group_tags.append(kwargs)
+        self.dts.append({})
+        print("------- Starting new group: %s -------" % kwargs)
+
     def add_time(self, name, dt):
-        self.dts[name] = dt
+        self.dts[-1][name] = dt
         if self.verbose:
             self.print_time_of(name)
 
-    def print_time_of(self, name=None):
-        if name is None: name = list(self.dts.keys())[-1]
-        print(f"Time for {name}: {(self.dts[name])*1000.:.1f} ms")
+    def print_time_of(self, name=None, tagid=-1):
+        if name is None: name = list(self.dts[tagid].keys())[-1]
+        print(f"{(self.dts[tagid][name])*1000.:6.1f} ms for {name}")
 
     def timeit_jit(self, func, *args, name=None, loops=None, static_argnames=None, **kwargs):
         loops = loops if loops is not None else self.loops
@@ -71,6 +79,64 @@ class Timer():
         if self.print_warmup:
             self.add_time(name + "_warmup", t2 - t1)
         if self.print_run:
-            self.add_time(name + "_run[%d]" % loops, (t3 - t2) / loops)
+            self.add_time(name + "_run", (t3 - t2) / loops)
 
         return res
+    
+    def transpose_timings(self, only_runs=True, simplify_names=True):
+        unique_vars = set().union(*(group.keys() for group in self.group_tags))
+        # res_names = tuple(unique_vars)
+        # res_vals = {name: [] for name in res_names}
+        dts = {}
+        vars = {}
+
+        for dtgroup, tag in zip(self.dts, self.group_tags):
+            for name in dtgroup:
+                if name not in dts:
+                    dts[name] = []
+                    vars[name] = {var:[] for var in unique_vars}
+                dts[name].append(dtgroup[name])
+
+                for var in unique_vars:
+                    vars[name][var].append(tag.get(var, np.nan))
+
+        for name in dts:
+            dts[name] = np.array(dts[name])
+            for var in unique_vars:
+                vars[name][var] = np.array(vars[name][var])
+
+        if only_runs and simplify_names:
+            dts = {name[:-4]: dt for name, dt in dts.items() if name.endswith("_run")}
+            vars = {name[:-4]: var for name, var in vars.items() if name.endswith("_run")}
+        elif only_runs:
+            dts = {name: dt for name, dt in dts.items() if name.endswith("_run")}
+            vars = {name: var for name, var in vars.items() if name.endswith("_run")}
+
+        return dts, vars
+    
+    def plot_timings(self, key, ax=None, logx=True, logy=True, save=None):
+        import matplotlib.pyplot as plt
+        dts, vars = self.transpose_timings()
+
+        if ax is None:
+            ax = plt.gca()
+
+        for name in dts:
+            if np.all(np.isnan(vars[name][key])):
+                continue
+            
+            ax.plot(vars[name][key], dts[name]*1e3, label=name, marker="o")
+        ax.set_xlabel(key)
+        ax.set_ylabel("Time (ms)")
+
+        if logx: ax.set_xscale("log")
+        if logy: ax.set_yscale("log")
+
+        ax.grid("on")
+        
+        ax.legend()
+
+        if save is not None:
+            plt.savefig(save, bbox_inches="tight")
+
+        return ax
