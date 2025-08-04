@@ -152,12 +152,6 @@ def multipoles_via_height(octree : Octree, pos, mass, p=2, xcom=None):
     return mp
 multipoles_via_height.jit = jax.jit(multipoles_via_height, static_argnames=("p",))
 
-# ============================== Multipole Evaluation Functions ================================== #
-
-
-
-
-
 # ============================= Tree build convenience functions ================================= #
 
 def calculate_multipoles_for_tree(octree : Octree, pos, mass, p=2) -> Octree:
@@ -168,3 +162,237 @@ def calculate_multipoles_for_tree(octree : Octree, pos, mass, p=2) -> Octree:
     octree.mp = multipoles_via_height(octree, pos, mass, p=p, xcom=octree.xnode)
     
     return octree
+
+# ================================ Potential Helper Functions ==================================== #
+
+def get_gs(x, nmax=1):
+    """These are the derivatives (1/r d/dr)^n (1/r)"""
+    r = jnp.linalg.norm(x, axis=-1)
+    
+    gs = []
+
+    if nmax >= 0: gs.append(1./r)
+    if nmax >= 1: gs.append(-1./r**3)
+    if nmax >= 2: gs.append(3./r**5)
+    if nmax >= 3: gs.append(-15./r**7)
+    if nmax >= 4: gs.append(105./r**9)
+    if nmax >= 5: gs.append(-945./r**11)
+    if nmax >= 6: gs.append(10395./r**13)
+    if nmax >= 7: gs.append(135135./r**15)
+
+    return gs
+
+def Dn(x, g, nx=0, ny=0, nz=0):
+    """Dn = nabla^n (1/r)
+          = (1/r d/dr)^n g0(r) * x^nx * y^ny * z^nz"""
+    n = nx + ny + nz
+
+    ni = np.array([nx, ny, nz], dtype=np.int64)
+    isort = np.argsort(ni)[::-1]
+    nsort = np.array([nx, ny, nz])[isort]
+    xpow = x[...,0]**nx * x[...,1]**ny * x[...,2]**nz
+
+    # This function checks the signature of nx,ny,nz
+    def sig(nx, ny=-1, nz=-1):
+        if ny == -1: # only compare nx
+            return nsort[0] == nx
+        elif nz == -1:
+            return (nsort[0] == nx) & (nsort[1] == ny)
+        else:
+            return (nsort[0] == nx) & (nsort[1] == ny) * (nsort[2] == nz)
+
+    if n == 0:
+        return g[0]
+    elif n == 1:
+        return g[1]*x[...,isort[0]]
+    elif n == 2:
+        return g[1]*sig(2) + g[2]*xpow
+    elif n == 3:
+        return g[2]*(3*sig(3)*x[...,isort[0]] + sig(2,1)*x[...,isort[1]]) + g[3]*xpow
+    elif n == 4:
+        return (g[2]*(3*sig(4) + sig(2,2)) 
+                + g[3]*(6*sig(4)*x[...,isort[0]]**2 + 3*sig(3,1)*x[...,isort[0]]*x[...,isort[1]] + sig(2,2)*(x[...,isort[0]]**2 + x[...,isort[1]]**2) + sig(2,1,1)*x[...,isort[1]]*x[...,isort[2]])
+                + g[4]*xpow)
+    elif n == 5:
+        return (g[3]*(15*sig(5)*x[...,isort[0]] + 3*sig(4,1)*x[...,isort[1]] + 3*sig(3,2)*x[...,isort[0]] + sig(2,2,1)*x[...,isort[2]]) 
+                + g[4]*(10*sig(5)*x[...,isort[0]]**3 + 6*sig(4,1)*x[...,isort[0]]**2*x[...,isort[1]] + sig(3,2)*(3*x[...,isort[0]]*x[...,isort[1]]**2 +  x[...,isort[0]]**3) 
+                        + sig(2,2,1)*x[...,isort[2]]*(x[...,isort[0]]**2 + x[...,isort[1]]**2))
+                + g[5]*xpow)
+    else:
+        raise ValueError("n must be between 0 and 5")
+
+# =============================== Single Interaction Functions =================================== #
+
+def single_multipole_to_local(mp, dx, p=2):
+    """Returns the expansion coefficients for the interaction between two nodes"""
+    combs, index_of_mp = define_index_maps(p)
+    gs = get_gs(dx, nmax=p)
+    D = [Dn(-dx, gs, nx=ks[0], ny=ks[1], nz=ks[2]) for ks in combs]
+
+    Lk = []
+    
+    for i,ks in enumerate(combs):
+        k = np.sum(ks)
+        val = 0.
+        for ns in multipole_powers(p-k):
+            n = np.sum(ns)
+            fac = fact[n]/(fact[ns[0]] * fact[ns[1]] * fact[ns[2]])
+            
+            Dnk = D[index_of_mp[ks[0]+ns[0], ks[1]+ns[1], ks[2]+ns[2]]]
+            Qn = mp[...,index_of_mp[ns[0], ns[1], ns[2]]]
+
+            val += Dnk * Qn * fac / fact[n]
+        Lk.append(- (-1.)**k / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])  * val)
+        
+    return jnp.stack(Lk, axis=-1)
+
+def single_multipole_to_point(mp, dx, p=2):
+    """The potential of a multipole expanded at 0 evaluated at dx"""
+    combs, index_of_mp = define_index_maps(p)
+    gs = get_gs(dx, nmax=p)
+
+    pot = 0.
+    for i,c in enumerate(combs):
+        # Number of ways of choosing (c0, c1, c2) given c0+c1+c2 = n, divided by n! (from Taylor expansion):
+        fac =  1./(fact[c[0]] * fact[c[1]] * fact[c[2]])
+        
+        D = Dn(-dx, gs, nx=c[0], ny=c[1], nz=c[2])
+        pot = pot - fac * D * mp[...,index_of_mp[c[0], c[1], c[2]]]
+    
+    return pot
+
+def single_monopole_to_local(mass, dx, p=2):
+    """The expansion of a pointmass evaluated at xloc_minus_xmp
+    """
+    combs = multipole_powers(p)
+    gs = get_gs(dx, nmax=p)
+    L = []
+    
+    for i,ks in enumerate(combs):
+        k = np.sum(ks)
+
+        val = mass * Dn(-dx, gs, nx=ks[0], ny=ks[1], nz=ks[2])
+        L.append(- (-1.)**k / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])  * val)
+    
+    return jnp.stack(L, axis=-1)
+
+# =============================== Listed Interaction Functions =================================== #
+
+def ilist_multipole_to_points(mpnodes, xnodes, xpart, ibounds, interactions, imask=None, max_size=100, p=2):
+    """
+    Directly compute the potential of a multipole at lists of particles
+    """
+    if imask is None: imask = jnp.ones(len(interactions), dtype=bool)
+
+    ileaf, inode  = interactions.T
+    
+    iarange = jnp.arange(max_size)
+
+    iparts = ibounds[ileaf,None] + iarange[:]
+
+    nparts = ibounds[ileaf + 1] - ibounds[ileaf]
+    ipart_valid = iarange < nparts[:,None]
+
+    weights = single_multipole_to_point(mpnodes[inode][:,None], xpart[iparts] - xnodes[inode][:,None], p=p)
+
+    phi = jnp.zeros((len(xpart)), dtype=jnp.float32)
+    phi = phi.at[iparts].add(jnp.where(imask[:,None] & ipart_valid, weights, 0.))
+    
+    return phi
+
+def ilist_monopoles_to_local(xnodes, xpart, mass, ibounds, interactions, imask=None, max_size=100, p=2):
+    """
+    Directly compute the potential expansion of groups of particles at nodes via interaction lists.
+    """
+    if imask is None: imask = jnp.ones(len(interactions), dtype=bool)
+
+    inode, ileaf = interactions.T
+    
+    iarange = jnp.arange(max_size)
+
+    iparts = ibounds[ileaf,None] + iarange[:]
+
+    nparts = ibounds[ileaf + 1] - ibounds[ileaf]
+    ipart_valid = iarange < nparts[:,None]
+
+    dx = xnodes[inode][:,None] - xpart[iparts]
+    combs = multipole_powers(p)
+    gs = get_gs(dx, nmax=p)
+    Ls = []
+
+    mps = mass[iparts]
+    
+    for i,ks in enumerate(combs):
+        val = (mps*ipart_valid) * Dn(-dx, gs, nx=ks[0], ny=ks[1], nz=ks[2])
+        Li = - (-1.)**np.sum(ks) / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])  * val
+        Ls.append(jnp.sum(Li, axis=1))
+    
+    Ls = jnp.stack(Ls, axis=-1)
+
+    loc = jnp.zeros((len(xnodes), Ls.shape[-1]), dtype=jnp.float32)
+    loc = loc.at[inode].add(jnp.where(imask[:,None], Ls, 0.))
+    
+    return loc
+
+
+# ==================== Functions for evaluating interaction lists in loops ======================= #
+
+def reduce_fsum_chunked(f, y0, x, istart, iend, chunk_size):
+    """
+    Applies `f(x,mask)` to chunks of chunk_size over `x[istart:iend]` and sums the results.
+
+    Parameters:
+    - f: function taking x_chunk, mask -> output of fixed shape
+    - x: [n, ...] input array (larger than or equal to nmax)
+    - istart: start in the array
+    - iend: end in the array (exclusive)
+    - chunk_size: number of elements per chunk
+
+    Returns:
+    - total: accumulated result from all chunks
+    """
+    iarange = jnp.arange(chunk_size)
+    num_chunks = (iend-istart + chunk_size - 1) // chunk_size # corresponds to ceil((iend-istart) / chunk_size)
+
+    def body(i, y):
+        i0 = istart + i * chunk_size
+        return f(y, x[i0 + iarange], i0 + iarange < iend)
+
+    return jax.lax.fori_loop(0, num_chunks, body, y0)
+
+def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=2, chunk_fac=4):
+    chunk_size = int(len(xnodes) * chunk_fac)
+
+    loc = jnp.zeros(multipoles.shape, dtype=jnp.float32)
+
+    def eval_node_node(loc, iab, mask):
+        weights = single_multipole_to_local(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p)
+        weights = jnp.where(mask[:,None], weights, 0.)
+        return loc.at[iab[:,0]].add(weights)
+    loc = reduce_fsum_chunked(eval_node_node, loc, interactions, istart, iend, chunk_size=chunk_size)
+
+    return loc
+
+def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=4):
+    chunk_size = int(len(xnodes) * chunk_fac)
+
+    loc = jnp.zeros(xnodes.shape[:-1] + (p_to_ncomb[p],), dtype=jnp.float32)
+
+    def eval_node_from_leaf(loc, iab, mask):
+        return loc + ilist_monopoles_to_local(xnodes, xpart, mpart, leaf_bounds, jnp.abs(iab),
+                                              imask=mask, max_size=max_leaf_size, p=p)
+    loc = reduce_fsum_chunked(eval_node_from_leaf, loc, interactions, istart, iend, chunk_size=chunk_size)
+
+    return loc
+
+def evaluate_ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=4.):
+    chunk_size = int(len(xpart) * chunk_fac)
+
+    phi = jnp.zeros(xpart.shape[0], dtype=jnp.float32)
+
+    def eval_leaf_node(phi, iab, mask):
+        return phi + ilist_multipole_to_points(multipoles, xnodes, xpart, leaf_bounds, jnp.abs(iab), 
+                                               imask=mask, max_size=max_leaf_size, p=p)
+    phi = reduce_fsum_chunked(eval_leaf_node, phi, interactions, istart, iend, chunk_size=chunk_size)
+
+    return phi
