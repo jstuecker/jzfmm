@@ -6,7 +6,7 @@ import jax
 
 sys.stdout = Tee(sys.stdout, open("logs/octree.log", "a+"))
 
-N = 1024*1024
+N = 1024*1024*8
 print(f"============== Starting Octree Tests (N={N:.1e})  ==============")
 
 def create_pos():
@@ -35,6 +35,9 @@ octree = timer.timeit_jit(fmdj.octree.get_reduced_octree.jit, btree, pos, mass, 
 
 octree2 = timer.timeit_jit(fmdj.octree.put_nodes_in_level_order.jit, octree)
 
+timer.timeit_jit(fmdj.octree.get_tree_height.jit, btree, name="get_tree_height_btree")
+timer.timeit_jit(fmdj.octree.get_tree_height.jit, octree, name="get_tree_height_otree64")
+
 print("-------------")
 
 def sort_and_build_tree(pos0, mass):
@@ -44,3 +47,4 @@ def sort_and_build_tree(pos0, mass):
     return octree
 
 octree = timer.timeit_jit(sort_and_build_tree, pos0, mass, loops=100)
+

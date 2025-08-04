@@ -190,6 +190,42 @@ def get_compressed_binary_tree(morton) -> BinaryTree:
     return tree
 get_compressed_binary_tree.jit = jax.jit(get_compressed_binary_tree)
 
+def get_tree_height(tree : Octree | BinaryTree) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Maximum number of children that can be passed to reach a leaf
+    
+    returns : (height, max_height)
+    """
+    if isinstance(tree, Octree):
+        nnodes = tree.nnodes
+    else:
+        nnodes = len(tree.level_binary)
+
+    # Performance considerations: In a CUDA program with level sorted nodes, it would be possible
+    # to restrict the nodes that need be updated to a smaller range.
+
+    # The loop assumes that no circles exist in the tree in the range [1:nnodes-1]
+    # If a circle exists, the loop will never terminate
+    def loop_body(carry):
+        hmax, height = carry
+        height_left = jnp.where(tree.lchild > 0, height[tree.lchild], 0)
+        height_right = jnp.where((tree.rchild > 0) & (tree.rchild < nnodes-1), height[tree.rchild], 0)
+        height = jnp.maximum(height_left, height_right) + 1
+        return hmax+1, height
+    def loop_cond(carry):
+        hmax, height = carry
+        return jnp.max(height) == hmax 
+    
+    height = jnp.zeros_like(tree.level_binary)
+    iterend, height = jax.lax.while_loop(loop_cond, loop_body, (0, height))
+    
+    # Get the maximum height of the tree:
+    # -1 because we end at one iteration higher
+    # -1 because of the fake nodes that have the root node as child:
+    max_height = iterend - 2 
+
+    return height, max_height
+get_tree_height.jit = jax.jit(get_tree_height)
+
 # ===================================== Tree Reduction =========================================== #
 
 def offset_sum(num):
