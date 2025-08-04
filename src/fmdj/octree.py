@@ -40,7 +40,7 @@ class BinaryTree:
          data_fields=["parent", "lchild", "rchild", "level_binary", "is_valid", "height",  
                       "maxheight", "nnodes",
                       "leaf_particle_bounds", "node_of_particle", "xnode", "xleaf", "mp",], 
-         meta_fields=["max_leaf_size", "p"])
+         meta_fields=["max_leaf_size", "p", "min_level", "max_level"])
 @dataclass
 class Octree:
     parent: jnp.ndarray = None
@@ -61,6 +61,9 @@ class Octree:
 
     max_leaf_size: int = 1
     p: int = 0
+
+    min_level: int = -450 
+    max_level: int =  387
 
 # ===================================== Morton sorting =========================================== #
 
@@ -370,7 +373,8 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
         inew = jnp.where((id > 0) & keep_as_leaf[id], -imap_leaf[id], inew)
         return inew
 
-    newtree = Octree(nnodes=nnodes, max_leaf_size=max_leaf_size)
+    newtree = Octree(nnodes=nnodes, max_leaf_size=max_leaf_size, 
+                     min_level=tree.min_level, max_level=tree.max_level)
     inewnode = jnp.arange(max_new_nodes)
 
     iparent = get_parent_binary(tree.level_binary, tree.lbound, tree.rbound)[0]
@@ -412,6 +416,8 @@ def put_nodes_in_level_order(octree : Octree) -> Octree:
     assert octree.mp is None, "Have not considered mp sorting here"
 
     newtree = Octree(
+
+
         parent=inv_i[octree.parent[isort]],
         lchild=lchild[isort],
         rchild=rchild[isort],
@@ -427,7 +433,9 @@ def put_nodes_in_level_order(octree : Octree) -> Octree:
         xleaf = octree.xleaf,
 
         max_leaf_size=octree.max_leaf_size, 
-        p=octree.p
+        p=octree.p,
+        min_level=octree.min_level,
+        max_level=octree.max_level
     )
     
     return newtree, isort, inv_i

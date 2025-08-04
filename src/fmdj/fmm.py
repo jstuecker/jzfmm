@@ -55,16 +55,15 @@ def opening_criterion(octree : Octree, nodeA, nodeB, thetamax=0.75):
     """
     isleafA, isleafB = nodeA <= 0, nodeB <= 0
 
-    assert 0, "This method needs to be adapted to new level sign"
-
-    lvl_oct = octree.level_binary // 3
-    is_intermediate = jnp.where(octree.level_binary > 0, lvl_oct[octree.parent] == lvl_oct, False)
+    lvl_oct = (octree.level_binary + 2) // 3
+    is_intermediate = jnp.where(octree.level_binary <= octree.max_level, 
+                                lvl_oct[octree.parent] == lvl_oct, False)
 
     # For now we assume L=0 for leaves, since they will be directly summed over...
     # However, in principle the distance calculation for the opening criterio is not 100%
     # right for this case. Possibly we should open all leave-node cases?
-    L1 = jnp.where(isleafA, 0., jnp.ldexp(1., -lvl_oct[nodeA])) # 1/2**lvlA
-    L2 = jnp.where(isleafB, 0., jnp.ldexp(1., -lvl_oct[nodeB])) # 1/2**lvlB
+    L1 = jnp.where(isleafA, 0., jnp.ldexp(1., lvl_oct[nodeA])) # 2**lvlA
+    L2 = jnp.where(isleafB, 0., jnp.ldexp(1., lvl_oct[nodeB])) # 2**lvlB
 
     x1 = jnp.where(isleafA[:,None], octree.xleaf[-nodeA], octree.xnode[nodeA])
     x2 = jnp.where(isleafB[:,None], octree.xleaf[-nodeB], octree.xnode[nodeB])
