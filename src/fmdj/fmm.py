@@ -222,3 +222,4 @@ def evaluate_interaction_lists(octree : Octree, posz, massz, ilist, nilist, sort
         max_leaf_size=octree.max_leaf_size, use_cj=True)
     
     return phi
+evaluate_interaction_lists.jit = jax.jit(evaluate_interaction_lists, static_argnames=("sort",))

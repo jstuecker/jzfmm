@@ -193,6 +193,7 @@ def local_to_local_via_height(octree : Octree, Lk):
         return jnp.where(sel[:,None], Lk + Lknew, Lk)
 
     return jax.lax.fori_loop(-octree.maxheight, 0, handle_height_level, Lk)
+local_to_local_via_height.jit = jax.jit(local_to_local_via_height)
 
 def evaluate_local(L, x):
     """Evaluates the function value of the expansion at x"""
@@ -204,6 +205,7 @@ def evaluate_local(L, x):
         phi +=  L[...,index] * x[...,0]**c[0] * x[...,1]**c[1] * x[...,2]**c[2]
 
     return phi
+evaluate_local.jit = jax.jit(evaluate_local)
 
 # ============================= Tree build convenience functions ================================= #
 
@@ -273,6 +275,29 @@ def _get_Dn(x, g, nx=0, ny=0, nz=0):
                 + g[5]*xpow)
     else:
         raise ValueError("n must be between 0 and 5")
+
+def potential_direct_sum(x, m=1., n2lim=1e8):
+    N = x.shape[0]
+
+    nmax = int(np.ceil(n2lim / len(x)))
+    nev = int(np.ceil(x.shape[0] / nmax))
+
+    def potential_over_range(i1, i2):
+        xi = x[jnp.arange(nmax) + i1]
+        # Compute vector distances to all other particles
+        r_ij = x - xi[:,None]
+        dist = jnp.linalg.norm(r_ij, axis=-1)
+        distinv = jnp.where(dist < 1e-20, 0., 1./dist)  # avoid division by zero
+
+        return - jnp.sum(m * distinv, axis=1)
+
+    def handle_interval(_, i):
+        return None, potential_over_range(nmax * i, nmax * (i + 1))
+
+    _, phis = jax.lax.scan(handle_interval, None, jnp.arange(nev))
+
+    return jnp.concatenate(phis)[0:N]
+potential_direct_sum.jit = jax.jit(potential_direct_sum, static_argnames=("n2lim",))
 
 # =============================== Single Interaction Functions =================================== #
 
@@ -462,7 +487,7 @@ def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=
     return loc
 evaluate_ilists_node_node.jit = jax.jit(evaluate_ilists_node_node, static_argnames=("p", "chunk_fac"))
 
-def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=4):
+def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=1.):
     chunk_size = int(len(xnodes) * chunk_fac)
 
     loc = jnp.zeros(xnodes.shape[:-1] + (p_to_ncomb[p],), dtype=jnp.float32)
@@ -475,7 +500,7 @@ def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions
     return loc
 evaluate_ilists_leaf_to_node.jit = jax.jit(evaluate_ilists_leaf_to_node, static_argnames=("p", "max_leaf_size", "chunk_fac"))
 
-def evaluate_ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=4.):
+def evaluate_ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=0.4):
     chunk_size = int(len(xpart) * chunk_fac)
 
     phi = jnp.zeros(xpart.shape[0], dtype=jnp.float32)
