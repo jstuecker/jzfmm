@@ -11,15 +11,16 @@ except ImportError:
 
 sys.stdout = Tee(sys.stdout, open("logs/octree.log", "a+"))
 
-N = 1024*1024*8
+N = 1024*1024
 print(f"============== Starting Octree Tests (N={N:.1e})  ==============")
 
-def create_pos():
+def create_pos(N):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (N, 3), dtype=jnp.float32) * 0.1
     return jnp.clip(pos0, -0.5, 0.5)
+create_pos.jit = jax.jit(create_pos, static_argnames=["N"])
 
 timer = Timer(verbose=True, print_compile=False, print_warmup=False)
-pos0 = timer.timeit_jit(create_pos, name="create_pos")
+pos0 = timer.timeit_jit(create_pos.jit, N, name="create_pos")
 mass0 = jnp.ones(N, dtype=jnp.float32)
 
 morton, pos, isort = timer.timeit_jit(fmdj.octree.organize_particles.jit, pos0, return_sorted=True)
@@ -47,7 +48,7 @@ if cj is not None:
     posz, isort_z = timer.timeit_jit(cj.tree.pos_zorder_sort.jit, pos, name="cj_zsort")
     btree_z = timer.timeit_jit(fmdj.octree.cj_build_ztree.jit, posz)
 
-print("-------------")
+print("------- Profile core new functions: ------")
 
 @jax.jit
 def sort_and_build_tree(pos0, mass):
@@ -56,12 +57,27 @@ def sort_and_build_tree(pos0, mass):
     octree = fmdj.octree.get_reduced_octree(btree, pos, mass, max_leaf_size=64)
     return octree
 
-octree = timer.timeit_jit(sort_and_build_tree, pos0, mass0, loops=100)
-
 @jax.jit
 def cj_sort_and_build_tree(pos0, mass0):
     posz, isort_z = cj.tree.pos_zorder_sort(pos0)
     btree_z = fmdj.octree.cj_build_ztree(posz)
     octree = fmdj.octree.get_reduced_octree(btree_z, posz, mass0[isort_z], max_leaf_size=64)
     return octree
-octree = timer.timeit_jit(cj_sort_and_build_tree, pos0, mass0, loops=100)
+
+timer = Timer(verbose=True, print_compile=False, print_warmup=False, loops=10)
+
+for N in int(1e4), int(1e5), int(3e5), int(1e6), int(3e6), int(1e7), int(3e7):
+    pos0 = create_pos(N)
+    mass0 = jnp.ones(N, dtype=jnp.float32).block_until_ready()
+
+    timer.set_tag(N=N)
+
+    posz, isort_z = timer.timeit_jit(cj.tree.pos_zorder_sort.jit, pos0, name="cj_zsort")
+    btree_z = timer.timeit_jit(fmdj.octree.cj_build_ztree.jit, posz)
+    octree = timer.timeit_jit(fmdj.octree.get_reduced_octree.jit, btree_z, posz, mass0, max_leaf_size=64)
+    timer.timeit_jit(fmdj.octree.get_tree_height.jit, octree, name="get_tree_height_otree64")
+
+    octree = timer.timeit_jit(sort_and_build_tree, pos0, mass0, name="old_tree")
+    octree = timer.timeit_jit(cj_sort_and_build_tree, pos0, mass0, name="new_tree")
+
+timer.plot_timings("N", save="logs/octree_timings.pdf")
