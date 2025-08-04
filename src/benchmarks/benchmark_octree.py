@@ -50,23 +50,9 @@ if cj is not None:
 
 print("------- Profile core new functions: ------")
 
-@jax.jit
-def sort_and_build_tree(pos0, mass):
-    morton, pos = fmdj.octree.organize_particles(pos0)[0:2]
-    btree = fmdj.octree.get_compressed_binary_tree(morton)
-    octree = fmdj.octree.get_reduced_octree(btree, pos, mass, max_leaf_size=64)
-    return octree
+timer = Timer(verbose=True, print_compile=False, print_warmup=False, loops=40)
 
-@jax.jit
-def cj_sort_and_build_tree(pos0, mass0):
-    posz, isort_z = cj.tree.pos_zorder_sort(pos0)
-    btree_z = fmdj.octree.cj_build_ztree(posz)
-    octree = fmdj.octree.get_reduced_octree(btree_z, posz, mass0[isort_z], max_leaf_size=64)
-    return octree
-
-timer = Timer(verbose=True, print_compile=False, print_warmup=False, loops=10)
-
-for N in int(1e4), int(1e5), int(3e5), int(1e6), int(3e6), int(1e7), int(3e7):
+for N in int(1e4), int(1e5), int(3e5), int(1e6), int(3e6) , int(1e7), int(3e7):
     pos0 = create_pos(N)
     mass0 = jnp.ones(N, dtype=jnp.float32).block_until_ready()
 
@@ -77,7 +63,7 @@ for N in int(1e4), int(1e5), int(3e5), int(1e6), int(3e6), int(1e7), int(3e7):
     octree = timer.timeit_jit(fmdj.octree.get_reduced_octree.jit, btree_z, posz, mass0, max_leaf_size=64)
     timer.timeit_jit(fmdj.octree.get_tree_height.jit, octree, name="get_tree_height_otree64")
 
-    octree = timer.timeit_jit(sort_and_build_tree, pos0, mass0, name="old_tree")
-    octree = timer.timeit_jit(cj_sort_and_build_tree, pos0, mass0, name="new_tree")
+    res = timer.timeit_jit(fmdj.octree.sort_and_build_octree.jit, pos0, mass0, use_cj=False, name="old_tree")
+    res = timer.timeit_jit(fmdj.octree.sort_and_build_octree.jit, pos0, mass0, use_cj=True, name="new_tree")
 
 timer.plot_timings("N", save="logs/octree_timings.pdf")

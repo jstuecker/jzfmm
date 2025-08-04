@@ -1,12 +1,12 @@
 import jax
 import jax.numpy as jnp
 from jax.experimental import checkify
-from .octree import Octree, organize_particles, get_compressed_binary_tree, get_reduced_octree
+from .octree import Octree, sort_and_build_octree
 from .multipoles import calculate_multipoles_for_tree
 
 # ================================ Tree Preperation functions===================================== #
 
-def build_octree_with_multipoles(pos, mass, max_leaf_size=64, p=2):
+def build_octree_with_multipoles(pos, mass, max_leaf_size=64, p=2, use_cj=True):
     """Build an octree with multipoles for the given positions and masses.
     
     This function organizes the particles, builds a binary tree, reduces it to an octree,
@@ -20,16 +20,14 @@ def build_octree_with_multipoles(pos, mass, max_leaf_size=64, p=2):
     
     Returns: (octree, pos_sorted, mass_sorted, isort)
     """
-    morton, pos_sorted, isort = organize_particles(pos)
-    mass_sorted = jnp.broadcast_to(mass, pos_sorted.shape[0])[isort]
 
-    btree = get_compressed_binary_tree(morton)
-    octree = get_reduced_octree(btree, pos_sorted, mass_sorted, max_leaf_size=max_leaf_size)
-    octree = calculate_multipoles_for_tree(octree, pos_sorted, mass_sorted, p=p)
+    octree, posz, massz, isortz = sort_and_build_octree(pos, mass, use_cj=use_cj)
+
+    octree = calculate_multipoles_for_tree(octree, posz, massz, p=p)
     
-    return octree, pos_sorted, mass_sorted, isort
+    return octree, posz, massz, isortz
 build_octree_with_multipoles.jit = jax.jit(build_octree_with_multipoles, 
-                                           static_argnames=("max_leaf_size", "p"))
+                                           static_argnames=("max_leaf_size", "p", "use_cj"))
 
 # ================================== Some utility methods ======================================== #
 

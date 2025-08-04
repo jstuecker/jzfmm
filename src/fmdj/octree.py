@@ -433,6 +433,24 @@ def put_nodes_in_level_order(octree : Octree) -> Octree:
     return newtree, isort, inv_i
 put_nodes_in_level_order.jit = jax.jit(put_nodes_in_level_order)
 
+def sort_and_build_octree(pos0, mass0, use_cj=True, max_leaf_size=64) -> Octree:
+    if use_cj:
+        posz, isort_z = cj.tree.pos_zorder_sort(pos0)
+        btree_z = cj_build_ztree(posz)
+        massz = mass0[isort_z]
+        octree = get_reduced_octree(btree_z, posz, massz, max_leaf_size=max_leaf_size)
+        return octree, posz, massz, isort_z
+    else:
+        if use_cj:
+            print("Warning: customjax not found, using fall-back solution.")
+        morton, posz, isortz = organize_particles(pos0)
+        btree = get_compressed_binary_tree(morton)
+        massz = mass0[isortz]
+        octree = get_reduced_octree(btree, posz, massz, max_leaf_size=max_leaf_size)
+        return octree, posz, mass0, isortz
+sort_and_build_octree.jit = jax.jit(sort_and_build_octree, 
+                                    static_argnames=("use_cj", "max_leaf_size"))
+
 # =================================== Some utility functions ===================================== #
 
 # def get_oct_level_info(octree):
