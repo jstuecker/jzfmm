@@ -220,9 +220,9 @@ def calculate_multipoles_for_tree(octree : Octree, pos, mass, p=2) -> Octree:
 
 # ================================ Potential Helper Functions ==================================== #
 
-def _get_gs(x, nmax=1):
+def _get_gs(x, nmax=1, eps=0.):
     """These are the derivatives (1/r d/dr)^n (1/r)"""
-    r = jnp.linalg.norm(x, axis=-1)
+    r = jnp.sqrt(jnp.sum(x**2, axis=-1) + eps**2)
     
     gs = []
 
@@ -276,7 +276,7 @@ def _get_Dn(x, g, nx=0, ny=0, nz=0):
     else:
         raise ValueError("n must be between 0 and 5")
 
-def potential_direct_sum(x, m=1., n2lim=1e8):
+def potential_direct_sum(x, m=1., n2lim=1e8, eps=1e-5):
     N = x.shape[0]
 
     nmax = int(np.ceil(n2lim / len(x)))
@@ -285,9 +285,8 @@ def potential_direct_sum(x, m=1., n2lim=1e8):
     def potential_over_range(i1, i2):
         xi = x[jnp.arange(nmax) + i1]
         # Compute vector distances to all other particles
-        r_ij = x - xi[:,None]
-        dist = jnp.linalg.norm(r_ij, axis=-1)
-        distinv = jnp.where(dist < 1e-20, 0., 1./dist)  # avoid division by zero
+        r_ij2 = jnp.sum((x - xi[:,None])**2, axis=-1)
+        distinv = jnp.where(r_ij2 < 1e-30, 0., 1./jnp.sqrt(r_ij2 + eps**2)) # avoid self-interaction
 
         return - jnp.sum(m * distinv, axis=1)
 
@@ -301,10 +300,10 @@ potential_direct_sum.jit = jax.jit(potential_direct_sum, static_argnames=("n2lim
 
 # =============================== Single Interaction Functions =================================== #
 
-def single_multipole_to_local(mp, dx, p=2):
+def single_multipole_to_local(mp, dx, p=2, eps=0.):
     """Returns the expansion coefficients for the interaction between two nodes"""
     combs, index_of_mp = define_index_maps(p)
-    gs = _get_gs(dx, nmax=p)
+    gs = _get_gs(dx, nmax=p, eps=eps)
     D = [_get_Dn(-dx, gs, nx=ks[0], ny=ks[1], nz=ks[2]) for ks in combs]
 
     Lk = []
@@ -324,10 +323,10 @@ def single_multipole_to_local(mp, dx, p=2):
         
     return jnp.stack(Lk, axis=-1)
 
-def single_multipole_to_point(mp, dx, p=2):
+def single_multipole_to_point(mp, dx, p=2, eps=0.):
     """The potential of a multipole expanded at 0 evaluated at dx"""
     combs, index_of_mp = define_index_maps(p)
-    gs = _get_gs(dx, nmax=p)
+    gs = _get_gs(dx, nmax=p, eps=eps)
 
     pot = 0.
     for i,c in enumerate(combs):
@@ -339,11 +338,11 @@ def single_multipole_to_point(mp, dx, p=2):
     
     return pot
 
-def single_monopole_to_local(mass, dx, p=2):
+def single_monopole_to_local(mass, dx, p=2, eps=0.):
     """The expansion of a pointmass evaluated at xloc_minus_xmp
     """
     combs = multipole_powers(p)
-    gs = _get_gs(dx, nmax=p)
+    gs = _get_gs(dx, nmax=p, eps=eps)
     L = []
     
     for i,ks in enumerate(combs):
@@ -356,7 +355,7 @@ def single_monopole_to_local(mass, dx, p=2):
 
 # =============================== Listed Interaction Functions =================================== #
 
-def ilist_multipole_to_points(mpnodes, xnodes, xpart, ibounds, interactions, imask=None, max_size=100, p=2):
+def ilist_multipole_to_points(mpnodes, xnodes, xpart, ibounds, interactions, imask=None, max_size=100, p=2, eps=0.):
     """
     Directly compute the potential of a multipole at lists of particles
     """
@@ -371,15 +370,15 @@ def ilist_multipole_to_points(mpnodes, xnodes, xpart, ibounds, interactions, ima
     nparts = ibounds[ileaf + 1] - ibounds[ileaf]
     ipart_valid = iarange < nparts[:,None]
 
-    weights = single_multipole_to_point(mpnodes[inode][:,None], xpart[iparts] - xnodes[inode][:,None], p=p)
+    weights = single_multipole_to_point(mpnodes[inode][:,None], xpart[iparts] - xnodes[inode][:,None], p=p, eps=eps)
 
     phi = jnp.zeros((len(xpart)), dtype=jnp.float32)
     phi = phi.at[iparts].add(jnp.where(imask[:,None] & ipart_valid, weights, 0.))
     
     return phi
-ilist_multipole_to_points.jit = jax.jit(ilist_multipole_to_points, static_argnames=("max_size", "p"))
+ilist_multipole_to_points.jit = jax.jit(ilist_multipole_to_points, static_argnames=("max_size", "p", "eps"))
 
-def ilist_monopoles_to_local(xnodes, xpart, mass, ibounds, interactions, imask=None, max_size=100, p=2):
+def ilist_monopoles_to_local(xnodes, xpart, mass, ibounds, interactions, imask=None, max_size=100, p=2, eps=0.):
     """
     Directly compute the potential expansion of groups of particles at nodes via interaction lists.
     """
@@ -396,7 +395,7 @@ def ilist_monopoles_to_local(xnodes, xpart, mass, ibounds, interactions, imask=N
 
     dx = xnodes[inode][:,None] - xpart[iparts]
     combs = multipole_powers(p)
-    gs = _get_gs(dx, nmax=p)
+    gs = _get_gs(dx, nmax=p, eps=eps)
     Ls = []
 
     mps = mass[iparts]
@@ -412,9 +411,9 @@ def ilist_monopoles_to_local(xnodes, xpart, mass, ibounds, interactions, imask=N
     loc = loc.at[inode].add(jnp.where(imask[:,None], Ls, 0.))
     
     return loc
-ilist_monopoles_to_local.jit = jax.jit(ilist_monopoles_to_local, static_argnames=("max_size", "p"))
+ilist_monopoles_to_local.jit = jax.jit(ilist_monopoles_to_local, static_argnames=("max_size", "p", "eps"))
 
-def ilist_monopoles_to_points(pos, mass, ibounds, interactions, imask=None, max_size=100):
+def ilist_monopoles_to_points(pos, mass, ibounds, interactions, imask=None, max_size=100, eps=0.):
     """
     Directly compute the potential via interaction lists.
     ibounds are the splitting indices of different bins in the pos array
@@ -437,16 +436,16 @@ def ilist_monopoles_to_points(pos, mass, ibounds, interactions, imask=None, max_
     x1s, x2s = pos[i1s], pos[i2s]
 
     dxmat = x1s - x2s  # Has shape (len(interactions), max_size, max_size, 3)
-    rmat = jnp.linalg.norm(dxmat, axis=-1)
+    rmat2 = jnp.sum(dxmat**2, axis=-1)
 
     i1valid = iarange[:,None] < n1s[:,None,None]
     i2valid = iarange[None,:] < n2s[:,None,None]
     
-    rinv = jnp.where((rmat > 0) & i1valid & i2valid & imask[:,None,None], 1. / rmat, 0.0)
+    rinv = jnp.where((rmat2 > 0) & i1valid & i2valid & imask[:,None,None], 1. / jnp.sqrt(rmat2 + eps**2), 0.0)
     phi = phi.at[i1s[...,0]].add(jnp.sum(-mass[i2s]*rinv, axis=2))
     
     return phi
-ilist_monopoles_to_points.jit = jax.jit(ilist_monopoles_to_points, static_argnames=("max_size",))
+ilist_monopoles_to_points.jit = jax.jit(ilist_monopoles_to_points, static_argnames=("max_size", "eps"))
 
 # ==================== Functions for evaluating interaction lists in loops ======================= #
 
@@ -473,55 +472,56 @@ def _reduce_fsum_chunked(f, y0, x, istart, iend, chunk_size):
 
     return jax.lax.fori_loop(0, num_chunks, body, y0)
 
-def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=2, chunk_fac=4):
+def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=2, chunk_fac=4, eps=0.):
     chunk_size = int(len(xnodes) * chunk_fac)
 
     loc = jnp.zeros(multipoles.shape, dtype=jnp.float32)
 
     def eval_node_node(loc, iab, mask):
-        weights = single_multipole_to_local(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p)
+        weights = single_multipole_to_local(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
         weights = jnp.where(mask[:,None], weights, 0.)
         return loc.at[iab[:,0]].add(weights)
     loc = _reduce_fsum_chunked(eval_node_node, loc, interactions, istart, iend, chunk_size=chunk_size)
 
     return loc
-evaluate_ilists_node_node.jit = jax.jit(evaluate_ilists_node_node, static_argnames=("p", "chunk_fac"))
+evaluate_ilists_node_node.jit = jax.jit(evaluate_ilists_node_node, static_argnames=("p", "chunk_fac", "eps"))
 
-def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=1.):
+def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=1., eps=0.):
     chunk_size = int(len(xnodes) * chunk_fac)
 
     loc = jnp.zeros(xnodes.shape[:-1] + (p_to_ncomb[p],), dtype=jnp.float32)
 
     def eval_node_from_leaf(loc, iab, mask):
         return loc + ilist_monopoles_to_local(xnodes, xpart, mpart, leaf_bounds, jnp.abs(iab),
-                                              imask=mask, max_size=max_leaf_size, p=p)
+                                              imask=mask, max_size=max_leaf_size, p=p, eps=eps)
     loc = _reduce_fsum_chunked(eval_node_from_leaf, loc, interactions, istart, iend, chunk_size=chunk_size)
 
     return loc
-evaluate_ilists_leaf_to_node.jit = jax.jit(evaluate_ilists_leaf_to_node, static_argnames=("p", "max_leaf_size", "chunk_fac"))
+evaluate_ilists_leaf_to_node.jit = jax.jit(evaluate_ilists_leaf_to_node, static_argnames=("p", "max_leaf_size", "chunk_fac", "eps"))
 
-def evaluate_ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=0.4):
+def evaluate_ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=0.4, eps=0.):
     chunk_size = int(len(xpart) * chunk_fac)
 
     phi = jnp.zeros(xpart.shape[0], dtype=jnp.float32)
 
     def eval_leaf_node(phi, iab, mask):
         return phi + ilist_multipole_to_points(multipoles, xnodes, xpart, leaf_bounds, jnp.abs(iab), 
-                                               imask=mask, max_size=max_leaf_size, p=p)
+                                               imask=mask, max_size=max_leaf_size, p=p, eps=eps)
     phi = _reduce_fsum_chunked(eval_leaf_node, phi, interactions, istart, iend, chunk_size=chunk_size)
 
     return phi
-evaluate_ilists_node_to_leaf.jit = jax.jit(evaluate_ilists_node_to_leaf, static_argnames=("p", "max_leaf_size", "chunk_fac"))
+evaluate_ilists_node_to_leaf.jit = jax.jit(evaluate_ilists_node_to_leaf, static_argnames=("p", "max_leaf_size", "chunk_fac", "eps"))
 
-def evaluate_ilists_leaf_leaf(xpart, mpart, leaf_bounds, interactions, istart, iend, max_leaf_size=64, chunk_fac=4., use_cj=True, eps=1e-5):
+def evaluate_ilists_leaf_leaf(xpart, mpart, leaf_bounds, interactions, istart, iend, max_leaf_size=64, chunk_fac=4., use_cj=True, eps=0.):
     if use_cj:
+        assert eps > 0, "Cannot use custom JAX with eps = 0"
         f, phi = cj.forces.ilist_force(xpart, leaf_bounds, -interactions, iminmax=jnp.array((istart, iend)),
                                        mass=mpart, eps=eps)
     else:
         phi = jnp.zeros(xpart.shape[0], dtype=jnp.float32)
         chunk_size = int(len(leaf_bounds) * chunk_fac)
         def eval_leaf_leaf(phi, iab, mask):
-            return phi + ilist_monopoles_to_points(xpart, mpart, leaf_bounds, jnp.abs(iab), imask=mask, max_size=max_leaf_size)
+            return phi + ilist_monopoles_to_points(xpart, mpart, leaf_bounds, jnp.abs(iab), imask=mask, max_size=max_leaf_size, eps=eps)
         phi = _reduce_fsum_chunked(eval_leaf_leaf, phi, interactions, istart, iend, chunk_size=chunk_size)
 
     return phi
