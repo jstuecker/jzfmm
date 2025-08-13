@@ -295,8 +295,6 @@ def get_all_Dn_new(x, p=0, eps=0.):
     Holds for arbitrary radial Green's functions (also non-harmonic cases)
 
     We want to compute D(n)G(0). The recurrence relates D(n)G(q) to D(n-1)G(q+1) and D(n-2)G(q+1)
-
-    Watch out: sign of x is defined different than previous versions
     """
     gs = _get_gs_v2(x, p+1, eps=eps)
 
@@ -319,7 +317,7 @@ def get_all_Dn_new(x, p=0, eps=0.):
 
         w2s[i] = (nmax - 1)
         imaxs[i] = imax
-    w1s = jnp.take_along_axis(x, imaxs[None,:], axis=-1).T
+    w1s = jnp.swapaxes(x[..., imaxs], -1, 0)
 
     # Now do the dynamical programming update iteratively. We write everything so that
     # we can broadcast over the multipole dimension
@@ -333,6 +331,7 @@ def get_all_Dn_new(x, p=0, eps=0.):
 
     return jnp.stack(Dn, axis=-1)
 get_all_Dn_new.jit = jax.jit(get_all_Dn_new, static_argnames=("p",))
+
 
 def potential_direct_sum(x, m=1., n2lim=1e8, eps=1e-5):
     N = x.shape[0]
@@ -381,6 +380,30 @@ def single_multipole_to_local(mp, dx, p=2, eps=0.):
         
     return jnp.stack(Lk, axis=-1)
 
+def single_multipole_to_local_new(mp, dx, p=2, eps=0.):
+    """Returns the expansion coefficients for the interaction between two nodes"""
+    combs, index_of_mp = define_index_maps(p)
+    D = get_all_Dn_new(dx, p=p, eps=eps)
+
+    nks = len(combs)
+
+    # We can precomputed the weights and indices we need
+    # this way we can map our operation onto a simple matrix multiplication
+    # Note that this gives ~ a factor two overhead, because the actual matrix is triangular,
+    # since not all multipoles contribute to all orders
+    indices = np.zeros((nks,nks), dtype=np.int32)
+    weights = np.zeros((nks,nks), dtype=np.float32)
+
+    for i,ks in enumerate(combs):
+        nvecs = multipole_powers(p-np.sum(ks))
+
+        for j, ns in enumerate(nvecs):
+            indices[i,j] = index_of_mp[ks[0]+ns[0], ks[1]+ns[1], ks[2]+ns[2]]
+            weights[i,j] = -1. / (fact[ns[0]] * fact[ns[1]] * fact[ns[2]]) / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])
+
+    Lk = jnp.einsum("...ij,...j,ij->...i", D[...,indices], mp, weights)
+    return Lk
+
 def single_multipole_to_point(mp, dx, p=2, eps=0.):
     """The potential of a multipole expanded at 0 evaluated at dx"""
     combs, index_of_mp = define_index_maps(p)
@@ -425,37 +448,6 @@ def sym_to_multiindex_grid(M, p=3, pad=False):
         Mgrid = jnp.zeros((M.shape[0], p+1, p+1, p+1), dtype=jnp.float32)
     Mgrid = Mgrid.at[:, nvecs[:,0], nvecs[:,1], nvecs[:,2]].set(M)
     return Mgrid
-
-def get_all_Dn(x, p=0, eps=0.):
-    """Get the all the derivatives of a Green's function g
-    Using the recurrence relation from Tausch (2003)
-    http://dx.doi.org/10.1090/conm/329/05866 (See Section 3)
-    Holds for arbitrary radial Green's functions (also non-harmonic cases)
-
-    asgrid: if True, returns the derivatives on a grid in multi-index notation
-    otherwise returns a flattened array in multipole-order. In this case always limit_nsum=True
-    limit_nsum: if True, only returns the derivatives with nx+ny+nz <= p, otherwise returns 
-        all derivatives with ni <= p
-    """
-    gs = _get_gs_v2(x, p+1, eps=eps)
-
-    def get_Dn_gm(nvec, m):
-        n = np.sum(nvec)
-        if np.min(nvec) < 0:
-            return 0.
-        elif n == 0:
-            return gs[m]
-        else:
-            ndir = np.argmax(nvec) # Always lower the highest derivative
-            evec = 1*(np.arange(3)==ndir)
-            val = (nvec[ndir]-1)*get_Dn_gm(tuple(np.array(nvec)-2*evec), m+1) + x[...,ndir] * get_Dn_gm(tuple(nvec - evec), m+1)
-            return val
-    get_Dn_gm = lru_cache(maxsize=None)(get_Dn_gm) # Lazy dynamic programming, we reuse previous terms
-    
-    Ds = [get_Dn_gm(tuple(nvec), 0) for nvec in multipole_powers(p)]
-    return jnp.stack(Ds, axis=-1)
-get_all_Dn.jit = jax.jit(get_all_Dn, static_argnames=("p",))
-
 
 # def get_Dgrid(dx, p=3, pad=False):
 #     assert False, "Deprecated, use get_all_Dn instead"
@@ -621,6 +613,21 @@ def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=
 
     return loc
 evaluate_ilists_node_node.jit = jax.jit(evaluate_ilists_node_node, static_argnames=("p", "chunk_fac", "eps", "use_cj"))
+
+def evaluate_ilists_node_node_tmp(xnodes, multipoles, interactions, istart, iend, p=2, chunk_fac=4,  eps=0.):
+    chunk_size = int(len(xnodes) * chunk_fac)
+
+    loc = jnp.zeros(multipoles.shape, dtype=jnp.float32)
+
+    def eval_node_node(loc, iab, mask):
+        weights = single_multipole_to_local_new(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
+        weights = jnp.where(mask[:,None], weights, 0.)
+        return loc.at[iab[:,0]].add(weights)
+    loc = _reduce_fsum_chunked(eval_node_node, loc, interactions, istart, iend, chunk_size=chunk_size)
+
+    return loc
+evaluate_ilists_node_node_tmp.jit = jax.jit(evaluate_ilists_node_node_tmp, static_argnames=("p", "chunk_fac", "eps"))
+
 
 def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=1., eps=0.):
     chunk_size = int(len(xnodes) * chunk_fac)
