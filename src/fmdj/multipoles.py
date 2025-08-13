@@ -2,6 +2,8 @@ import jax
 import jax.numpy as jnp
 from .octree import Octree
 import numpy as np
+from math import factorial
+from functools import lru_cache
 
 try:
     import custom_jax as cj
@@ -237,6 +239,14 @@ def _get_gs(x, nmax=1, eps=0.):
 
     return gs
 
+def _get_gs_v2(r, nmax=1, eps=0.):
+    """These are the derivatives (1/r d/dr)^n (1/r)"""
+    gs = [1. / (r + eps)]
+    for n in range(nmax):
+        gs.append(-(1+2*n) * gs[-1]/ (r + eps)**2)
+
+    return gs
+
 def _get_Dn(x, g, nx=0, ny=0, nz=0):
     """Dn = nabla^n (1/r)
           = (1/r d/dr)^n g0(r) * x^nx * y^ny * z^nz"""
@@ -352,6 +362,96 @@ def single_monopole_to_local(mass, dx, p=2, eps=0.):
         L.append(- (-1.)**k / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])  * val)
     
     return jnp.stack(L, axis=-1)
+
+# ================================== FFT based interactions ====================================== #
+
+def sym_to_multiindex_grid(M, p=3, pad=False):
+    """Converts a flat multi-degree symmetric tensor to a multi-index grid.
+    Each grid point (nx,ny,nz) corresponds to an element of Mijklm... 
+    where nx indices are 0, ny indices are 1, nz indices are 2, etc.
+    """
+    nvecs, imap = define_index_maps(p)
+    if pad:
+        Mgrid = jnp.zeros((M.shape[0], 2*p+2, 2*p+2, 2*p+2), dtype=jnp.float32)
+    else:
+        Mgrid = jnp.zeros((M.shape[0], p+1, p+1, p+1), dtype=jnp.float32)
+    Mgrid = Mgrid.at[:, nvecs[:,0], nvecs[:,1], nvecs[:,2]].set(M)
+    return Mgrid
+
+def get_all_Dn(x, p=0, as_grid=True, limit_nsum=True, eps=0.):
+    """Get the all the derivatives of a Green's function g
+    Using the recurrence relation from Tausch (2003)
+    http://dx.doi.org/10.1090/conm/329/05866 (See Section 3)
+    Holds for arbitrary radial Green's functions (also non-harmonic cases)
+
+    asgrid: if True, returns the derivatives on a grid in multi-index notation
+    otherwise returns a flattened array in multipole-order. In this case always limit_nsum=True
+    limit_nsum: if True, only returns the derivatives with nx+ny+nz <= p, otherwise returns 
+        all derivatives with ni <= p
+    """
+    if not as_grid:
+        assert limit_nsum, "If as_grid=False, limit_nsum must be True"
+
+    if limit_nsum:
+        gs = _get_gs_v2(jnp.linalg.norm(x, axis=-1), p+1, eps=eps)
+    else:
+        gs = _get_gs_v2(jnp.linalg.norm(x, axis=-1), 3*p, eps=eps)
+
+    def get_Dn_gm(nvec, m):
+        n = np.sum(nvec)
+        if np.min(nvec) < 0:
+            return 0.
+        elif n == 0:
+            return gs[m]
+        else:
+            ndir = np.argmax(nvec) # Always lower the highest derivative
+            evec = 1*(np.arange(3)==ndir)
+            val = (nvec[ndir]-1)*get_Dn_gm(tuple(np.array(nvec)-2*evec), m+1) + x[...,ndir] * get_Dn_gm(tuple(nvec - evec), m+1)
+            return val
+    get_Dn_gm = lru_cache(maxsize=None)(get_Dn_gm) # Lazy dynamic programming, we reuse previous terms
+    
+    if as_grid:
+        Ds = []
+        for nx in range(p+1):
+            for ny in range(p+1):
+                for nz in range(p+1):
+                    if limit_nsum and (nx + ny + nz > p):
+                        Ds.append(jnp.zeros_like(x[...,0]))
+                    else:
+                        Ds.append(get_Dn_gm((nx,ny,nz), 0))
+        return np.stack(Ds, axis=-1).reshape((-1, p+1, p+1, p+1))
+    else:
+        Ds = [get_Dn_gm(tuple(nvec), 0) for nvec in multipole_powers(p)]
+        return np.stack(Ds, axis=-1)
+
+# def get_Dgrid(dx, p=3, pad=False):
+#     assert False, "Deprecated, use get_all_Dn instead"
+#     nvecs, imap = define_index_maps(p)
+#     gs = _get_gs_v2(np.linalg.norm(dx,axis=-1), p)
+#     Ds = jnp.stack([_get_Dn(dx, gs, nvec[0], nvec[1], nvec[2]) for nvec in nvecs], axis=-1)
+
+#     return sym_to_multiindex_grid(Ds, p=p, pad=pad)
+
+# def single_multipole_to_local_via_fft(mp, dx, p=3, eps=0.):
+#     assert False, "This function is not working yet, have to put correct combinatorial factors"
+#     from math import factorial as fac
+#     dx = -dx
+#     nvecs, imap = define_index_maps(p)
+
+#     Dgrid = jnp.zeros((len(mp), 2*p+2, 2*p+2, 2*p+2), dtype=dx.dtype)
+#     Dgrid = Dgrid.at[...,:p+1, :p+1, :p+1].set(get_all_Dn(dx, p=p, as_grid=True, eps=eps))
+#     Dgridk = jnp.fft.rfftn(Dgrid, axes=(-1, -2, -3))
+    
+#     Mgrid = sym_to_multiindex_grid(mp, p=p, pad=True)
+#     Mgridk = jnp.fft.rfftn(Mgrid, axes=(-1, -2, -3))
+
+#     Lgrid = jnp.fft.irfftn(Dgridk * Mgridk, axes=(-1, -2, -3))
+
+#     Lflat = jnp.zeros_like(mp)
+#     for i, nvec in enumerate(nvecs):
+#         Lflat = Lflat.at[:, i].set(Lgrid[:, nvec[0], nvec[1], nvec[2]] / (-(-1)**np.sum(nvec) *fac(nvec[0]) * fac(nvec[1]) * fac(nvec[2])))
+    
+#     return Lflat
 
 # =============================== Listed Interaction Functions =================================== #
 
