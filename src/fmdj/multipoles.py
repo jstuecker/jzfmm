@@ -296,11 +296,9 @@ def get_all_Dn_new(x, p=0, eps=0.):
 
     We want to compute D(n)G(0). The recurrence relates D(n)G(q) to D(n-1)G(q+1) and D(n-2)G(q+1)
     """
-    gs = _get_gs_v2(x, p+1, eps=eps)
-
     comb, index_map = define_index_maps(p)
 
-    # Parent relations can be precomputed for the recursive update can be precomputed
+    # Precompute Parent relations for the recursive update
     p1s, p2s = np.zeros((len(comb),), dtype=np.int32), np.zeros((len(comb),), dtype=np.int32)
     imaxs = np.zeros((len(comb),), dtype=np.int32)
 
@@ -317,20 +315,24 @@ def get_all_Dn_new(x, p=0, eps=0.):
 
         w2s[i] = (nmax - 1)
         imaxs[i] = imax
-    w1s = jnp.swapaxes(x[..., imaxs], -1, 0)
 
-    # Now do the dynamical programming update iteratively. We write everything so that
-    # we can broadcast over the multipole dimension
-    # Dn = jnp.zeros((p_to_ncomb[p],) + x.shape[:-1], dtype=x.dtype).at[0].set(gs[p])
-    Dn = gs[p][None,:]
-    for q in range(p-1, -1, -1):
-        imax = p_to_ncomb[p-q]
-        D1 = w1s[1:imax] * Dn[p1s[1:imax]]
-        D2 = w2s[1:imax,None] * Dn[p2s[1:imax]]
-        Dn = jnp.concatenate((gs[q][None,:], D1 + D2), axis=0)
+    def get_Dn(x):
+        gs = _get_gs_v2(x, p+1, eps=eps)
+        w1s = x[imaxs]
 
-    return jnp.stack(Dn, axis=-1)
-get_all_Dn_new.jit = jax.jit(get_all_Dn_new, static_argnames=("p",))
+        Dn = gs[p][None]
+        for q in range(p-1, -1, -1):
+            # Apply the recurrence relation iteratively. Dn grows in every step.
+
+            imax = p_to_ncomb[p-q]
+            D1 = w1s[1:imax] * Dn[p1s[1:imax]]
+            D2 = w2s[1:imax] * Dn[p2s[1:imax]]
+            Dn = jnp.concatenate((gs[q][None], D1 + D2))
+
+        return jnp.stack(Dn)
+    return jax.vmap(get_Dn, in_axes=(0,), out_axes=0)(x)
+get_all_Dn_new.jit = jax.jit(get_all_Dn_new, static_argnames=("p", "eps"))
+
 
 
 def potential_direct_sum(x, m=1., n2lim=1e8, eps=1e-5):
