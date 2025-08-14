@@ -23,13 +23,13 @@ def generate_combinations(p):
     return combos
 
 fact = np.array([1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880], dtype=np.int32)
-binomial = np.zeros((6, 6), dtype=np.int32)
-for n in range(6):
+binomial = np.zeros((8, 8), dtype=np.int32)
+for n in range(8):
     for k in range(n + 1):
         binomial[n, k] = fact[n] // (fact[k] * fact[n - k])
 
-rank_to_ncomp = np.array([1, 3, 6, 10, 15, 21, 28])
-p_to_ncomb = np.array([1, 4, 10, 20, 35, 56, 84])
+rank_to_ncomp = np.array([1, 3, 6, 10, 15, 21, 28, 36, 45])
+p_to_ncomb = np.array([1, 4, 10, 20, 35, 56, 84, 120, 165])
 # ncomp_to_rank = {1: 0, 3: 1, 6: 2, 10: 3, 15: 4, 21: 5, 28: 6, 36: 7}
 # ncomb_to_p = {1: 0, 4: 1, 10: 2, 20: 3, 35: 4, 56: 5, 84: 6, 120: 7}
 ncomb_to_p = np.zeros(p_to_ncomb[-1] + 1, dtype=np.int32)
@@ -639,39 +639,30 @@ def _reduce_fsum_chunked(f, y0, x, istart, iend, chunk_size):
 
     return jax.lax.fori_loop(0, num_chunks, body, y0)
 
-def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=2, chunk_fac=4, use_cj=True, eps=0.):
-    chunk_size = int(len(xnodes) * chunk_fac)
+def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=2, max_mb=1024, use_cj=True, eps=0.):
+    # chunk_size = int(len(xnodes) * chunk_fac)
+    
 
-    if use_cj:
+    if int(use_cj) == 1:
         loc = cj.multipoles.ilist_multipole_to_local(multipoles, xnodes, interactions, iminmax=jnp.array((istart, iend)), p=p, eps=eps)
     else:
+        chunk_size = int((max_mb * 1024**2) // (8 * ((p+3) * (p+2) * (p+1) / 6)**2))
+        chunk_size = min(max((chunk_size//64)*64,  64), len(xnodes)*4)
+        # print(f"{8.0 * chunk_size * ((p+3) * (p+2) * (p+1) / 6)**2 / 1024.**2} MB with chunk_size {chunk_size} for p={p}")
+
         loc = jnp.zeros(multipoles.shape, dtype=xnodes.dtype)
 
         def eval_node_node(loc, iab, mask):
-            weights = single_multipole_to_local(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
+            if use_cj == 2:
+                weights = single_multipole_to_local_new(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
+            else:
+                weights = single_multipole_to_local(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
             weights = jnp.where(mask[:,None], weights, 0.)
             return loc.at[iab[:,0]].add(weights)
         loc = _reduce_fsum_chunked(eval_node_node, loc, interactions, istart, iend, chunk_size=chunk_size)
 
     return loc
-evaluate_ilists_node_node.jit = jax.jit(evaluate_ilists_node_node, static_argnames=("p", "chunk_fac", "eps", "use_cj"))
-
-def evaluate_ilists_node_node_tmp(xnodes, multipoles, interactions, istart, iend, p=2, chunk_fac=4,  eps=0., mode=1):
-    chunk_size = int(len(xnodes) * chunk_fac)
-
-    loc = jnp.zeros(multipoles.shape, dtype=xnodes.dtype)
-
-    def eval_node_node(loc, iab, mask):
-        if mode == 1:
-            weights = single_multipole_to_local_new(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
-        elif mode == 2:
-            weights = single_multipole_to_local_sparse(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
-        weights = jnp.where(mask[:,None], weights, 0.)
-        return loc.at[iab[:,0]].add(weights)
-    loc = _reduce_fsum_chunked(eval_node_node, loc, interactions, istart, iend, chunk_size=chunk_size)
-
-    return loc
-evaluate_ilists_node_node_tmp.jit = jax.jit(evaluate_ilists_node_node_tmp, static_argnames=("p", "chunk_fac", "eps", "mode"))
+evaluate_ilists_node_node.jit = jax.jit(evaluate_ilists_node_node, static_argnames=("p", "max_mb", "eps", "use_cj"))
 
 
 def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=1., eps=0.):
