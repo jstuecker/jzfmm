@@ -401,9 +401,10 @@ def single_multipole_to_local_new(mp, dx, p=2, eps=0.):
 
         for j, ns in enumerate(nvecs):
             indices[i,j] = index_of_mp[ks[0]+ns[0], ks[1]+ns[1], ks[2]+ns[2]]
-            weights[i,j] = -1. / (fact[ns[0]] * fact[ns[1]] * fact[ns[2]]) / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])
+            weights[i,j] = -1. / (fact[ns[0]] * fact[ns[1]] * fact[ns[2]] * fact[ks[0]] * fact[ks[1]] * fact[ks[2]])
 
     Lk = jnp.einsum("...ij,...j,ij->...i", D[...,indices], mp, weights)
+
     return Lk
 
 def single_multipole_to_point(mp, dx, p=2, eps=0.):

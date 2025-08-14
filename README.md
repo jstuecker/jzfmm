@@ -13,3 +13,11 @@ Which parts of the algorithm could still be sped up?
 * I can skip the first 4 terms in the multipole update
 * How to treat softening consistently in the Node interactions?
 * Is Plummer softening the right choice?
+
+# ToDo:
+* Think about how to do force
+* Name and structure all evaluation code consistently
+* Get an understanding of which compile times are very slow?
+* Measure interaction list potential performance
+* Think about universal way to deal with memory parameters (e.g. a variable indicating max temporary size or so)
+* Dynamic handling of interaction-overflow
