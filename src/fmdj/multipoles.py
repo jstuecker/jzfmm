@@ -235,7 +235,7 @@ def _get_gs(x, nmax=1, eps=0.):
     if nmax >= 4: gs.append(105./r**9)
     if nmax >= 5: gs.append(-945./r**11)
     if nmax >= 6: gs.append(10395./r**13)
-    if nmax >= 7: gs.append(135135./r**15)
+    if nmax >= 7: gs.append(-155925./r**15)
 
     return gs
 
@@ -286,7 +286,7 @@ def _get_Dn(x, g, nx=0, ny=0, nz=0):
     elif n == 5:
         return (g[3]*(sig(15.*x[...,isort[0]],5) + sig(3.*x[...,isort[1]],4,1) + sig(3.*x[...,isort[0]],3,2) + sig(x[...,isort[2]], 2,2,1))
                 + g[4]*(sig(10.*x[...,isort[0]]**3, 5) + sig(6.*x[...,isort[0]]**2*x[...,isort[1]],4,1) + sig((3*x[...,isort[0]]*x[...,isort[1]]**2 +  x[...,isort[0]]**3),3,2)
-                        + sig(x[...,isort[2]]*(x[...,isort[0]]**2 + x[...,isort[1]]**2),2,2,1))
+                        + sig(x[...,isort[2]]*(x[...,isort[0]]**2 + x[...,isort[1]]**2),2,2,1) + sig(3.*x[...,isort[0]]*x[...,isort[1]]*x[...,isort[2]],3,1,1))
                 + g[5]*xpow)
     else:
         raise ValueError("n must be between 0 and 5")
@@ -367,6 +367,7 @@ def single_multipole_to_local(mp, dx, p=2, eps=0.):
     combs, index_of_mp = define_index_maps(p)
     gs = _get_gs(dx, nmax=p, eps=eps)
     D = [_get_Dn(-dx, gs, nx=ks[0], ny=ks[1], nz=ks[2]) for ks in combs]
+    # D = get_all_Dn_new(-dx, p=p, eps=eps).T
 
     Lk = []
     
