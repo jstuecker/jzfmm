@@ -365,30 +365,6 @@ potential_direct_sum.jit = jax.jit(potential_direct_sum, static_argnames=("n2lim
 def single_multipole_to_local(mp, dx, p=2, eps=0.):
     """Returns the expansion coefficients for the interaction between two nodes"""
     combs, index_of_mp = define_index_maps(p)
-    gs = _get_gs(dx, nmax=p, eps=eps)
-    D = [_get_Dn(-dx, gs, nx=ks[0], ny=ks[1], nz=ks[2]) for ks in combs]
-    # D = get_all_Dn_new(-dx, p=p, eps=eps).T
-
-    Lk = []
-    
-    for i,ks in enumerate(combs):
-        k = np.sum(ks)
-        val = 0.
-        for ns in multipole_powers(p-k):
-            n = np.sum(ns)
-            fac = fact[n]/(fact[ns[0]] * fact[ns[1]] * fact[ns[2]])
-            
-            Dnk = D[index_of_mp[ks[0]+ns[0], ks[1]+ns[1], ks[2]+ns[2]]]
-            Qn = mp[...,index_of_mp[ns[0], ns[1], ns[2]]]
-
-            val += Dnk * Qn * (fac / fact[n]).astype(dx.dtype)
-        Lk.append((- (-1.)**k / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])).astype(dx.dtype)  * val)
-        
-    return jnp.stack(Lk, axis=-1)
-
-def single_multipole_to_local_new(mp, dx, p=2, eps=0.):
-    """Returns the expansion coefficients for the interaction between two nodes"""
-    combs, index_of_mp = define_index_maps(p)
     D = get_all_Dn_new(-dx, p=p, eps=eps)
 
     nks = len(combs)
@@ -410,41 +386,6 @@ def single_multipole_to_local_new(mp, dx, p=2, eps=0.):
     Lk = jnp.einsum("...ij,...j,ij->...i", D[...,indices], mp, weights)
 
     return Lk
-
-from jax.experimental import sparse
-
-def single_multipole_to_local_sparse(mp, dx, p=2, eps=0.):
-    # At p=4 the sparse version should safe theoretically about a factor 4 in the number of operations
-    # However, it ends up a factor 2 slower...
-
-    combs, index_of_mp = define_index_maps(p)
-    nks = len(combs)
-
-    ij_sparse = []
-    isparse_from =[]
-    wsparse = []
-
-    for i,ks in enumerate(combs):
-        nvecs = multipole_powers(p-np.sum(ks))
-
-        for j, ns in enumerate(nvecs):
-            ij_sparse.append((i,j))
-            isparse_from.append(index_of_mp[ks[0]+ns[0], ks[1]+ns[1], ks[2]+ns[2]])
-            wsparse.append(- (-1.)**np.sum(ks) / (fact[ns[0]] * fact[ns[1]] * fact[ns[2]] * fact[ks[0]] * fact[ks[1]] * fact[ks[2]]))
-    
-    isparse_from = np.array(isparse_from, dtype=np.int32)
-    ij_sparse = np.array(ij_sparse, dtype=np.int32)
-    wsparse = np.array(wsparse, dtype=dx.dtype)
-    
-    def get_single_local(mp, dx):
-        D = get_all_Dn_new(-dx[None,:], p=p, eps=eps)[0]
-
-        Dsparse = sparse.BCOO((D[isparse_from]*wsparse, ij_sparse), shape=(nks,nks),
-                              indices_sorted=True, unique_indices=True)
-
-        return Dsparse @ mp
-
-    return jax.vmap(get_single_local, (0,0))(mp, dx)
 
 def single_multipole_to_point(mp, dx, p=2, eps=0.):
     """The potential of a multipole expanded at 0 evaluated at dx"""
@@ -643,7 +584,7 @@ def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=
     # chunk_size = int(len(xnodes) * chunk_fac)
     
 
-    if int(use_cj) == 1:
+    if use_cj:
         loc = cj.multipoles.ilist_multipole_to_local(multipoles, xnodes, interactions, iminmax=jnp.array((istart, iend)), p=p, eps=eps)
     else:
         chunk_size = int((max_mb * 1024**2) // (8 * ((p+3) * (p+2) * (p+1) / 6)**2))
@@ -653,10 +594,7 @@ def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=
         loc = jnp.zeros(multipoles.shape, dtype=xnodes.dtype)
 
         def eval_node_node(loc, iab, mask):
-            if use_cj == 2:
-                weights = single_multipole_to_local_new(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
-            else:
-                weights = single_multipole_to_local(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
+            weights = single_multipole_to_local(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
             weights = jnp.where(mask[:,None], weights, 0.)
             return loc.at[iab[:,0]].add(weights)
         loc = _reduce_fsum_chunked(eval_node_node, loc, interactions, istart, iend, chunk_size=chunk_size)
