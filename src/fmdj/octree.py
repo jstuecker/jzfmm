@@ -323,9 +323,9 @@ def define_leaf_maps(tree, keep_as_node, keep_as_leaf, keep_lchild_leaf, keep_rc
 
 def get_new_leaf_positions(leaf_of_part, xpart, mpart, max_new_leaves):
     """Determines the center of mass of new summarized leaf particles."""
-    m_in_leaf = jnp.zeros(max_new_leaves, dtype=jnp.float32
+    m_in_leaf = jnp.zeros(max_new_leaves, dtype=xpart.dtype
                           ).at[leaf_of_part].add(mpart, indices_are_sorted=True)
-    mx_in_leaf = jnp.zeros((max_new_leaves,3), dtype=jnp.float32
+    mx_in_leaf = jnp.zeros((max_new_leaves,3), dtype=xpart.dtype
                            ).at[leaf_of_part].add(xpart*mpart[:,None], indices_are_sorted=True)
     x_leaf = mx_in_leaf / m_in_leaf[:,None]
 

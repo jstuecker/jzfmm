@@ -59,9 +59,9 @@ def com_via_height(octree : Octree, pos, mass):
     max_nodes = len(octree.lchild)
 
     # First add particles into their parent nodes
-    m = jnp.zeros(max_nodes, dtype=jnp.float32
+    m = jnp.zeros(max_nodes, dtype=pos.dtype
                   ).at[octree.node_of_particle].add(mass)
-    mx = jnp.zeros((max_nodes, 3), dtype=jnp.float32
+    mx = jnp.zeros((max_nodes, 3), dtype=pos.dtype
                    ).at[octree.node_of_particle].add(pos * mass[:,None])
 
     # Next propagate information up the tree
@@ -127,7 +127,7 @@ def x_moment(x, c):
     return x[...,0]**c[0] * x[...,1]**c[1] * x[...,2]**c[2]
 
 def multipoles_via_height(octree : Octree, pos, mass, p=2, xcom=None):
-    x0 = xcom if xcom is not None else jnp.zeros((octree.max_nodes, 3), dtype=jnp.float32)
+    x0 = xcom if xcom is not None else jnp.zeros((octree.max_nodes, 3), dtype=pos.dtype)
 
     max_nodes = len(octree.lchild)
     comb = multipole_powers(p)
@@ -302,7 +302,7 @@ def get_all_Dn_new(x, p=0, eps=0.):
     p1s, p2s = np.zeros((len(comb),), dtype=np.int32), np.zeros((len(comb),), dtype=np.int32)
     imaxs = np.zeros((len(comb),), dtype=np.int32)
 
-    w2s = np.zeros((len(comb),), dtype=np.float32)
+    w2s = np.zeros((len(comb),), dtype=x.dtype)
     for i, nvec in enumerate(comb):
         imax = np.argmax(nvec, axis=-1)
         nmax = nvec[imax]
@@ -394,7 +394,7 @@ def single_multipole_to_local_new(mp, dx, p=2, eps=0.):
     # Note that this gives ~ a factor two overhead, because the actual matrix is triangular,
     # since not all multipoles contribute to all orders
     indices = np.zeros((nks,nks), dtype=np.int32)
-    weights = np.zeros((nks,nks), dtype=np.float32)
+    weights = np.zeros((nks,nks), dtype=dx.dtype)
 
     for i,ks in enumerate(combs):
         nvecs = multipole_powers(p-np.sum(ks))
@@ -446,9 +446,9 @@ def sym_to_multiindex_grid(M, p=3, pad=False):
     """
     nvecs, imap = define_index_maps(p)
     if pad:
-        Mgrid = jnp.zeros((M.shape[0], 2*p+2, 2*p+2, 2*p+2), dtype=jnp.float32)
+        Mgrid = jnp.zeros((M.shape[0], 2*p+2, 2*p+2, 2*p+2), dtype=M.dtype)
     else:
-        Mgrid = jnp.zeros((M.shape[0], p+1, p+1, p+1), dtype=jnp.float32)
+        Mgrid = jnp.zeros((M.shape[0], p+1, p+1, p+1), dtype=M.dtype)
     Mgrid = Mgrid.at[:, nvecs[:,0], nvecs[:,1], nvecs[:,2]].set(M)
     return Mgrid
 
@@ -500,7 +500,7 @@ def ilist_multipole_to_points(mpnodes, xnodes, xpart, ibounds, interactions, ima
 
     weights = single_multipole_to_point(mpnodes[inode][:,None], xpart[iparts] - xnodes[inode][:,None], p=p, eps=eps)
 
-    phi = jnp.zeros((len(xpart)), dtype=jnp.float32)
+    phi = jnp.zeros((len(xpart)), dtype=xpart.dtype)
     phi = phi.at[iparts].add(jnp.where(imask[:,None] & ipart_valid, weights, 0.))
     
     return phi
@@ -535,7 +535,7 @@ def ilist_monopoles_to_local(xnodes, xpart, mass, ibounds, interactions, imask=N
     
     Ls = jnp.stack(Ls, axis=-1)
 
-    loc = jnp.zeros((len(xnodes), Ls.shape[-1]), dtype=jnp.float32)
+    loc = jnp.zeros((len(xnodes), Ls.shape[-1]), dtype=xpart.dtype)
     loc = loc.at[inode].add(jnp.where(imask[:,None], Ls, 0.))
     
     return loc
@@ -553,7 +553,7 @@ def ilist_monopoles_to_points(pos, mass, ibounds, interactions, imask=None, max_
     
     iarange = jnp.arange(max_size)
 
-    phi = jnp.zeros(pos.shape[0], dtype=jnp.float32)
+    phi = jnp.zeros(pos.shape[0], dtype=pos.dtype)
 
     n1s = ibounds[i1 + 1] - ibounds[i1]
     n2s = ibounds[i2 + 1] - ibounds[i2]
@@ -606,7 +606,7 @@ def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=
     if use_cj:
         loc = cj.multipoles.ilist_multipole_to_local(multipoles, xnodes, interactions, iminmax=jnp.array((istart, iend)), p=p, eps=eps)
     else:
-        loc = jnp.zeros(multipoles.shape, dtype=jnp.float32)
+        loc = jnp.zeros(multipoles.shape, dtype=xnodes.dtype)
 
         def eval_node_node(loc, iab, mask):
             weights = single_multipole_to_local(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
@@ -620,7 +620,7 @@ evaluate_ilists_node_node.jit = jax.jit(evaluate_ilists_node_node, static_argnam
 def evaluate_ilists_node_node_tmp(xnodes, multipoles, interactions, istart, iend, p=2, chunk_fac=4,  eps=0.):
     chunk_size = int(len(xnodes) * chunk_fac)
 
-    loc = jnp.zeros(multipoles.shape, dtype=jnp.float32)
+    loc = jnp.zeros(multipoles.shape, dtype=xnodes.dtype)
 
     def eval_node_node(loc, iab, mask):
         weights = single_multipole_to_local_new(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
@@ -635,7 +635,7 @@ evaluate_ilists_node_node_tmp.jit = jax.jit(evaluate_ilists_node_node_tmp, stati
 def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=1., eps=0.):
     chunk_size = int(len(xnodes) * chunk_fac)
 
-    loc = jnp.zeros(xnodes.shape[:-1] + (p_to_ncomb[p],), dtype=jnp.float32)
+    loc = jnp.zeros(xnodes.shape[:-1] + (p_to_ncomb[p],), dtype=xnodes.dtype)
 
     def eval_node_from_leaf(loc, iab, mask):
         return loc + ilist_monopoles_to_local(xnodes, xpart, mpart, leaf_bounds, jnp.abs(iab),
@@ -648,7 +648,7 @@ evaluate_ilists_leaf_to_node.jit = jax.jit(evaluate_ilists_leaf_to_node, static_
 def evaluate_ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=0.4, eps=0.):
     chunk_size = int(len(xpart) * chunk_fac)
 
-    phi = jnp.zeros(xpart.shape[0], dtype=jnp.float32)
+    phi = jnp.zeros(xpart.shape[0], dtype=xnodes.dtype)
 
     def eval_leaf_node(phi, iab, mask):
         return phi + ilist_multipole_to_points(multipoles, xnodes, xpart, leaf_bounds, jnp.abs(iab), 
@@ -664,7 +664,7 @@ def evaluate_ilists_leaf_leaf(xpart, mpart, leaf_bounds, interactions, istart, i
         f, phi = cj.forces.ilist_force(xpart, leaf_bounds, -interactions, iminmax=jnp.array((istart, iend)),
                                        mass=mpart, eps=eps)
     else:
-        phi = jnp.zeros(xpart.shape[0], dtype=jnp.float32)
+        phi = jnp.zeros(xpart.shape[0], dtype=xpart.dtype)
         chunk_size = int(len(leaf_bounds) * chunk_fac)
         def eval_leaf_leaf(phi, iab, mask):
             return phi + ilist_monopoles_to_points(xpart, mpart, leaf_bounds, jnp.abs(iab), imask=mask, max_size=max_leaf_size, eps=eps)
