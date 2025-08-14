@@ -587,7 +587,7 @@ def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=
     if use_cj:
         loc = cj.multipoles.ilist_multipole_to_local(multipoles, xnodes, interactions, iminmax=jnp.array((istart, iend)), p=p, eps=eps)
     else:
-        chunk_size = int((max_mb * 1024**2) // (8 * ((p+3) * (p+2) * (p+1) / 6)**2))
+        chunk_size = int((max_mb * 1024**2) // (2 * xnodes.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)**2))
         chunk_size = min(max((chunk_size//64)*64,  64), len(xnodes)*4)
         # print(f"{8.0 * chunk_size * ((p+3) * (p+2) * (p+1) / 6)**2 / 1024.**2} MB with chunk_size {chunk_size} for p={p}")
 
@@ -603,8 +603,9 @@ def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=
 evaluate_ilists_node_node.jit = jax.jit(evaluate_ilists_node_node, static_argnames=("p", "max_mb", "eps", "use_cj"))
 
 
-def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=1., eps=0.):
-    chunk_size = int(len(xnodes) * chunk_fac)
+def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, max_mb=1024, mode=0, eps=0.):
+    chunk_size = int((max_mb * 1024**2) // (xpart.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)))
+    chunk_size = min(max((chunk_size//64)*64,  64), len(xnodes)*4)
 
     loc = jnp.zeros(xnodes.shape[:-1] + (p_to_ncomb[p],), dtype=xnodes.dtype)
 
@@ -614,7 +615,7 @@ def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions
     loc = _reduce_fsum_chunked(eval_node_from_leaf, loc, interactions, istart, iend, chunk_size=chunk_size)
 
     return loc
-evaluate_ilists_leaf_to_node.jit = jax.jit(evaluate_ilists_leaf_to_node, static_argnames=("p", "max_leaf_size", "chunk_fac", "eps"))
+evaluate_ilists_leaf_to_node.jit = jax.jit(evaluate_ilists_leaf_to_node, static_argnames=("p", "max_leaf_size", "max_mb", "eps", "mode"))
 
 def evaluate_ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=0.4, eps=0.):
     chunk_size = int(len(xpart) * chunk_fac)
