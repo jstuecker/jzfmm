@@ -22,8 +22,8 @@ def generate_combinations(p):
             combos.append((k, j, i))
     return combos
 
-fact = np.array([1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880])
-binomial = np.zeros((6, 6), dtype=int)
+fact = np.array([1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880], dtype=np.int32)
+binomial = np.zeros((6, 6), dtype=np.int32)
 for n in range(6):
     for k in range(n + 1):
         binomial[n, k] = fact[n] // (fact[k] * fact[n - k])
@@ -33,9 +33,9 @@ p_to_ncomb = np.array([1, 4, 10, 20, 35, 56, 84])
 # ncomp_to_rank = {1: 0, 3: 1, 6: 2, 10: 3, 15: 4, 21: 5, 28: 6, 36: 7}
 # ncomb_to_p = {1: 0, 4: 1, 10: 2, 20: 3, 35: 4, 56: 5, 84: 6, 120: 7}
 ncomb_to_p = np.zeros(p_to_ncomb[-1] + 1, dtype=np.int32)
-ncomb_to_p[p_to_ncomb] = np.arange(len(p_to_ncomb))
+ncomb_to_p[p_to_ncomb] = np.arange(len(p_to_ncomb), dtype=np.int32)
 ncomp_to_rank = np.zeros(rank_to_ncomp[-1] + 1, dtype=np.int32)
-ncomp_to_rank[rank_to_ncomp] = np.arange(len(rank_to_ncomp))
+ncomp_to_rank[rank_to_ncomp] = np.arange(len(rank_to_ncomp), dtype=np.int32)
 
 combinations = np.concatenate([generate_combinations(i) for i in range(7)])
 index_map = np.zeros((7, 7, 7), dtype=np.int32) - 1
@@ -97,7 +97,7 @@ def shift_multipoles(m, x0, p=2):
         for i in range(a+1):
             idx_src = index_of_mp[i, b, c]
             idx_dst = index_of_mp[a, b, c]
-            coeff = binomial[a, i]
+            coeff = binomial[a, i].astype(m.dtype)
             mnew = mnew + coeff * x0[..., 0]**(a - i) * m[idx_src]
         mx.append(mnew)
 
@@ -107,7 +107,7 @@ def shift_multipoles(m, x0, p=2):
         mnew = 0.
         for j in range(b+1):
             idx_src = index_of_mp[a, j, c]
-            coeff = binomial[b, j]
+            coeff = binomial[b, j].astype(m.dtype)
             mnew = mnew + coeff * x0[..., 1]**(b - j) * mx[idx_src]
         mxy.append(mnew)
 
@@ -117,7 +117,7 @@ def shift_multipoles(m, x0, p=2):
         mnew = 0.
         for k in range(c+1):
             idx_src = index_of_mp[a, b, k]
-            coeff = binomial[c, k]
+            coeff = binomial[c, k].astype(m.dtype)
             mnew = mnew + coeff * x0[..., 2]**(c - k) * mxy[idx_src]
         mxyz.append(mnew)
 
@@ -175,7 +175,7 @@ def shift_local_to_local(L, dx):
             for j in range(c[1], p+1-i):
                 for k in range(c[2], p+1-i-j):
                     bfac = binomial[i, c[0]] * binomial[j, c[1]] * binomial[k, c[2]]
-                    Lnew = Lnew + bfac * L[...,index_of_mp[i,j,k]] * dx[...,0]**(i-c[0]) * dx[...,1]**(j-c[1]) * dx[...,2]**(k-c[2])
+                    Lnew = Lnew + bfac.astype(dx.dtype) * L[...,index_of_mp[i,j,k]] * dx[...,0]**(i-c[0]) * dx[...,1]**(j-c[1]) * dx[...,2]**(k-c[2])
         Lout.append(Lnew)
 
     return jnp.stack(Lout, axis=-1)
@@ -260,30 +260,33 @@ def _get_Dn(x, g, nx=0, ny=0, nz=0):
     xpow = x[...,0]**nx * x[...,1]**ny * x[...,2]**nz
 
     # This function checks the signature of nx,ny,nz
-    def sig(nx, ny=-1, nz=-1):
+    def sig(val, nx, ny=-1, nz=-1):
         if ny == -1: # only compare nx
-            return nsort[0] == nx
+            cond = (nsort[0] == nx)
         elif nz == -1:
-            return (nsort[0] == nx) & (nsort[1] == ny)
+            cond = (nsort[0] == nx) & (nsort[1] == ny)
         else:
-            return (nsort[0] == nx) & (nsort[1] == ny) * (nsort[2] == nz)
+            cond = (nsort[0] == nx) & (nsort[1] == ny) * (nsort[2] == nz)
+        return val if cond else 0
 
     if n == 0:
         return g[0]
     elif n == 1:
         return g[1]*x[...,isort[0]]
     elif n == 2:
-        return g[1]*sig(2) + g[2]*xpow
+        return sig(g[1], 2) + g[2]*xpow
     elif n == 3:
-        return g[2]*(3*sig(3)*x[...,isort[0]] + sig(2,1)*x[...,isort[1]]) + g[3]*xpow
+        return g[2]*(sig(3*x[...,isort[0]], 3) + sig(x[...,isort[1]], 2,1)) + g[3]*xpow
     elif n == 4:
-        return (g[2]*(3*sig(4) + sig(2,2)) 
-                + g[3]*(6*sig(4)*x[...,isort[0]]**2 + 3*sig(3,1)*x[...,isort[0]]*x[...,isort[1]] + sig(2,2)*(x[...,isort[0]]**2 + x[...,isort[1]]**2) + sig(2,1,1)*x[...,isort[1]]*x[...,isort[2]])
+        return (g[2]*(sig(3.,4) + sig(1.,2,2)) 
+                + g[3]*(sig(6.*x[...,isort[0]]**2,4) + sig(3.*x[...,isort[0]]*x[...,isort[1]],3,1) 
+                        + sig((x[...,isort[0]]**2 + x[...,isort[1]]**2),2,2) 
+                        + sig(x[...,isort[1]]*x[...,isort[2]],2,1,1))
                 + g[4]*xpow)
     elif n == 5:
-        return (g[3]*(15*sig(5)*x[...,isort[0]] + 3*sig(4,1)*x[...,isort[1]] + 3*sig(3,2)*x[...,isort[0]] + sig(2,2,1)*x[...,isort[2]]) 
-                + g[4]*(10*sig(5)*x[...,isort[0]]**3 + 6*sig(4,1)*x[...,isort[0]]**2*x[...,isort[1]] + sig(3,2)*(3*x[...,isort[0]]*x[...,isort[1]]**2 +  x[...,isort[0]]**3) 
-                        + sig(2,2,1)*x[...,isort[2]]*(x[...,isort[0]]**2 + x[...,isort[1]]**2))
+        return (g[3]*(sig(15.*x[...,isort[0]],5) + sig(3.*x[...,isort[1]],4,1) + sig(3.*x[...,isort[0]],3,2) + sig(x[...,isort[2]], 2,2,1))
+                + g[4]*(sig(10.*x[...,isort[0]]**3, 5) + sig(6.*x[...,isort[0]]**2*x[...,isort[1]],4,1) + sig((3*x[...,isort[0]]*x[...,isort[1]]**2 +  x[...,isort[0]]**3),3,2)
+                        + sig(x[...,isort[2]]*(x[...,isort[0]]**2 + x[...,isort[1]]**2),2,2,1))
                 + g[5]*xpow)
     else:
         raise ValueError("n must be between 0 and 5")
@@ -342,7 +345,7 @@ def potential_direct_sum(x, m=1., n2lim=1e8, eps=1e-5):
     nev = int(np.ceil(x.shape[0] / nmax))
 
     def potential_over_range(i1, i2):
-        xi = x[jnp.arange(nmax) + i1]
+        xi = x[jnp.arange(nmax, dtype=jnp.int32) + i1]
         # Compute vector distances to all other particles
         r_ij2 = jnp.sum((x - xi[:,None])**2, axis=-1)
         distinv = jnp.where(r_ij2 < 1e-30, 0., 1./jnp.sqrt(r_ij2 + eps**2)) # avoid self-interaction
@@ -352,7 +355,7 @@ def potential_direct_sum(x, m=1., n2lim=1e8, eps=1e-5):
     def handle_interval(_, i):
         return None, potential_over_range(nmax * i, nmax * (i + 1))
 
-    _, phis = jax.lax.scan(handle_interval, None, jnp.arange(nev))
+    _, phis = jax.lax.scan(handle_interval, None, jnp.arange(nev, dtype=jnp.int32))
 
     return jnp.concatenate(phis)[0:N]
 potential_direct_sum.jit = jax.jit(potential_direct_sum, static_argnames=("n2lim",))
@@ -377,8 +380,8 @@ def single_multipole_to_local(mp, dx, p=2, eps=0.):
             Dnk = D[index_of_mp[ks[0]+ns[0], ks[1]+ns[1], ks[2]+ns[2]]]
             Qn = mp[...,index_of_mp[ns[0], ns[1], ns[2]]]
 
-            val += Dnk * Qn * fac / fact[n]
-        Lk.append(- (-1.)**k / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])  * val)
+            val += Dnk * Qn * (fac / fact[n]).astype(dx.dtype)
+        Lk.append((- (-1.)**k / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])).astype(dx.dtype)  * val)
         
     return jnp.stack(Lk, axis=-1)
 
@@ -418,7 +421,7 @@ def single_multipole_to_point(mp, dx, p=2, eps=0.):
         fac =  1./(fact[c[0]] * fact[c[1]] * fact[c[2]])
         
         D = _get_Dn(-dx, gs, nx=c[0], ny=c[1], nz=c[2])
-        pot = pot - fac * D * mp[...,index_of_mp[c[0], c[1], c[2]]]
+        pot = pot - fac.astype(dx.dtype) * D * mp[...,index_of_mp[c[0], c[1], c[2]]]
     
     return pot
 
@@ -491,7 +494,7 @@ def ilist_multipole_to_points(mpnodes, xnodes, xpart, ibounds, interactions, ima
 
     ileaf, inode  = interactions.T
     
-    iarange = jnp.arange(max_size)
+    iarange = jnp.arange(max_size, dtype=jnp.int32)
 
     iparts = ibounds[ileaf,None] + iarange[:]
 
@@ -514,7 +517,7 @@ def ilist_monopoles_to_local(xnodes, xpart, mass, ibounds, interactions, imask=N
 
     inode, ileaf = interactions.T
     
-    iarange = jnp.arange(max_size)
+    iarange = jnp.arange(max_size, dtype=jnp.int32)
 
     iparts = ibounds[ileaf,None] + iarange[:]
 
@@ -529,8 +532,8 @@ def ilist_monopoles_to_local(xnodes, xpart, mass, ibounds, interactions, imask=N
     mps = mass[iparts]
     
     for i,ks in enumerate(combs):
-        val = (mps*ipart_valid) * _get_Dn(-dx, gs, nx=ks[0], ny=ks[1], nz=ks[2])
-        Li = - (-1.)**np.sum(ks) / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])  * val
+        val = jnp.where(ipart_valid, mps, 0) * _get_Dn(-dx, gs, nx=ks[0], ny=ks[1], nz=ks[2])
+        Li = (- (-1.)**np.sum(ks) / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])).astype(np.float32)  * val
         Ls.append(jnp.sum(Li, axis=1))
     
     Ls = jnp.stack(Ls, axis=-1)
@@ -551,7 +554,7 @@ def ilist_monopoles_to_points(pos, mass, ibounds, interactions, imask=None, max_
 
     i1, i2 = interactions.T
     
-    iarange = jnp.arange(max_size)
+    iarange = jnp.arange(max_size, dtype=jnp.int32)
 
     phi = jnp.zeros(pos.shape[0], dtype=pos.dtype)
 
@@ -591,7 +594,7 @@ def _reduce_fsum_chunked(f, y0, x, istart, iend, chunk_size):
     Returns:
     - total: accumulated result from all chunks
     """
-    iarange = jnp.arange(chunk_size)
+    iarange = jnp.arange(chunk_size, dtype=jnp.int32)
     num_chunks = (iend-istart + chunk_size - 1) // chunk_size # corresponds to ceil((iend-istart) / chunk_size)
 
     def body(i, y):

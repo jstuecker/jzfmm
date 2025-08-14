@@ -40,7 +40,7 @@ def offset_sum(num):
 
 def scatter_masked(y, value, mask, offset=0, get_offsets=False):
     """Emulates y[offset:offset+sum(mask)] = value[mask], but jit-compatible."""
-    off, num = offset_sum(mask * 1)
+    off, num = offset_sum(mask.astype(jnp.int32))
     off_masked = jnp.where(mask & (offset+off >= 0), offset+off, y.shape[0])
 
     ynew = y.at[off_masked].set(value)
@@ -65,8 +65,9 @@ def opening_criterion(octree : Octree, nodeA, nodeB, thetamax=0.75):
     # For now we assume L=0 for leaves, since they will be directly summed over...
     # However, in principle the distance calculation for the opening criterio is not 100%
     # right for this case. Possibly we should open all leave-node cases?
-    L1 = jnp.where(isleafA, 0., jnp.ldexp(1., lvl_oct[nodeA])) # 2**lvlA
-    L2 = jnp.where(isleafB, 0., jnp.ldexp(1., lvl_oct[nodeB])) # 2**lvlB
+    one = jnp.array(1., dtype=octree.xnode.dtype)
+    L1 = jnp.where(isleafA, 0., jnp.ldexp(one, lvl_oct[nodeA])) # 2**lvlA
+    L2 = jnp.where(isleafB, 0., jnp.ldexp(one, lvl_oct[nodeB])) # 2**lvlB
 
     x1 = jnp.where(isleafA[:,None], octree.xleaf[-nodeA], octree.xnode[nodeA])
     x2 = jnp.where(isleafB[:,None], octree.xleaf[-nodeB], octree.xnode[nodeB])
@@ -175,7 +176,8 @@ def organize_interactions(interaction_list, nfilled, sort=False):
     inodeA, inodeB = interaction_list.T
 
     # Interaction types: # 0: node-node, 1: node-leaf, 2: leaf-node, 3: leaf-leaf 4: invalid
-    itype = 2*(inodeA <= 0) + 1*(inodeB <= 0) + 4*(jnp.arange(len(interaction_list)) >= nfilled)
+    itype = (2*(inodeA <= 0).astype(jnp.int32) + (inodeB <= 0).astype(jnp.int32) 
+             + 4*(jnp.arange(len(interaction_list), dtype=jnp.int32) >= nfilled).astype(jnp.int32))
 
     if sort:
         # Sort interactions by type and receiving nodes inodeA
@@ -188,7 +190,7 @@ def organize_interactions(interaction_list, nfilled, sort=False):
         offsets = 0
         istart, iend = [0], []
         for i in range(0, 4):
-            offs, num = offset_sum(itype == i)
+            offs, num = offset_sum((itype == i).astype(jnp.int32))
             offsets = jnp.where(itype == i, istart[-1] + offs, offsets)
             iend.append(istart[-1] + num)
             istart.append(iend[-1])

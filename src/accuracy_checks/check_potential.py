@@ -6,6 +6,9 @@ import numpy as np
 import custom_jax as cj
 import matplotlib.pyplot as plt
 
+# jax.config.update("jax_enable_x64", True)
+# jax.config.update("jax_numpy_dtype_promotion", "strict")
+
 jax.config.update("jax_compilation_cache_dir", "logs/cache")
 # jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
 # jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
@@ -14,8 +17,8 @@ jax.config.update("jax_compilation_cache_dir", "logs/cache")
 eps = 1e-3
 N = int(1024*32)
 
-pos0 = jax.random.normal(jax.random.PRNGKey(0), (N,3), dtype=jnp.float32) * 0.05
-mass0 = jnp.ones(len(pos0), dtype=jnp.float32)
+pos0 = jax.random.normal(jax.random.PRNGKey(0), (N,3), dtype=jnp.float64) * 0.05
+mass0 = jnp.ones(len(pos0), dtype=pos0.dtype)
 
 import time
 t0 = time.time()

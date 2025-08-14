@@ -124,7 +124,7 @@ def morton_3int32_to_3int32(ipos):
 def organize_particles(pos, return_sorted=True):
     ipos, valid = pos_to_icoord(pos)
     morton = morton_3int32_to_3int32(ipos)
-    isort = jnp.lexsort(morton.T)
+    isort = jnp.lexsort(morton.T).astype(jnp.int32)
     if return_sorted:
         return morton[isort], pos[isort], isort
     else:
@@ -144,7 +144,7 @@ def find_previous_and_next_higher(lvls):
     if lvls corresponds to the levels of a binary tree, this gives the extend of each node
     """
     nnodes = len(lvls)
-    iarange = jnp.arange(nnodes)
+    iarange = jnp.arange(nnodes, dtype=jnp.int32)
     iprev = jnp.clip(iarange - 1,0,None)
     inext = jnp.clip(iarange + 1,0,nnodes-1)
 
@@ -176,17 +176,17 @@ def determine_children(lvls, lbound, rbound):
     iparent, is_left = get_parent_binary(jnp.array(lvls), lbound, rbound)
 
     nnodes = len(lvls)
-    iarange = jnp.arange(nnodes)
+    iarange = jnp.arange(nnodes, dtype=jnp.int32)
 
-    lchild = -jnp.arange(nnodes) + 1
-    rchild = -jnp.arange(nnodes)
+    lchild = -jnp.arange(nnodes, dtype=jnp.int32) + 1
+    rchild = -jnp.arange(nnodes, dtype=jnp.int32)
 
     rchild = rchild.at[jnp.where(is_left, iparent, nnodes)].set(iarange)
     lchild = lchild.at[jnp.where(~is_left, iparent, nnodes)].set(iarange)
 
     # Handle our two fake nodes at the boundary:
     # We can always find the rootnode as rchild[0]
-    rootnode = jnp.argmax(lvls[1:-1]) + 1
+    rootnode = jnp.argmax(lvls[1:-1]).astype(jnp.int32) + 1
     lchild = lchild.at[0].set(0).at[-1].set(rootnode)
     rchild = rchild.at[-1].set(nnodes-1).at[0].set(rootnode)
 
@@ -197,8 +197,8 @@ def get_compressed_binary_tree(morton) -> BinaryTree:
     tree = BinaryTree(min_level=-90, max_level=0)
     tree.level_binary = -morton_diff_level(morton[1:], morton[:-1])
     # We put fake levels -1 at the start and end so that all nodes have well defined boundaries
-    tree.level_binary = jnp.concatenate((jnp.array((tree.max_level+1,)), tree.level_binary,  
-                                         jnp.array((tree.max_level+1,))))
+    tree.level_binary = jnp.concatenate((jnp.array((tree.max_level+1,), dtype=jnp.int32), tree.level_binary,  
+                                         jnp.array((tree.max_level+1,), dtype=jnp.int32)))
 
     tree.lbound, tree.rbound = find_previous_and_next_higher(tree.level_binary)
     tree.lchild, tree.rchild = determine_children(tree.level_binary, tree.lbound, tree.rbound)
@@ -275,7 +275,7 @@ def define_reduced_tree_masks(tree : BinaryTree, max_leaf_size=4):
     # even if they have more than max_leaf_size particles, since we cannot split them further
     # Since they all share a parent, we have to make sure to keep only the one of them
     # that the parent knows about
-    inode = jnp.arange(len(tree.level_binary))
+    inode = jnp.arange(len(tree.level_binary), dtype=jnp.int32)
     is_a_child = (tree.lchild[tree.rbound] == inode) | (tree.rchild[tree.lbound] == inode)
     keep_as_leaf = keep_as_leaf | (keep & (tree.level_binary == tree.min_level) & is_a_child)
     
@@ -295,17 +295,19 @@ def define_leaf_maps(tree, keep_as_node, keep_as_leaf, keep_lchild_leaf, keep_rc
     parent = get_parent_binary(tree.level_binary, tree.lbound, tree.rbound)[0]
 
     # Figure out where leaves must be put in the new leaf-array
-    imap_leaf, num_new_leaves = offset_sum(1*keep_as_leaf + 1*keep_lchild_leaf + 1*keep_rchild_leaf)
+    imap_leaf, num_new_leaves = offset_sum(keep_as_leaf.astype(jnp.int32) 
+                                           + keep_lchild_leaf.astype(jnp.int32) 
+                                           + keep_rchild_leaf.astype(jnp.int32))
 
     def masked_update(ar, mask, value, right=False):
-        ind = imap_leaf if not right else imap_leaf + 1*keep_lchild_leaf
+        ind = imap_leaf if not right else imap_leaf + keep_lchild_leaf.astype(jnp.int32)
         return ar.at[jnp.where(mask, ind, max_new_leaves+1)].set(value, indices_are_sorted=True)
 
     # Create pointers to the old parents of new leaves
     parent_of_leaf = jnp.full(max_new_leaves+1, fill_value=max_old_leaves, dtype=jnp.int32)
     parent_of_leaf = masked_update(parent_of_leaf, keep_as_leaf, parent)
-    parent_of_leaf = masked_update(parent_of_leaf, keep_lchild_leaf, jnp.arange(max_old_nodes))
-    parent_of_leaf = masked_update(parent_of_leaf, keep_rchild_leaf, jnp.arange(max_old_nodes), 
+    parent_of_leaf = masked_update(parent_of_leaf, keep_lchild_leaf, jnp.arange(max_old_nodes, dtype=jnp.int32))
+    parent_of_leaf = masked_update(parent_of_leaf, keep_rchild_leaf, jnp.arange(max_old_nodes, dtype=jnp.int32), 
                                    right=True)
 
     # Keep track of the first particle that belongs to each new leaf
@@ -349,7 +351,7 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
     assert max_old_leaves > max_leaf_size, "Please use smaller leaves or more particles"
 
     # A worst case estimate of the number of new leaves
-    max_new_leaves = np.ceil(max_old_leaves /  np.clip((max_leaf_size//2),1, None)).astype(np.int32)
+    max_new_leaves = int(np.ceil(max_old_leaves /  np.clip((max_leaf_size//2),1, None)))
     max_new_nodes = max_new_leaves + 1
 
     # Determine which nodes and leaves we keep in the new tree
@@ -361,11 +363,11 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
      ) = define_leaf_maps(tree, keep_as_node, keep_as_leaf, keep_lchild_leaf, keep_rchild_leaf, max_new_leaves)
 
     # Find out where to put new internal nodes
-    imap_node, nnodes = offset_sum(1*keep_as_node)
+    imap_node, nnodes = offset_sum(keep_as_node.astype(jnp.int32))
     imap_node = jnp.where(keep_as_node, imap_node, max_new_nodes)
     # With the inverse map it is easier to construct the new tree
     ifrom_node = jnp.zeros(max_new_nodes, dtype=jnp.int32
-                           ).at[imap_node].set(jnp.arange(max_old_nodes), indices_are_sorted=True)
+                           ).at[imap_node].set(jnp.arange(max_old_nodes, dtype=jnp.int32), indices_are_sorted=True)
 
     def map_node(id): # Returns the node index in the new tree of an old node id
         inew = jnp.where(id <= 0, -leaf_of_part[-id], max_new_leaves)
@@ -375,7 +377,8 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
 
     newtree = Octree(nnodes=nnodes, max_leaf_size=max_leaf_size, 
                      min_level=tree.min_level, max_level=tree.max_level)
-    inewnode = jnp.arange(max_new_nodes)
+    inewnode = jnp.arange(max_new_nodes, dtype=jnp.int32
+    )
 
     iparent = get_parent_binary(tree.level_binary, tree.lbound, tree.rbound)[0]
     newtree.parent = map_node(iparent[ifrom_node])
@@ -404,9 +407,9 @@ def put_nodes_in_level_order(octree : Octree) -> Octree:
     level = octree.level_binary.at[jnp.where(inode >= octree.nnodes-1, inode, max_nodes)].set(100)
 
     # For a given new node index, which original index it came from:
-    isort = jnp.lexsort((inode, -level)) # With lexsort nodes of the same level keep their rel. order
+    isort = jnp.lexsort((inode, -level)).astype(jnp.int32) # With lexsort nodes of the same level keep their rel. order
     # For a given original index, which new index it is at:
-    inv_i = jnp.empty_like(isort).at[isort].set(jnp.arange(isort.size))
+    inv_i = jnp.empty_like(isort).at[isort].set(jnp.arange(isort.size, dtype=jnp.int32))
 
     # Children may be leaves -- only map their indices if they are nodes
     lchild = jnp.where(octree.lchild > 0, inv_i[octree.lchild], octree.lchild)

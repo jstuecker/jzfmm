@@ -19,10 +19,10 @@ def test_btree_children():
     tree = fmdj.octree.get_compressed_binary_tree(morton)
 
     # Parent of child should be the node itself
-    inode = jnp.where(tree.lchild > 0)[0]
+    inode = jnp.where(tree.lchild > 0)[0].astype(jnp.int32)
     assert jnp.all(inode == tree.rbound[tree.lchild[inode]])
 
-    inode = jnp.where((tree.rchild > 0) & (tree.level_binary <= tree.max_level))[0]
+    inode = jnp.where((tree.rchild > 0) & (tree.level_binary <= tree.max_level))[0].astype(jnp.int32)
     assert jnp.all(inode == tree.lbound[tree.rchild[inode]])
 
 @pytest.mark.parametrize("duplicate", [False, True])
