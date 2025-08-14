@@ -533,7 +533,7 @@ def ilist_monopoles_to_local(xnodes, xpart, mass, ibounds, interactions, imask=N
     
     for i,ks in enumerate(combs):
         val = jnp.where(ipart_valid, mps, 0) * _get_Dn(-dx, gs, nx=ks[0], ny=ks[1], nz=ks[2])
-        Li = (- (-1.)**np.sum(ks) / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])).astype(np.float32)  * val
+        Li = (- (-1.)**np.sum(ks) / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])).astype(xpart.dtype)  * val
         Ls.append(jnp.sum(Li, axis=1))
     
     Ls = jnp.stack(Ls, axis=-1)
