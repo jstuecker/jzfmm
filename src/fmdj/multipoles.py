@@ -410,6 +410,41 @@ def single_multipole_to_local_new(mp, dx, p=2, eps=0.):
 
     return Lk
 
+from jax.experimental import sparse
+
+def single_multipole_to_local_sparse(mp, dx, p=2, eps=0.):
+    # At p=4 the sparse version should safe theoretically about a factor 4 in the number of operations
+    # However, it ends up a factor 2 slower...
+
+    combs, index_of_mp = define_index_maps(p)
+    nks = len(combs)
+
+    ij_sparse = []
+    isparse_from =[]
+    wsparse = []
+
+    for i,ks in enumerate(combs):
+        nvecs = multipole_powers(p-np.sum(ks))
+
+        for j, ns in enumerate(nvecs):
+            ij_sparse.append((i,j))
+            isparse_from.append(index_of_mp[ks[0]+ns[0], ks[1]+ns[1], ks[2]+ns[2]])
+            wsparse.append(- (-1.)**np.sum(ks) / (fact[ns[0]] * fact[ns[1]] * fact[ns[2]] * fact[ks[0]] * fact[ks[1]] * fact[ks[2]]))
+    
+    isparse_from = np.array(isparse_from, dtype=np.int32)
+    ij_sparse = np.array(ij_sparse, dtype=np.int32)
+    wsparse = np.array(wsparse, dtype=dx.dtype)
+    
+    def get_single_local(mp, dx):
+        D = get_all_Dn_new(-dx[None,:], p=p, eps=eps)[0]
+
+        Dsparse = sparse.BCOO((D[isparse_from]*wsparse, ij_sparse), shape=(nks,nks),
+                              indices_sorted=True, unique_indices=True)
+
+        return Dsparse @ mp
+
+    return jax.vmap(get_single_local, (0,0))(mp, dx)
+
 def single_multipole_to_point(mp, dx, p=2, eps=0.):
     """The potential of a multipole expanded at 0 evaluated at dx"""
     combs, index_of_mp = define_index_maps(p)
@@ -620,19 +655,22 @@ def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=
     return loc
 evaluate_ilists_node_node.jit = jax.jit(evaluate_ilists_node_node, static_argnames=("p", "chunk_fac", "eps", "use_cj"))
 
-def evaluate_ilists_node_node_tmp(xnodes, multipoles, interactions, istart, iend, p=2, chunk_fac=4,  eps=0.):
+def evaluate_ilists_node_node_tmp(xnodes, multipoles, interactions, istart, iend, p=2, chunk_fac=4,  eps=0., mode=1):
     chunk_size = int(len(xnodes) * chunk_fac)
 
     loc = jnp.zeros(multipoles.shape, dtype=xnodes.dtype)
 
     def eval_node_node(loc, iab, mask):
-        weights = single_multipole_to_local_new(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
+        if mode == 1:
+            weights = single_multipole_to_local_new(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
+        elif mode == 2:
+            weights = single_multipole_to_local_sparse(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
         weights = jnp.where(mask[:,None], weights, 0.)
         return loc.at[iab[:,0]].add(weights)
     loc = _reduce_fsum_chunked(eval_node_node, loc, interactions, istart, iend, chunk_size=chunk_size)
 
     return loc
-evaluate_ilists_node_node_tmp.jit = jax.jit(evaluate_ilists_node_node_tmp, static_argnames=("p", "chunk_fac", "eps"))
+evaluate_ilists_node_node_tmp.jit = jax.jit(evaluate_ilists_node_node_tmp, static_argnames=("p", "chunk_fac", "eps", "mode"))
 
 
 def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=1., eps=0.):
