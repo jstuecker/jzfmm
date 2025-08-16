@@ -4,6 +4,7 @@ from .octree import Octree
 import numpy as np
 from math import factorial
 from functools import lru_cache
+from .variants import variant, select
 
 try:
     import custom_jax as cj
@@ -640,17 +641,18 @@ def evaluate_ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interac
     return phi
 evaluate_ilists_node_to_leaf.jit = jax.jit(evaluate_ilists_node_to_leaf, static_argnames=("p", "max_leaf_size", "chunk_fac", "eps"))
 
-def evaluate_ilists_leaf_leaf(xpart, mpart, leaf_bounds, interactions, istart, iend, max_leaf_size=64, chunk_fac=4., use_cj=True, eps=0.):
-    if use_cj:
-        assert eps > 0, "Cannot use custom JAX with eps = 0"
-        f, phi = cj.forces.ilist_force(xpart, leaf_bounds, -interactions, iminmax=jnp.array((istart, iend)),
-                                       mass=mpart, eps=eps)
-    else:
-        phi = jnp.zeros(xpart.shape[0], dtype=xpart.dtype)
-        chunk_size = int(len(leaf_bounds) * chunk_fac)
-        def eval_leaf_leaf(phi, iab, mask):
-            return phi + ilist_monopoles_to_points(xpart, mpart, leaf_bounds, jnp.abs(iab), imask=mask, max_size=max_leaf_size, eps=eps)
-        phi = _reduce_fsum_chunked(eval_leaf_leaf, phi, interactions, istart, iend, chunk_size=chunk_size)
+@variant("ilist_leaf_to_leaf", name="ref", priority=0)
+def _ilists_leaf_leaf_ref(xpart, mpart, leaf_bounds, interactions, irange, max_leaf_size=64, chunk_fac=4., eps=0.):
+    print("Using reference implementation for ilist_leaf_to_leaf")
+    phi = jnp.zeros(xpart.shape[0], dtype=xpart.dtype)
+    chunk_size = int(len(leaf_bounds) * chunk_fac)
+    def eval_leaf_leaf(phi, iab, mask):
+        return phi + ilist_monopoles_to_points(xpart, mpart, leaf_bounds, jnp.abs(iab), imask=mask, max_size=max_leaf_size, eps=eps)
+    phi = _reduce_fsum_chunked(eval_leaf_leaf, phi, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return phi
-evaluate_ilists_leaf_leaf.jit = jax.jit(evaluate_ilists_leaf_leaf, static_argnames=("max_leaf_size", "chunk_fac", "use_cj", "eps"))
+
+def ilist_leaf_to_leaf(xpart, mpart, leaf_bounds, interactions, irange, max_leaf_size=64, eps=0.):
+    """Evaluates leaf to leaf interactions via interaction lists -- returning particle potentials"""
+    return select("ilist_leaf_to_leaf").fn(xpart, mpart, leaf_bounds, interactions, irange, max_leaf_size=max_leaf_size, eps=eps)
+ilist_leaf_to_leaf.jit = jax.jit(ilist_leaf_to_leaf, static_argnames=("max_leaf_size", "eps"))

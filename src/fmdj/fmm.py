@@ -220,9 +220,9 @@ def evaluate_interaction_lists(octree : Octree, posz, massz, ilist, nilist, sort
     phi = phi + multipoles.evaluate_ilists_node_to_leaf(
         octree.xnode, octree.mp, posz, octree.leaf_particle_bounds, ilist, 
         istart[2], iend[2], p=octree.p, max_leaf_size=octree.max_leaf_size, eps=eps)
-    phi = phi + multipoles.evaluate_ilists_leaf_leaf(
-        posz, massz, octree.leaf_particle_bounds, ilist, istart[3], iend[3], 
-        max_leaf_size=octree.max_leaf_size, use_cj=use_cj, eps=eps)
+    phi = phi + multipoles.ilist_leaf_to_leaf(
+        posz, massz, octree.leaf_particle_bounds, ilist, jnp.array((istart[3], iend[3])), 
+        max_leaf_size=octree.max_leaf_size, eps=eps)
     
     return phi
 evaluate_interaction_lists.jit = jax.jit(evaluate_interaction_lists, static_argnames=("sort", "use_cj", "eps"))
@@ -266,7 +266,6 @@ fast_multipole_potential.jit = jax.jit(fast_multipole_potential,
 def _testfunc_ref(x, p=2):
     print("REF!")
     return x*p
-
 
 def testfunc(x, p=2):
     """Test function to demonstrate variant selection."""

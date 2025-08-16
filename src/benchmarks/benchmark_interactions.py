@@ -39,9 +39,9 @@ def time_interactions(timer, N, p, eps=1e-3):
         phi1 = timer.timeit_jit(fmdj.multipoles.evaluate_ilists_node_to_leaf.jit,
             octree.xnode, octree.mp, posz, octree.leaf_particle_bounds, ilist, 
             istart[2], iend[2], p=octree.p, max_leaf_size=octree.max_leaf_size, eps=eps)
-    phi2 = timer.timeit_jit(fmdj.multipoles.evaluate_ilists_leaf_leaf.jit,
-        posz, massz, octree.leaf_particle_bounds, ilist, istart[3], iend[3], 
-        max_leaf_size=octree.max_leaf_size, use_cj=True, eps=eps)
+    phi2 = timer.timeit_jit(fmdj.multipoles.ilist_leaf_to_leaf.jit,
+        posz, massz, octree.leaf_particle_bounds, ilist, jnp.array((istart[3], iend[3])), 
+        max_leaf_size=octree.max_leaf_size, eps=eps)
     if p <= 5:
         Loc = timer.timeit_jit(fmdj.multipoles.local_to_local_via_height.jit, octree, Loc1+Loc2)
         phi3 = timer.timeit_jit(fmdj.multipoles.evaluate_local.jit, Loc[octree.node_of_particle], 
