@@ -51,7 +51,7 @@ def variant(op: str, *, name: str = "user", priority: int | None = None, only_if
         return fn
     return deco
 
-def select(op: str):
+def select(op: str) -> Variant:
     """Selects the best variant for the operation `op`."""
 
     # First get all useable variants of the operation
@@ -66,13 +66,20 @@ def select(op: str):
         ov = os.getenv(f"FMDJ_OVERRIDE_{op.upper()}")
     if ov:
         if ov in candidates:
-            return candidates[ov].fn
+            return candidates[ov]
         else:
             raise RuntimeError(f"Override {ov!r} for {op!r} not found in registered variants: { [v.name for v in candidates.values()] }")
 
     # otherwise, we select the highest priority variant
     best = max(candidates, key=lambda name: candidates[name].priority)
-    return candidates[best].fn
+
+    return candidates[best]
+
+def print_variant_info():
+    for op, vs in _variants.items():
+        active = select(op).name
+        names = ", ".join(name for name in vs)
+        print(f"- {op}: active={active}; variants=[{names}]")
 
 @contextmanager
 def algorithm(clear_caches="enter_and_exit", **overrides):

@@ -270,4 +270,4 @@ def _testfunc_ref(x, p=2):
 
 def testfunc(x, p=2):
     """Test function to demonstrate variant selection."""
-    return select("testfunc")(x, p=p)
+    return select("testfunc").fn(x, p=p)
