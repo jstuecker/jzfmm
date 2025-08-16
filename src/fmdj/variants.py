@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 import os
 import jax
+from functools import wraps
 
 @dataclass
 class Variant:
@@ -31,17 +32,22 @@ def has_pkg(modname: str) -> bool:
     except Exception:
         return False
 
-def register_variant(op: str, *, name: str, fn, priority: int = 0, only_if=lambda: True):
-    vardict = _variants.setdefault(op, {})
-    vardict[name] = Variant(name, fn, priority, only_if)
-
-def variant(op: str, *, name: str, priority: int = 0, only_if=lambda: True, clear_caches=True):
-    """Registers a variant for the operation `op` with the given name and priority."""
+def register_variant(op: str, *, name: str, fn, priority: int = 0, only_if=lambda: True, clear_caches=True):
     if clear_caches:
         jax.clear_caches()
 
+    if priority is None:
+        vardict = _variants.get(op, {})
+        max_priority = max((v.priority for v in vardict.values()), default=0)
+        priority = max_priority + 1
+
+    vardict = _variants.setdefault(op, {})
+    vardict[name] = Variant(name, fn, priority, only_if)
+
+def variant(op: str, *, name: str = "user", priority: int | None = None, only_if=lambda: True, clear_caches=True):
+    """Registers a variant for the operation `op` with the given name and priority."""
     def deco(fn):
-        register_variant(op, name=name, fn=fn, priority=priority, only_if=only_if)
+        register_variant(op, name=name, fn=fn, priority=priority, only_if=only_if, clear_caches=clear_caches)
         return fn
     return deco
 
