@@ -210,8 +210,8 @@ def evaluate_interaction_lists(octree : Octree, posz, massz, ilist, nilist, sort
     Loc = multipoles.evaluate_ilists_node_node(
         octree.xnode, octree.mp, ilist, istart[0], iend[0], p=octree.p, use_cj=use_cj, eps=eps)
     Loc = Loc + multipoles.evaluate_ilists_leaf_to_node(
-        octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, 
-        istart[1], iend[1], p=octree.p, max_leaf_size=octree.max_leaf_size, eps=eps)
+        octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, istart[1], iend[1],
+        p=octree.p, max_leaf_size=octree.max_leaf_size, eps=eps, use_cj=use_cj)
     Loc = multipoles.local_to_local_via_height(octree, Loc)
 
     phi = multipoles.evaluate_local(Loc[octree.node_of_particle], 

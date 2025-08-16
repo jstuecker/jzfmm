@@ -13,6 +13,13 @@ except ImportError:
 
 # ============================= Some fixed Combinatorical Computations =========================== #
 
+def multi_to_flat(kx, ky, kz):
+    p = kx + ky + kz
+    npoff = ((p+2)*(p+1)*p // 6)
+    npoff += kz*(2*p + 3 - kz)//2 + ky
+
+    return npoff
+
 def generate_combinations(p):
     """Generate unique triples (i, j, k) such that i + j + k = p."""
     combos = []
@@ -603,7 +610,10 @@ def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=
 evaluate_ilists_node_node.jit = jax.jit(evaluate_ilists_node_node, static_argnames=("p", "max_mb", "eps", "use_cj"))
 
 
-def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, max_mb=1024, mode=0, eps=0.):
+def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, max_mb=1024, use_cj=False, eps=0.):
+    if use_cj:
+        return cj.multipoles.ilist_leaf_to_local(xnodes, xpart, mpart, leaf_bounds, interactions, iminmax=jnp.array((istart, iend)), p=p, eps=eps)
+
     chunk_size = int((max_mb * 1024**2) // (xpart.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)))
     chunk_size = min(max((chunk_size//64)*64,  64), len(xnodes)*4)
 
@@ -615,7 +625,7 @@ def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions
     loc = _reduce_fsum_chunked(eval_node_from_leaf, loc, interactions, istart, iend, chunk_size=chunk_size)
 
     return loc
-evaluate_ilists_leaf_to_node.jit = jax.jit(evaluate_ilists_leaf_to_node, static_argnames=("p", "max_leaf_size", "max_mb", "eps", "mode"))
+evaluate_ilists_leaf_to_node.jit = jax.jit(evaluate_ilists_leaf_to_node, static_argnames=("p", "max_leaf_size", "max_mb", "eps", "use_cj"))
 
 def evaluate_ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=0.4, eps=0.):
     chunk_size = int(len(xpart) * chunk_fac)

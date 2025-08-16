@@ -24,15 +24,18 @@ def time_interactions(timer, N, p, eps=1e-3):
 
     if p <= 5:
         Loc1 = timer.timeit_jit(fmdj.multipoles.evaluate_ilists_node_node.jit,
-            octree.xnode, octree.mp, ilist, istart[0], iend[0], p=octree.p, use_cj=0, eps=eps,
+            octree.xnode, octree.mp, ilist, istart[0], iend[0], p=octree.p, use_cj=False,  eps=eps,
             name = "node_node_jax")
     Loc1b = timer.timeit_jit(fmdj.multipoles.evaluate_ilists_node_node.jit,
-        octree.xnode, octree.mp, ilist, istart[0], iend[0], p=octree.p, use_cj=1, eps=eps,
+        octree.xnode, octree.mp, ilist, istart[0], iend[0], p=octree.p, use_cj=True, eps=eps,
         name = "node_node_cj")
     if p <= 5:
         Loc2 = timer.timeit_jit(fmdj.multipoles.evaluate_ilists_leaf_to_node.jit,
             octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, 
-            istart[1], iend[1], p=octree.p, max_leaf_size=octree.max_leaf_size, eps=eps)
+            istart[1], iend[1], p=octree.p, use_cj=False, max_leaf_size=octree.max_leaf_size, eps=eps)
+        Loc2b = timer.timeit_jit(fmdj.multipoles.evaluate_ilists_leaf_to_node.jit,
+            octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, 
+            istart[1], iend[1], p=octree.p, use_cj=True, eps=eps, name="leaf2node_cj")
         phi1 = timer.timeit_jit(fmdj.multipoles.evaluate_ilists_node_to_leaf.jit,
             octree.xnode, octree.mp, posz, octree.leaf_particle_bounds, ilist, 
             istart[2], iend[2], p=octree.p, max_leaf_size=octree.max_leaf_size, eps=eps)
@@ -48,7 +51,7 @@ def time_interactions(timer, N, p, eps=1e-3):
             octree, posz, massz, ilist, nilist, sort=False, eps=eps,  name="all together")
 
 timer = Timer(print_compile=False, print_warmup=False, loops=4)
-for N in int(1e4), int(1e5), int(3e5), int(1e6):#, int(3e6):
+for N in int(1e4), int(1e5), int(3e5), int(1e6), int(2e6):
     timer.set_tag(N=N)
 
     time_interactions(timer, N, p=4, eps=1e-2)
