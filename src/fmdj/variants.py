@@ -31,13 +31,17 @@ def has_pkg(modname: str) -> bool:
     except Exception:
         return False
 
-def register(op: str, *, name: str, fn, priority: int = 0, only_if=lambda: True):
+def register_variant(op: str, *, name: str, fn, priority: int = 0, only_if=lambda: True):
     vardict = _variants.setdefault(op, {})
     vardict[name] = Variant(name, fn, priority, only_if)
 
-def variant(op: str, *, name: str, priority: int = 0, only_if=lambda: True):
+def variant(op: str, *, name: str, priority: int = 0, only_if=lambda: True, clear_caches=True):
+    """Registers a variant for the operation `op` with the given name and priority."""
+    if clear_caches:
+        jax.clear_caches()
+
     def deco(fn):
-        register(op, name=name, fn=fn, priority=priority, only_if=only_if)
+        register_variant(op, name=name, fn=fn, priority=priority, only_if=only_if)
         return fn
     return deco
 
@@ -54,7 +58,6 @@ def select(op: str):
     ov = _overrides.get(op)
     if not ov: # Can also override via environment variables
         ov = os.getenv(f"FMDJ_OVERRIDE_{op.upper()}")
-
     if ov:
         if ov in candidates:
             return candidates[ov].fn
@@ -66,17 +69,28 @@ def select(op: str):
     return candidates[best].fn
 
 @contextmanager
-def activate_variant(**overrides):
+def algorithm(clear_caches="enter_and_exit", **overrides):
     """A context manager that selects specific variants for the target operations.
     This allows to override the default behavior of operations in a specific context.
     E.g. use like
     with algorithm(potential="gpu"):
         # Do something
+
+    clear_caches: Can be "enter", "exit", "enter_and_exit" or False. Wheter to clear jax's global 
+        caches. This may be necessary to ensure that all externally jitted functions get recompiled
+        and use the correct variants. However, this may be overkill in most cases and therefore
+        you can control whether/when the caches are cleared. If you do, you should make sure to 
+        recompile any jitted functions that depend on the selected variants.
     """
+
     old = dict(_overrides)
     _overrides.update(overrides)
     try:
+        if clear_caches in ("enter", "both"):
+            jax.clear_caches()
         yield
     finally:
         _overrides.clear()
         _overrides.update(old)
+        if clear_caches in ("exit", "both"):
+            jax.clear_caches()
