@@ -270,7 +270,7 @@ vm.testfunc[TAG_REF] = Variant(_testfunc_ref)
 
 def testfunc(x, cfg : config.Config):
     """Test function to demonstrate variant selection."""
-    cfg = vm.config_with_variants(cfg)
-    print(f"Using variant {cfg.variants.testfunc.tag} for testfunc")
-    return cfg.variants.testfunc.fn(x, cfg.opening)
+    var = vm.testfunc.select(cfg)
+    print(f"Using variant {var.tag} for testfunc")
+    return var.fn(x, cfg.opening)
 testfunc.jit = jax.jit(testfunc, static_argnames=("cfg",))
