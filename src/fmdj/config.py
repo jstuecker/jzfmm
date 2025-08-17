@@ -3,9 +3,9 @@ import jax
 
 @dataclass(frozen=True)
 class Variant:
-    tag: str
     fn: callable
     applicable: callable = lambda cfg: True
+    tag : str = ""
 
 @dataclass(unsafe_hash=True)
 class Variants:
@@ -31,6 +31,7 @@ class OpeningRelative:
 @dataclass(frozen=True)
 class BaseConfig:
     tags : tuple[str] = ("cj", "ref")
+    variants : Variants = None
 
 @dataclass(frozen=True)
 class Config(BaseConfig):
@@ -41,18 +42,18 @@ class VariantManager():
         self.variants = VariantDict()
 
     def register_variants(self, var : Variants | VariantDict):
-        for key in self.variants.__dataclass_fields__:
-            if key in var.__dataclass_fields__:
-                vdict = getattr(self.variants, key)
-                new_var = getattr(var, key)
+        for tag in self.variants.__dataclass_fields__:
+            if tag in var.__dataclass_fields__:
+                vdict = getattr(self.variants, tag)
+                new_var = getattr(var, tag)
                 if new_var is None:
                     continue
                 elif isinstance(new_var, dict):
                     vdict.update(new_var)
                 elif isinstance(new_var, Variant):
-                    vdict[new_var.tag] = new_var
+                    vdict[tag] = new_var
                 else:
-                    raise TypeError(f"Unknown variant type {type(new_var)} for field '{key}'")
+                    raise TypeError(f"Unknown variant type {type(new_var)} for field '{tag}'")
 
     def resolve_variants(self, cfg: BaseConfig, verbose=1) -> Variants:
         """Resolve the variants for a given config.
@@ -85,7 +86,7 @@ class VariantManager():
                 if tag in applicable_variants:
                     if verbose >= 4:
                         print(f"Selected variant for {field_name}: {applicable_variants[tag].tag}")
-                    selected_variants[field_name] = applicable_variants[tag]
+                    selected_variants[field_name] = replace(applicable_variants[tag], tag=tag)
                     break
             
             if not field_name in selected_variants:
@@ -105,5 +106,11 @@ class VariantManager():
                     print(f"  {field_name}: {variant.tag}")
         
         return Variants(**selected_variants)
+    
+    def config_with_variants(self, cfg : BaseConfig) -> BaseConfig:
+        """If variants are not set, return a new config with resolved variants."""
+        if cfg.variants is None:
+            cfg = replace(cfg, variants=self.resolve_variants(cfg))
+        return cfg
 
 vm = VariantManager()
