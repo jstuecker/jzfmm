@@ -24,7 +24,7 @@ for thetamax in (0.75, 1.0):
     print(f"Ilist size: {nilist:.1e}/{len(ilist):.1e} for thetamax={thetamax}")
     err.throw()
 
-    ilist, istart, iend = timer.timeit_jit(fmdj.fmm.organize_interactions.jit, ilist, nilist, 
-                                           sort=False, name="organize_interactions_nosort")
+    ilist, isplits = timer.timeit_jit(fmdj.fmm.organize_interactions.jit, ilist, nilist, 
+                                      sort=False, name="organize_interactions_nosort")
 
 timer.plot_timings("opening_angle", save="logs/fmm_timings.pdf", logx=False)

@@ -186,43 +186,41 @@ def organize_interactions(interaction_list, nfilled, sort=False):
         interactions = interaction_list[jnp.lexsort((inodeB, inodeA, itype))]
 
         iend = jnp.array([jnp.sum(itype <= i) for i in (0,1,2,3,8)])
-        istart = jnp.concatenate((jnp.array([0]), iend))[:-1]
+        isplits = jnp.concatenate((jnp.array([0]), iend))
     else:
         # Only sort by type. Since we have only 4 types, we can do this manually with prefix sums
         offsets = 0
-        istart, iend = [0], []
+        isplits = [0]
         for i in range(0, 4):
             offs, num = offset_sum((itype == i).astype(jnp.int32))
-            offsets = jnp.where(itype == i, istart[-1] + offs, offsets)
-            iend.append(istart[-1] + num)
-            istart.append(iend[-1])
+            offsets = jnp.where(itype == i, isplits[-1] + offs, offsets)
+            isplits.append(isplits[-1] + num)
         offsets = jnp.where(itype > 3, len(interaction_list), offsets)
 
         interactions = interaction_list.at[offsets].set(interaction_list)
-        istart, iend = jnp.array(istart[:-1]), jnp.array(iend)
 
-    return interactions, istart, iend
+    return interactions, jnp.array(isplits)
 organize_interactions.jit = jax.jit(organize_interactions, static_argnames=("sort",))
 
 # ============================= Evaluate Interaction Lists ======================================= #
 
 def evaluate_interaction_lists(octree : Octree, posz, massz, ilist, nilist, cfg : config.Config, sort=False):
-    ilist, istart, iend = organize_interactions(ilist, nilist, sort=sort)
+    ilist, iranges = organize_interactions(ilist, nilist, sort=sort)
     
     Loc = multipoles.evaluate_ilists_node_node(
-        octree.xnode, octree.mp, ilist, istart[0], iend[0], p=octree.p, eps=cfg.softening)
+        octree.xnode, octree.mp, ilist, iranges[0], iranges[1], p=octree.p, eps=cfg.softening)
     Loc = Loc + multipoles.evaluate_ilists_leaf_to_node(
-        octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, istart[1], iend[1],
+        octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, iranges[1], iranges[2],
         p=octree.p, max_leaf_size=octree.max_leaf_size, eps=cfg.softening)
     Loc = multipoles.local_to_local_via_height(octree, Loc)
 
     phi = multipoles.evaluate_local(Loc[octree.node_of_particle], 
                                     posz - octree.xnode[octree.node_of_particle])
-    phi = phi + multipoles.evaluate_ilists_node_to_leaf(
+    phi = phi + multipoles.ilists_node_to_leaf(
         octree.xnode, octree.mp, posz, octree.leaf_particle_bounds, ilist, 
-        istart[2], iend[2], p=octree.p, max_leaf_size=octree.max_leaf_size, eps=cfg.softening)
+        iranges[2:4], cfg=cfg)
     phi = phi + multipoles.ilist_leaf_to_leaf(
-        posz, massz, octree.leaf_particle_bounds, ilist, jnp.array((istart[3], iend[3])), cfg)
+        posz, massz, octree.leaf_particle_bounds, ilist, iranges[3:5], cfg)
     
     return phi
 evaluate_interaction_lists.jit = jax.jit(evaluate_interaction_lists, static_argnames=("cfg", "sort"))
@@ -250,7 +248,7 @@ def fast_multipole_potential(pos, mass, cfg : config.Config, return_sorted=False
         pos, mass, max_leaf_size=cfg.max_leaf_size, p=cfg.p)
     
     err, (ilist, nilist) = build_interaction_list.jit(octree, thetamax=cfg.opening.opening_angle)
-    ilist, istart, iend = organize_interactions.jit(ilist, nilist, sort=False)
+    # ilist, iranges = organize_interactions.jit(ilist, nilist, sort=False)
     
     phiz = evaluate_interaction_lists.jit(octree, posz, massz, ilist, nilist, cfg=cfg)
 
@@ -260,17 +258,3 @@ def fast_multipole_potential(pos, mass, cfg : config.Config, return_sorted=False
         return jnp.zeros_like(phiz).at[isortz].set(phiz)
 fast_multipole_potential.jit = jax.jit(fast_multipole_potential,
     static_argnames=("cfg", "return_sorted"))
-
-# ================================ Variants Test (for now) ======================================= #
-
-def _testfunc_ref(x, cfg : config.OpeningBarnesAndHut):
-    print("REF!", cfg)
-    return x
-vm.testfunc[TAG_REF] = Variant(_testfunc_ref)
-
-def testfunc(x, cfg : config.Config):
-    """Test function to demonstrate variant selection."""
-    var = vm.testfunc.select(cfg)
-    print(f"Using variant {var.tag} for testfunc")
-    return var.fn(x, cfg.opening)
-testfunc.jit = jax.jit(testfunc, static_argnames=("cfg",))

@@ -627,18 +627,26 @@ def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions
     return loc
 evaluate_ilists_leaf_to_node.jit = jax.jit(evaluate_ilists_leaf_to_node, static_argnames=("p", "max_leaf_size", "max_mb", "eps", "use_cj"))
 
-def evaluate_ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, chunk_fac=0.4, eps=0.):
-    chunk_size = int(len(xpart) * chunk_fac)
+def ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, irange, cfg : config.Config):
+    chunk_size = int(len(xpart) * cfg.ilist_chunk_fac * 0.2)
 
     phi = jnp.zeros(xpart.shape[0], dtype=xnodes.dtype)
 
     def eval_leaf_node(phi, iab, mask):
         return phi + ilist_multipole_to_points(multipoles, xnodes, xpart, leaf_bounds, jnp.abs(iab), 
-                                               imask=mask, max_size=max_leaf_size, p=p, eps=eps)
-    phi = _reduce_fsum_chunked(eval_leaf_node, phi, interactions, istart, iend, chunk_size=chunk_size)
+                                               imask=mask, max_size=cfg.max_leaf_size, p=cfg.p, 
+                                               eps=cfg.softening)
+    phi = _reduce_fsum_chunked(eval_leaf_node, phi, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return phi
-evaluate_ilists_node_to_leaf.jit = jax.jit(evaluate_ilists_node_to_leaf, static_argnames=("p", "max_leaf_size", "chunk_fac", "eps"))
+ilists_node_to_leaf.jit = jax.jit(ilists_node_to_leaf, static_argnames=("cfg",))
+
+# def ilist_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, irange, cfg : config.Config):
+#     fn = vm.ilist_node_to_leaf.select(cfg).fn
+#     return fn(xpart, mpart, leaf_bounds, interactions, irange, cfg=cfg)
+# ilist_node_to_leaf.jit = jax.jit(ilist_node_to_leaf, static_argnames=("cfg",))
+
+
 
 def _ilists_leaf_leaf_ref(xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
     phi = jnp.zeros(xpart.shape[0], dtype=xpart.dtype)
@@ -652,7 +660,6 @@ def _ilists_leaf_leaf_ref(xpart, mpart, leaf_bounds, interactions, irange, cfg :
 vm.ilist_leaf_to_leaf[TAG_REF] = Variant(_ilists_leaf_leaf_ref)
 
 def ilist_leaf_to_leaf(xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
-    """Evaluates leaf to leaf interactions via interaction lists -- returning particle potentials"""
     fn = vm.ilist_leaf_to_leaf.select(cfg).fn
     return fn(xpart, mpart, leaf_bounds, interactions, irange, cfg=cfg)
 ilist_leaf_to_leaf.jit = jax.jit(ilist_leaf_to_leaf, static_argnames=("cfg",))
