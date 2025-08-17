@@ -1,65 +1,107 @@
-from dataclasses import dataclass, field, is_dataclass
+from dataclasses import dataclass, field, is_dataclass, replace
 import jax
 
-def static_dataclass(cls):
-    """A decorator marking all fields of a dataclass static for JAXs"""
-    cls = dataclass(cls)
-    cls = jax.tree_util.register_dataclass(cls, data_fields=[], 
-                                           meta_fields=cls.__dataclass_fields__.keys())
-    return cls
+@dataclass(frozen=True)
+class Variant:
+    tag: str
+    fn: callable
+    applicable: callable = lambda cfg: True
 
-def flatten_dataclass(obj):
-    return [getattr(obj, key) for key in obj.__dataclass_fields__]
-def unflatten_dataclass(cls, values):
-    return cls(*values)
-
-def flatten_nested_dataclass(obj):
-    res = []
-    fields = obj.__dataclass_fields__
-    for name in fields:
-        if is_dataclass(fields[name].type):
-            res.extend(flatten_nested_dataclass(getattr(obj, name)))
-        else:
-            res.append(getattr(obj, name))
-    return res
-def unflatten_nested_dataclass(cls, values):
-    fields = cls.__dataclass_fields__
-    args = []
-    for name in fields:
-        field = fields[name]
-        if is_dataclass(field.type):
-            sub_cls = field.type
-            sub_fields = cls.__dataclass_fields__
-            sub_values, values = values[:len(sub_fields)], values[len(sub_fields):]
-            args.append(unflatten_nested_dataclass(sub_cls, sub_values))
-        else:
-            args.append(values.pop(0))
-    return cls(*args)
-
-def nested_dataclass(cls):
-    """A decorator that allows nested dataclasses to be flattened and unflattened."""
-    cls = dataclass(cls)
-    jax.tree_util.register_pytree_node(cls, 
-        flatten_func=lambda obj: ((), flatten_nested_dataclass(obj)),
-        unflatten_func=lambda values, _: unflatten_nested_dataclass(cls, values))
-
-    return cls
-
-@static_dataclass
+@dataclass(unsafe_hash=True)
 class Variants:
-    ilist_leaf_to_leaf : str = "none"
-    testfunc : str = "none"
+    ilist_leaf_to_leaf : Variant | list[Variant] = None
+    testfunc : Variant | list[Variant] = None
 
-@static_dataclass
-class FMMConfig:
-    opening_criterion : str = "barnes_and_hut"
+class VariantsList(Variants):
+    def __init__(self, *args, **kwargs):
+        # Initialize all uninitialized fields to empty lists
+        super().__init__(*args, **kwargs)
+        for field_name in self.__dataclass_fields__:
+            if getattr(self, field_name) is None:
+                setattr(self, field_name, [])
+
+@dataclass(frozen=True)
+class OpeningBarnesAndHut:
     opening_angle : float = 0.8
 
-@nested_dataclass
-class Config:
-    fmm : FMMConfig = field(default_factory=FMMConfig)
-    variants : Variants = field(default_factory=Variants)
+@dataclass(frozen=True)
+class OpeningRelative:
+    relative_accuracy : float = 0.01
 
-def default_config() -> Config:
-    """Returns a default configuration object."""
-    return Config()
+@dataclass(frozen=True)
+class BaseConfig:
+    tags : tuple[str] = ("cj", "ref")
+
+@dataclass(frozen=True)
+class Config(BaseConfig):
+    opening: OpeningBarnesAndHut | OpeningRelative = OpeningBarnesAndHut()
+
+_variants_list = VariantsList()
+
+
+
+def register_variants(var : Variants | VariantsList):
+    for key in _variants_list.__dataclass_fields__:
+        if key in var.__dataclass_fields__:
+            vlist = getattr(_variants_list, key)
+            new_variant = getattr(var, key)
+            if new_variant is None:
+                continue
+            elif isinstance(new_variant, list):
+                vlist.extend(new_variant)
+            elif isinstance(new_variant, Variant):
+                vlist.append(new_variant)
+            else:
+                raise TypeError(f"Unknown variant type {type(new_variant)} for field '{key}'")
+
+def resolve_variants(cfg: BaseConfig, verbose=1) -> Variants:
+    """Resolve the variants for a given config.
+    
+    verbose : 0: no printing at all
+              1: print warnings in likely error cases
+              2: print warnings in likely correct cases that may be confusing
+              3: useful output for understanding what happened
+              4: a lot of debug output
+    """
+
+    if not isinstance(cfg, BaseConfig):
+        raise TypeError("config must be an instance of BaseConfig or a subclass")
+
+    selected_variants = {}
+    for field_name in _variants_list.__dataclass_fields__:
+        all_variants = getattr(_variants_list, field_name)
+        if verbose >= 4:
+            print(f"All variants for {field_name}: {tuple(v.tag for v in all_variants)}")
+        applicable_variants = {}
+        for v in all_variants:
+            if v.applicable(cfg):
+                if verbose >= 2 and v.tag in applicable_variants:
+                    print(f"Warning: Multiple variants with tag {v.tag} for {field_name}. Using the most recent definition.")
+                applicable_variants[v.tag] = v
+        if verbose >= 4:
+            print(f"Applicable variants for {field_name}: {tuple(vtag for vtag in applicable_variants)}")
+        
+        for tag in cfg.tags:
+            if tag in applicable_variants:
+                if verbose >= 4:
+                    print(f"Selected variant for {field_name}: {applicable_variants[tag].tag}")
+                selected_variants[field_name] = applicable_variants[tag]
+                break
+        
+        if not field_name in selected_variants:
+            selected_variants[field_name] = None
+            if verbose >= 1:
+                print(f"Warning: No applicable variant found for {field_name}")
+                print(f"-- Selectible tags: {cfg.tags}")
+                print(f"-- All variants: {tuple(v.tag for v in all_variants)}")
+                print(f"-- Applicable variants: {tuple(v.tag for v in applicable_variants)}")
+        
+    if verbose >= 3:
+        print("Selected variants:")
+        for field_name, variant in selected_variants.items():
+            if variant is None:
+                print(f"  {field_name}: None")
+            else:
+                print(f"  {field_name}: {variant.tag}")
+    
+    return Variants(**selected_variants)
