@@ -650,7 +650,7 @@ def _ilists_leaf_leaf_ref(xpart, mpart, leaf_bounds, interactions, irange, max_l
     phi = _reduce_fsum_chunked(eval_leaf_leaf, phi, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return phi
-vm.variants.ilist_leaf_to_leaf[TAG_REF] = Variant(_ilists_leaf_leaf_ref)
+vm.ilist_leaf_to_leaf[TAG_REF] = Variant(_ilists_leaf_leaf_ref)
 
 def ilist_leaf_to_leaf(xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config, max_leaf_size=64, eps=0.):
     """Evaluates leaf to leaf interactions via interaction lists -- returning particle potentials"""

@@ -266,7 +266,7 @@ fast_multipole_potential.jit = jax.jit(fast_multipole_potential,
 def _testfunc_ref(x, cfg : config.OpeningBarnesAndHut):
     print("REF!", cfg)
     return x
-vm.variants.testfunc[TAG_REF] = Variant(_testfunc_ref)
+vm.testfunc[TAG_REF] = Variant(_testfunc_ref)
 
 def testfunc(x, cfg : config.Config):
     """Test function to demonstrate variant selection."""

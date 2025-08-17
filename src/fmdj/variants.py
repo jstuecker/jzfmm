@@ -36,14 +36,15 @@ class VariantConfig:
     tags : tuple[str] = ("cj", "ref")
     variants : Variants = None
 
-class VariantManager():
-    def __init__(self):
-        self.variants = VariantDict()
+class VariantManager(VariantDict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def register_variants(self, var : Variants | VariantDict):
-        for tag in self.variants.__dataclass_fields__:
+        data_fields = VariantDict.__dataclass_fields__
+        for tag in data_fields:
             if tag in var.__dataclass_fields__:
-                vdict = getattr(self.variants, tag)
+                vdict = getattr(self, tag)
                 new_var = getattr(var, tag)
                 if new_var is None:
                     continue
@@ -63,13 +64,13 @@ class VariantManager():
                 3: useful output for understanding what happened
                 4: a lot of debug output
         """
-
+        data_fields = VariantDict.__dataclass_fields__
         if not isinstance(cfg, VariantConfig):
             raise TypeError("config must be an instance of BaseConfig or a subclass")
 
         selected_variants = {}
-        for field_name in self.variants.__dataclass_fields__:
-            all_variants = getattr(self.variants, field_name)
+        for field_name in data_fields:
+            all_variants = getattr(self, field_name)
             if verbose >= 4:
                 print(f"All variants for {field_name}: {tuple(all_variants.keys())}")
             applicable_variants = {vtag: v for vtag, v in all_variants.items() if v.applicable(cfg)}
@@ -114,8 +115,9 @@ class VariantManager():
     
     def print_available_variants(self):
         print("Available Variants:")
-        for field_name in self.variants.__dataclass_fields__:
-            all_variants = getattr(self.variants, field_name)
+        data_fields = VariantDict.__dataclass_fields__
+        for field_name in data_fields:
+            all_variants = getattr(self, field_name)
             print(f"-- {field_name}: -> {tuple(all_variants.keys())}")
 
 vm = VariantManager()
