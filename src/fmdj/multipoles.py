@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from .octree import Octree
 import numpy as np
 from . import config
-from .variants import Variant, vm, TAG_REF
+from .variants import Variant, vm, TAG_BASE, make_dispatcher
 
 try:
     import custom_jax as cj
@@ -588,10 +588,7 @@ def _reduce_fsum_chunked(f, y0, x, istart, iend, chunk_size):
     return jax.lax.fori_loop(0, num_chunks, body, y0)
 
 
-def ilist_node_to_node(xnodes, multipoles, interactions, irange, cfg : config.Config):
-    # if use_cj:
-    #     loc = cj.multipoles.ilist_multipole_to_local(multipoles, xnodes, interactions, iminmax=jnp.array((istart, iend)), p=p, eps=eps)
-    # else:
+def _ilist_node_to_node_base(xnodes, multipoles, interactions, irange, cfg : config.Config):
     p = cfg.p
 
     chunk_size = int((cfg.ilist_max_mb * 1024**2) // (2 * xnodes.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)**2))
@@ -606,9 +603,8 @@ def ilist_node_to_node(xnodes, multipoles, interactions, irange, cfg : config.Co
     loc = _reduce_fsum_chunked(eval_node_node, loc, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return loc
-ilist_node_to_node.jit = jax.jit(ilist_node_to_node, static_argnames=("cfg",))
 
-def ilist_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, irange, cfg : config.Config):
+def _ilist_node_to_leaf_base(xnodes, multipoles, xpart, leaf_bounds, interactions, irange, cfg : config.Config):
     chunk_size = int(len(xpart) * cfg.ilist_chunk_fac * 0.2)
 
     phi = jnp.zeros(xpart.shape[0], dtype=xnodes.dtype)
@@ -620,9 +616,8 @@ def ilist_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, ira
     phi = _reduce_fsum_chunked(eval_leaf_node, phi, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return phi
-ilist_node_to_leaf.jit = jax.jit(ilist_node_to_leaf, static_argnames=("cfg",))
 
-def ilist_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
+def _ilist_leaf_to_node_base(xnodes, xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
     p = cfg.p
     chunk_size = int((cfg.ilist_max_mb * 1024**2) // (xpart.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)))
     chunk_size = min(max((chunk_size//64)*64,  64), len(xnodes)*4)
@@ -636,9 +631,9 @@ def ilist_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, irange, 
     loc = _reduce_fsum_chunked(eval_node_from_leaf, loc, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return loc
-ilist_leaf_to_node.jit = jax.jit(ilist_leaf_to_node, static_argnames=("cfg",))
 
-def _ilist_leaf_leaf_ref(xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
+def _ilist_leaf_leaf_base(xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
+    """Function with some documentation"""
     phi = jnp.zeros(xpart.shape[0], dtype=xpart.dtype)
     chunk_size = int(len(leaf_bounds) * cfg.ilist_chunk_fac)
     def eval_leaf_leaf(phi, iab, mask):
@@ -647,9 +642,15 @@ def _ilist_leaf_leaf_ref(xpart, mpart, leaf_bounds, interactions, irange, cfg : 
     phi = _reduce_fsum_chunked(eval_leaf_leaf, phi, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return phi
-vm.ilist_leaf_to_leaf[TAG_REF] = Variant(_ilist_leaf_leaf_ref)
 
-def ilist_leaf_to_leaf(xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
-    fn = vm.ilist_leaf_to_leaf.select(cfg).fn
-    return fn(xpart, mpart, leaf_bounds, interactions, irange, cfg=cfg)
-ilist_leaf_to_leaf.jit = jax.jit(ilist_leaf_to_leaf, static_argnames=("cfg",))
+# ================================== Dispatcher Functions ======================================== #
+# Below we define the default behaviour of these function
+# However, they can be replaced by custom variants through the pattern
+# vm.ilist_leaf_to_leaf["mytag"] = Variant(myfunction)
+# If the config sets priority to "mytag" the new version will be prefered, e.g.:
+# myconfig = config.Config(tags=("mytag", "base"))
+
+ilist_node_to_node = make_dispatcher(vm.ilist_node_to_node, _ilist_node_to_node_base, add_jit=True)
+ilist_node_to_leaf = make_dispatcher(vm.ilist_node_to_leaf, _ilist_node_to_leaf_base, add_jit=True)
+ilist_leaf_to_node = make_dispatcher(vm.ilist_leaf_to_node, _ilist_leaf_to_node_base, add_jit=True)
+ilist_leaf_to_leaf = make_dispatcher(vm.ilist_leaf_to_leaf, _ilist_leaf_leaf_base, add_jit=True)

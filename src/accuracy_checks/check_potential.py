@@ -25,8 +25,8 @@ t0 = time.time()
 
 # for p in (1,2,3,4,5):
 for p in (2,3):
-    config = fmdj.Config(tags=("ref",), softening=eps, p=p)
-    config_cj = fmdj.Config(tags=("cj", "ref"), softening=eps, p=p)
+    config = fmdj.Config(tags=("base",), softening=eps, p=p, verbose=2)
+    config_cj = fmdj.Config(tags=("cuda", "base"), softening=eps, p=p, verbose=2)
 
     phi0 = fmdj.multipoles.potential_direct_sum.jit(pos0, mass0, eps=eps)
     phi_jax = fmdj.fmm.fast_multipole_potential.jit(pos0, mass0, config, return_sorted=False)

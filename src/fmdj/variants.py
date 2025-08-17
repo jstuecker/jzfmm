@@ -5,6 +5,7 @@ to override the default behavior based on runtime conditions or user preferences
 
 from dataclasses import dataclass, replace, field
 import jax
+from typing import Callable, TypeVar, ParamSpec  # Python 3.10+, or typing_extensions
 
 def has_gpu():
     try:
@@ -31,7 +32,7 @@ class Variants:
 
 @dataclass(frozen=True)
 class VariantConfig:
-    tags : tuple[str] = ("cj", "ref")
+    tags : tuple[str] = ("cuda", "base")
     variants : Variants = None
     verbose : int = 0
 
@@ -53,13 +54,13 @@ class VariantDict():
         all_variants = self.v
         applicable_variants = {vtag: v for vtag, v in all_variants.items() if v.applicable(cfg)}
 
-        if cfg.verbose >= 2:
+        if cfg.verbose >= 3:
             print(f"-- All variants: {tuple(vtag for vtag in all_variants)}")
             print(f"-- Applicable variants: {tuple(vtag for vtag in applicable_variants)}")
         
         for tag in cfg.tags:
             if tag in applicable_variants:
-                if cfg.verbose >= 2:
+                if cfg.verbose >= 3:
                     print(f"-- Selected variant: {tag}")
                 return replace(applicable_variants[tag], tag=tag)
         
@@ -90,26 +91,19 @@ class VariantManager(Variants):
                     raise TypeError(f"Unknown variant type {type(new_var)} for field '{tag}'")
 
     def resolve_all_variants(self, cfg: VariantConfig, require_all=True) -> Variants:
-        """Resolve the variants for a given config.
-        
-        verbose : 0: no printing at all
-                1: print warnings in likely error cases
-                2: print warnings in likely correct cases that may be confusing
-                3: useful output for understanding what happened
-                4: a lot of debug output
-        """
+        """Returns an object containing all the variants for a given config."""
         data_fields = Variants.__dataclass_fields__
         if not isinstance(cfg, VariantConfig):
             raise TypeError("config must be an instance of BaseConfig or a subclass")
 
         selected_variants = {}
         for field_name in data_fields:
-            if cfg.verbose >= 2:
+            if cfg.verbose >= 4:
                 print("Checking variants of {field_name}")
             vdict : VariantDict = getattr(self, field_name)
             selected_variants[field_name] = vdict.select(cfg, require=require_all)
         
-        if cfg.verbose >= 2:
+        if cfg.verbose >= 3:
             print("Selected variants:")
             for field_name, variant in selected_variants.items():
                 if variant is None:
@@ -132,6 +126,37 @@ class VariantManager(Variants):
             all_variants = getattr(self, field_name)
             print(f"-- {field_name}: -> {tuple(all_variants.v.keys())}")
 
+# ============================== Helper classes for managing Variants ==============================
+
+from typing import Any, TypeVar, Callable
+from functools import wraps
+import inspect
+
+P = ParamSpec("P")
+R = TypeVar("R")
+T = TypeVar("T", bound=Callable[..., Any])
+
+def make_dispatcher(var : VariantDict, base_func: T, add_jit=True) -> T:
+    """Create a dispatcher function that selects the appropriate variant based on the config."""
+    var[TAG_BASE] = Variant(base_func)
+
+    @wraps(base_func)
+    def wrapper(*args, cfg=None, **kwargs):
+        variant = var.select(cfg, require=True)
+        if cfg.verbose >= 2:
+            print(f"Using variant: {variant.tag} for function {base_func.__name__}")
+
+        return variant.fn(*args, cfg=cfg, **kwargs)
+    
+    wrapper.__signature__ = inspect.signature(base_func)
+
+    if add_jit:
+        wrapper.jit = jax.jit(wrapper, static_argnames=("cfg",))
+
+    return wrapper
+
+# ====================================== Global Variables ==========================================
+
 vm = VariantManager()
 
-TAG_REF = "ref"
+TAG_BASE = "base"

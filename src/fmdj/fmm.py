@@ -4,7 +4,7 @@ from jax.experimental import checkify
 from .octree import Octree, sort_and_build_octree
 from . import multipoles
 from . import config
-from .variants import Variant, vm, TAG_REF
+from .variants import Variant, vm, TAG_BASE
 
 # ================================ Tree Preperation functions===================================== #
 
