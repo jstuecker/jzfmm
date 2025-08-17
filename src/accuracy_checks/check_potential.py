@@ -23,10 +23,14 @@ mass0 = jnp.ones(len(pos0), dtype=pos0.dtype)
 import time
 t0 = time.time()
 
-for p in (1,2,3,4,5):
+config = fmdj.Config(tags=("ref",), softening=eps)
+config_cj = fmdj.Config(tags=("cj", "ref"), softening=eps)
+
+# for p in (1,2,3,4,5):
+for p in (2,3):
     phi0 = fmdj.multipoles.potential_direct_sum.jit(pos0, mass0, eps=eps)
-    phi_jax = fmdj.fmm.fast_multipole_potential.jit(pos0, mass0, return_sorted=False, p=p, use_cj=False, eps=eps, thetamax=0.9)
-    phi_cj = fmdj.fmm.fast_multipole_potential.jit(pos0, mass0, return_sorted=False, p=p, use_cj=True, eps=eps, thetamax=0.9)
+    phi_jax = fmdj.fmm.fast_multipole_potential.jit(pos0, mass0, config, return_sorted=False)
+    phi_cj = fmdj.fmm.fast_multipole_potential.jit(pos0, mass0, config_cj, return_sorted=False)
 
     plt.hist(np.log10(np.abs((phi_jax - phi0)/phi0)), bins=np.linspace(-7,1), label=f'p={p}', alpha=0.8)
     plt.hist(np.log10(np.abs((phi_cj - phi0)/phi0)), bins=np.linspace(-7,1), label=f'cj p={p}', alpha=0.3,
