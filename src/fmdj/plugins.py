@@ -1,12 +1,11 @@
 from importlib.metadata import entry_points
 import os, warnings
-from .variants import print_variant_info
+from .variants import vm
 
 _DEFAULT_ALLOW = {"custom_jax"}   # Plugins that are automatically enabled if available
 _enabled = set()
 
 def available_plugins() -> dict[str, object]:
-    # name -> entry point
     return {ep.name: ep for ep in entry_points(group="fmdj.plugins")}
 
 def enable_plugins(names: list[str] | None = None, *, include_default=True, strict=True, verbose=True):
@@ -24,14 +23,11 @@ def enable_plugins(names: list[str] | None = None, *, include_default=True, stri
         _enabled.add(name)
         if verbose:
             print_diagnostics()
-            # print(f"[fmdj] enabled plugin: {name} ({ep.module})")
 
 def enabled_plugins() -> tuple[str, ...]:
     return tuple(sorted(_enabled))
 
-
-
 def print_diagnostics():
     print("Available plugins:", tuple(available_plugins().keys()))
     print("Enabled plugins:", enabled_plugins())
-    print_variant_info()
+    vm.print_available_variants()

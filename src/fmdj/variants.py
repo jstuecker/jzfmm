@@ -4,6 +4,13 @@ This makes it possible to switch between different implementations of the same o
 to override the default behavior based on runtime conditions or user preferences."""
 
 from dataclasses import dataclass, replace
+import jax
+
+def has_gpu():
+    try:
+        return any(d.platform == "gpu" for d in jax.devices())
+    except Exception:
+        return False
 
 @dataclass(frozen=True)
 class Variant:
@@ -104,5 +111,13 @@ class VariantManager():
         if cfg.variants is None:
             cfg = replace(cfg, variants=self.resolve_variants(cfg))
         return cfg
+    
+    def print_available_variants(self):
+        print("Available Variants:")
+        for field_name in self.variants.__dataclass_fields__:
+            all_variants = getattr(self.variants, field_name)
+            print(f"-- {field_name}: -> {tuple(all_variants.keys())}")
 
 vm = VariantManager()
+
+TAG_REF = "ref"

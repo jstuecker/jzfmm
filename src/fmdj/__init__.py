@@ -1,8 +1,7 @@
 from . import octree
 from . import multipoles
 from . import fmm
-from . import variants
+from .config import Config
 from .plugins import enable_plugins
-from .config import default_config
 
 enable_plugins()

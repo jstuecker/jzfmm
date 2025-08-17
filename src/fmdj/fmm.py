@@ -3,8 +3,8 @@ import jax.numpy as jnp
 from jax.experimental import checkify
 from .octree import Octree, sort_and_build_octree
 from . import multipoles
-from .config import vm, Config, Variant, Variants
 from . import config
+from .variants import Variant, vm, TAG_REF
 
 # ================================ Tree Preperation functions===================================== #
 
@@ -266,11 +266,11 @@ fast_multipole_potential.jit = jax.jit(fast_multipole_potential,
 def _testfunc_ref(x, cfg : config.OpeningBarnesAndHut):
     print("REF!", cfg)
     return x
-vm.variants.testfunc["cj"] = Variant(_testfunc_ref)
+vm.variants.testfunc[TAG_REF] = Variant(_testfunc_ref)
 
-def testfunc(x, cfg : Config):
+def testfunc(x, cfg : config.Config):
     """Test function to demonstrate variant selection."""
     cfg = vm.config_with_variants(cfg)
-    print("Using variant {cfg.variants.testfunc.tag} for testfunc")
+    print(f"Using variant {cfg.variants.testfunc.tag} for testfunc")
     return cfg.variants.testfunc.fn(x, cfg.opening)
 testfunc.jit = jax.jit(testfunc, static_argnames=("cfg",))
