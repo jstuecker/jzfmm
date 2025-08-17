@@ -3,107 +3,106 @@
 This makes it possible to switch between different implementations of the same operation or
 to override the default behavior based on runtime conditions or user preferences."""
 
-from dataclasses import dataclass
-from contextlib import contextmanager
-import os
-import jax
-from functools import wraps
+from dataclasses import dataclass, replace
 
-@dataclass
+@dataclass(frozen=True)
 class Variant:
-    name: str
     fn: callable
-    priority: int = 0               # higher wins
-    only_if: callable = lambda: True  # runtime predicate
+    applicable: callable = lambda cfg: True
+    tag : str = ""
 
-_variants: dict[str, dict[str,Variant]] = {}
-_overrides: dict[str, str] = {}     # op_name -> variant_name
+@dataclass(unsafe_hash=True)
+class Variants:
+    ilist_leaf_to_leaf : Variant | list[Variant] = None
+    testfunc : Variant | list[Variant] = None
 
-def has_gpu():
-    try:
-        return any(d.platform == "gpu" for d in jax.devices())
-    except Exception:
-        return False
+class VariantDict(Variants):
+    def __init__(self, *args, **kwargs):
+        # Initialize all uninitialized fields to empty lists
+        super().__init__(*args, **kwargs)
+        for field_name in self.__dataclass_fields__:
+            if getattr(self, field_name) is None:
+                setattr(self, field_name, {})
 
-def has_pkg(modname: str) -> bool:
-    try:
-        __import__(modname)
-        return True
-    except Exception:
-        return False
+@dataclass(frozen=True)
+class VariantConfig:
+    tags : tuple[str] = ("cj", "ref")
+    variants : Variants = None
 
-def register_variant(op: str, *, name: str, fn, priority: int = 0, only_if=lambda: True, clear_caches=True):
-    if clear_caches:
-        jax.clear_caches()
+class VariantManager():
+    def __init__(self):
+        self.variants = VariantDict()
 
-    if priority is None:
-        vardict = _variants.get(op, {})
-        max_priority = max((v.priority for v in vardict.values()), default=0)
-        priority = max_priority + 1
+    def register_variants(self, var : Variants | VariantDict):
+        for tag in self.variants.__dataclass_fields__:
+            if tag in var.__dataclass_fields__:
+                vdict = getattr(self.variants, tag)
+                new_var = getattr(var, tag)
+                if new_var is None:
+                    continue
+                elif isinstance(new_var, dict):
+                    vdict.update(new_var)
+                elif isinstance(new_var, Variant):
+                    vdict[tag] = new_var
+                else:
+                    raise TypeError(f"Unknown variant type {type(new_var)} for field '{tag}'")
 
-    vardict = _variants.setdefault(op, {})
-    vardict[name] = Variant(name, fn, priority, only_if)
+    def resolve_variants(self, cfg: VariantConfig, verbose=1) -> Variants:
+        """Resolve the variants for a given config.
+        
+        verbose : 0: no printing at all
+                1: print warnings in likely error cases
+                2: print warnings in likely correct cases that may be confusing
+                3: useful output for understanding what happened
+                4: a lot of debug output
+        """
 
-def variant(op: str, *, name: str = "user", priority: int | None = None, only_if=lambda: True, clear_caches=True):
-    """Registers a variant for the operation `op` with the given name and priority."""
-    def deco(fn):
-        register_variant(op, name=name, fn=fn, priority=priority, only_if=only_if, clear_caches=clear_caches)
-        return fn
-    return deco
+        if not isinstance(cfg, VariantConfig):
+            raise TypeError("config must be an instance of BaseConfig or a subclass")
 
-def select(op: str) -> Variant:
-    """Selects the best variant for the operation `op`."""
+        selected_variants = {}
+        for field_name in self.variants.__dataclass_fields__:
+            all_variants = getattr(self.variants, field_name)
+            if verbose >= 4:
+                print(f"All variants for {field_name}: {tuple(all_variants.keys())}")
+            applicable_variants = {vtag: v for vtag, v in all_variants.items() if v.applicable(cfg)}
+            # for vname, v in all_variants.items():
+            #     if v.applicable(cfg):
+            #         if verbose >= 2 and v.tag in applicable_variants:
+            #             print(f"Warning: Multiple variants with tag {v.tag} for {field_name}. Using the most recent definition.")
+            #         applicable_variants[v.tag] = v
+            if verbose >= 4:
+                print(f"Applicable variants for {field_name}: {tuple(vtag for vtag in applicable_variants)}")
+            
+            for tag in cfg.tags:
+                if tag in applicable_variants:
+                    if verbose >= 4:
+                        print(f"Selected variant for {field_name}: {applicable_variants[tag].tag}")
+                    selected_variants[field_name] = replace(applicable_variants[tag], tag=tag)
+                    break
+            
+            if not field_name in selected_variants:
+                selected_variants[field_name] = None
+                if verbose >= 1:
+                    print(f"Warning: No applicable variant found for {field_name}")
+                    print(f"-- All variants: {tuple(all_variants.keys())}")
+                    print(f"-- Applicable variants: {tuple(applicable_variants.keys())}")
+                    print(f"-- Looking for tags: {cfg.tags}")
+            
+        if verbose >= 3:
+            print("Selected variants:")
+            for field_name, variant in selected_variants.items():
+                if variant is None:
+                    print(f"  {field_name}: None")
+                else:
+                    print(f"  {field_name}: {variant.tag}")
+        
+        return Variants(**selected_variants)
+    
+    def config_with_variants(self, cfg : VariantConfig) -> VariantConfig:
+        """If variants are not set, return a new config with resolved variants."""
+        if cfg.variants is None:
+            cfg = replace(cfg, variants=self.resolve_variants(cfg))
+        return cfg
 
-    # First get all useable variants of the operation
-    vardict = _variants.get(op, {})
-    candidates = {k:v for k,v in vardict.items() if v.only_if()}
-    if len(candidates) == 0:
-        raise RuntimeError(f"No usable variants for {op!r}. Registered: { [v.name for v in _variants.get(op, [])] }")
-
-    # Now check if there is an active override
-    ov = _overrides.get(op)
-    if not ov: # Can also override via environment variables
-        ov = os.getenv(f"FMDJ_OVERRIDE_{op.upper()}")
-    if ov:
-        if ov in candidates:
-            return candidates[ov]
-        else:
-            raise RuntimeError(f"Override {ov!r} for {op!r} not found in registered variants: { [v.name for v in candidates.values()] }")
-
-    # otherwise, we select the highest priority variant
-    best = max(candidates, key=lambda name: candidates[name].priority)
-
-    return candidates[best]
-
-def print_variant_info():
-    for op, vs in _variants.items():
-        active = select(op).name
-        names = ", ".join(name for name in vs)
-        print(f"- {op}: active={active}; variants=[{names}]")
-
-@contextmanager
-def algorithm(clear_caches="enter_and_exit", **overrides):
-    """A context manager that selects specific variants for the target operations.
-    This allows to override the default behavior of operations in a specific context.
-    E.g. use like
-    with algorithm(potential="gpu"):
-        # Do something
-
-    clear_caches: Can be "enter", "exit", "enter_and_exit" or False. Wheter to clear jax's global 
-        caches. This may be necessary to ensure that all externally jitted functions get recompiled
-        and use the correct variants. However, this may be overkill in most cases and therefore
-        you can control whether/when the caches are cleared. If you do, you should make sure to 
-        recompile any jitted functions that depend on the selected variants.
-    """
-
-    old = dict(_overrides)
-    _overrides.update(overrides)
-    try:
-        if clear_caches in ("enter", "both"):
-            jax.clear_caches()
-        yield
-    finally:
-        _overrides.clear()
-        _overrides.update(old)
-        if clear_caches in ("exit", "both"):
-            jax.clear_caches()
+vm = VariantManager()
