@@ -207,20 +207,18 @@ organize_interactions.jit = jax.jit(organize_interactions, static_argnames=("sor
 def evaluate_interaction_lists(octree : Octree, posz, massz, ilist, nilist, cfg : config.Config, sort=False):
     ilist, iranges = organize_interactions(ilist, nilist, sort=sort)
     
-    Loc = multipoles.evaluate_ilists_node_node(
-        octree.xnode, octree.mp, ilist, iranges[0], iranges[1], p=octree.p, eps=cfg.softening)
-    Loc = Loc + multipoles.evaluate_ilists_leaf_to_node(
-        octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, iranges[1], iranges[2],
-        p=octree.p, max_leaf_size=octree.max_leaf_size, eps=cfg.softening)
+    Loc = multipoles.ilist_node_to_node(
+        octree.xnode, octree.mp, ilist, iranges[0:2], cfg=cfg)
+    Loc = Loc + multipoles.ilist_leaf_to_node(
+        octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, iranges[1:3], cfg=cfg)
     Loc = multipoles.local_to_local_via_height(octree, Loc)
 
     phi = multipoles.evaluate_local(Loc[octree.node_of_particle], 
                                     posz - octree.xnode[octree.node_of_particle])
-    phi = phi + multipoles.ilists_node_to_leaf(
-        octree.xnode, octree.mp, posz, octree.leaf_particle_bounds, ilist, 
-        iranges[2:4], cfg=cfg)
+    phi = phi + multipoles.ilist_node_to_leaf(
+        octree.xnode, octree.mp, posz, octree.leaf_particle_bounds, ilist, iranges[2:4], cfg=cfg)
     phi = phi + multipoles.ilist_leaf_to_leaf(
-        posz, massz, octree.leaf_particle_bounds, ilist, iranges[3:5], cfg)
+        posz, massz, octree.leaf_particle_bounds, ilist, iranges[3:5], cfg=cfg)
     
     return phi
 evaluate_interaction_lists.jit = jax.jit(evaluate_interaction_lists, static_argnames=("cfg", "sort"))

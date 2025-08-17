@@ -587,47 +587,28 @@ def _reduce_fsum_chunked(f, y0, x, istart, iend, chunk_size):
 
     return jax.lax.fori_loop(0, num_chunks, body, y0)
 
-def evaluate_ilists_node_node(xnodes, multipoles, interactions, istart, iend, p=2, max_mb=1024, use_cj=True, eps=0.):
-    # chunk_size = int(len(xnodes) * chunk_fac)
-    
 
-    if use_cj:
-        loc = cj.multipoles.ilist_multipole_to_local(multipoles, xnodes, interactions, iminmax=jnp.array((istart, iend)), p=p, eps=eps)
-    else:
-        chunk_size = int((max_mb * 1024**2) // (2 * xnodes.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)**2))
-        chunk_size = min(max((chunk_size//64)*64,  64), len(xnodes)*4)
-        # print(f"{8.0 * chunk_size * ((p+3) * (p+2) * (p+1) / 6)**2 / 1024.**2} MB with chunk_size {chunk_size} for p={p}")
+def ilist_node_to_node(xnodes, multipoles, interactions, irange, cfg : config.Config):
+    # if use_cj:
+    #     loc = cj.multipoles.ilist_multipole_to_local(multipoles, xnodes, interactions, iminmax=jnp.array((istart, iend)), p=p, eps=eps)
+    # else:
+    p = cfg.p
 
-        loc = jnp.zeros(multipoles.shape, dtype=xnodes.dtype)
-
-        def eval_node_node(loc, iab, mask):
-            weights = single_multipole_to_local(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=eps)
-            weights = jnp.where(mask[:,None], weights, 0.)
-            return loc.at[iab[:,0]].add(weights)
-        loc = _reduce_fsum_chunked(eval_node_node, loc, interactions, istart, iend, chunk_size=chunk_size)
-
-    return loc
-evaluate_ilists_node_node.jit = jax.jit(evaluate_ilists_node_node, static_argnames=("p", "max_mb", "eps", "use_cj"))
-
-
-def evaluate_ilists_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, istart, iend, p=2, max_leaf_size=64, max_mb=1024, use_cj=False, eps=0.):
-    if use_cj:
-        return cj.multipoles.ilist_leaf_to_local(xnodes, xpart, mpart, leaf_bounds, interactions, iminmax=jnp.array((istart, iend)), p=p, eps=eps)
-
-    chunk_size = int((max_mb * 1024**2) // (xpart.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)))
+    chunk_size = int((cfg.ilist_max_mb * 1024**2) // (2 * xnodes.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)**2))
     chunk_size = min(max((chunk_size//64)*64,  64), len(xnodes)*4)
 
-    loc = jnp.zeros(xnodes.shape[:-1] + (p_to_ncomb[p],), dtype=xnodes.dtype)
+    loc = jnp.zeros(multipoles.shape, dtype=xnodes.dtype)
 
-    def eval_node_from_leaf(loc, iab, mask):
-        return loc + ilist_monopoles_to_local(xnodes, xpart, mpart, leaf_bounds, jnp.abs(iab),
-                                              imask=mask, max_size=max_leaf_size, p=p, eps=eps)
-    loc = _reduce_fsum_chunked(eval_node_from_leaf, loc, interactions, istart, iend, chunk_size=chunk_size)
+    def eval_node_node(loc, iab, mask):
+        weights = single_multipole_to_local(multipoles[iab[:,1]], xnodes[iab[:,0]] - xnodes[iab[:,1]], p=p, eps=cfg.softening)
+        weights = jnp.where(mask[:,None], weights, 0.)
+        return loc.at[iab[:,0]].add(weights)
+    loc = _reduce_fsum_chunked(eval_node_node, loc, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return loc
-evaluate_ilists_leaf_to_node.jit = jax.jit(evaluate_ilists_leaf_to_node, static_argnames=("p", "max_leaf_size", "max_mb", "eps", "use_cj"))
+ilist_node_to_node.jit = jax.jit(ilist_node_to_node, static_argnames=("cfg",))
 
-def ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, irange, cfg : config.Config):
+def ilist_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, irange, cfg : config.Config):
     chunk_size = int(len(xpart) * cfg.ilist_chunk_fac * 0.2)
 
     phi = jnp.zeros(xpart.shape[0], dtype=xnodes.dtype)
@@ -639,16 +620,25 @@ def ilists_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, ir
     phi = _reduce_fsum_chunked(eval_leaf_node, phi, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return phi
-ilists_node_to_leaf.jit = jax.jit(ilists_node_to_leaf, static_argnames=("cfg",))
+ilist_node_to_leaf.jit = jax.jit(ilist_node_to_leaf, static_argnames=("cfg",))
 
-# def ilist_node_to_leaf(xnodes, multipoles, xpart, leaf_bounds, interactions, irange, cfg : config.Config):
-#     fn = vm.ilist_node_to_leaf.select(cfg).fn
-#     return fn(xpart, mpart, leaf_bounds, interactions, irange, cfg=cfg)
-# ilist_node_to_leaf.jit = jax.jit(ilist_node_to_leaf, static_argnames=("cfg",))
+def ilist_leaf_to_node(xnodes, xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
+    p = cfg.p
+    chunk_size = int((cfg.ilist_max_mb * 1024**2) // (xpart.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)))
+    chunk_size = min(max((chunk_size//64)*64,  64), len(xnodes)*4)
 
+    loc = jnp.zeros(xnodes.shape[:-1] + (p_to_ncomb[p],), dtype=xnodes.dtype)
 
+    def eval_node_from_leaf(loc, iab, mask):
+        return loc + ilist_monopoles_to_local(xnodes, xpart, mpart, leaf_bounds, jnp.abs(iab),
+                                              imask=mask, max_size=cfg.max_leaf_size, p=p, 
+                                              eps=cfg.softening)
+    loc = _reduce_fsum_chunked(eval_node_from_leaf, loc, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
-def _ilists_leaf_leaf_ref(xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
+    return loc
+ilist_leaf_to_node.jit = jax.jit(ilist_leaf_to_node, static_argnames=("cfg",))
+
+def _ilist_leaf_leaf_ref(xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
     phi = jnp.zeros(xpart.shape[0], dtype=xpart.dtype)
     chunk_size = int(len(leaf_bounds) * cfg.ilist_chunk_fac)
     def eval_leaf_leaf(phi, iab, mask):
@@ -657,7 +647,7 @@ def _ilists_leaf_leaf_ref(xpart, mpart, leaf_bounds, interactions, irange, cfg :
     phi = _reduce_fsum_chunked(eval_leaf_leaf, phi, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return phi
-vm.ilist_leaf_to_leaf[TAG_REF] = Variant(_ilists_leaf_leaf_ref)
+vm.ilist_leaf_to_leaf[TAG_REF] = Variant(_ilist_leaf_leaf_ref)
 
 def ilist_leaf_to_leaf(xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
     fn = vm.ilist_leaf_to_leaf.select(cfg).fn

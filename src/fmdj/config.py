@@ -21,4 +21,4 @@ class Config(VariantConfig):
 
     # Memory parameters
     ilist_chunk_fac : float = 4.0  # For ilist evaluation. Will improve this parameter later
-    
+    ilist_max_mb : int = 1024      # Maximum memory for ilist evaluation in MB
