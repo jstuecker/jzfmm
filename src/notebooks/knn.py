@@ -27,43 +27,50 @@ def box_dist2(c1, c2, s1, s2, mode="shortest"):
 def cumsum_starting_with_zero(x):
     return jnp.concatenate((jnp.zeros((1,) + x.shape[1:], dtype=x.dtype), jnp.cumsum(x, axis=0)))
 
-def leaf_knn_estimates(xleaf, npart_leaf, level_leaf, bins=None, k=32):
+def knn_interactions(xcent, dx, npart, bins=None, k=32, batch_size=128, alloc_fac=128):
+    """Get a (weakly) sorted interaction list between leaves of an octree.
+
+    xcent : centers of leaves
+    npart : number of particles in each leaf
+    dx : extend of the leaves
+    bins : bins for discretizing the distances to determine the necessary interaciton radius
+    k : number of neighbors to include in the interaction list"""
+    
     if bins is None:
         bins = jnp.logspace(-0.5, 1., 32)
-    leaf_cent, leaf_ext = get_node_box(xleaf, level_leaf)
-    nleaves = len(leaf_cent)
+    nleaves = len(xcent)
 
     def handle_single_leaf(ileaf):
         # We want to find the smallest distance at which we are guaranteed to find >= k neighbors
         # For this we need to include leaves whenever they exceed the distance where they are fully
         # included by every particle in the source leaf
 
-        rbase2 = jnp.sum(leaf_ext[ileaf]**2, axis=-1)
+        rbase2 = jnp.sum(dx[ileaf]**2, axis=-1)
 
-        dist2 = box_dist2(leaf_cent[ileaf], leaf_cent, leaf_ext, leaf_ext, mode="longest")
+        dist2 = box_dist2(xcent[ileaf], xcent, dx, dx, mode="longest")
 
         dratio2 = dist2 * (1./ rbase2)
 
         # bins, nkincl tells us how many neighbours are at least included at which distance:
-        nkincl = jnp.cumsum(jnp.histogram(dratio2, bins=bins, weights=npart_leaf)[0])
+        nkincl = jnp.cumsum(jnp.histogram(dratio2, bins=bins, weights=npart)[0])
         r2min = jnp.min(jnp.where(nkincl >= k, bins[1:], jnp.inf), axis=-1) * rbase2
 
         # To count the leaves we need to check at a given radius, we need to compare the closest
         # distance
-        dist2min = box_dist2(leaf_cent[ileaf], leaf_cent, leaf_ext[ileaf], leaf_ext, mode="shortest")
+        dist2min = box_dist2(xcent[ileaf], xcent, dx[ileaf], dx, mode="shortest")
         ninteractions = jnp.sum(dist2min <= r2min, axis=-1)
 
         return jnp.sqrt(r2min), ninteractions
     
-    rneed, ninteractions = jax.vmap(handle_single_leaf)(jnp.arange(nleaves))
+    rneed, ninteractions = jax.lax.map(handle_single_leaf, jnp.arange(nleaves), batch_size=batch_size)
 
     offsets = cumsum_starting_with_zero(ninteractions)
 
-    interactions = jnp.zeros(offsets[-1], dtype=jnp.int32)
+    interactions = jnp.zeros(alloc_fac * nleaves, dtype=jnp.int32)
     
     def insert_interactions(ileaf, interactions):
-        dist2 = box_dist2(leaf_cent[ileaf], leaf_cent, leaf_ext[ileaf], leaf_ext, mode="shortest")
-        dist2b = box_dist2(leaf_cent[ileaf], leaf_cent, leaf_ext[ileaf], leaf_ext, mode="longest")
+        dist2 = box_dist2(xcent[ileaf], xcent, dx[ileaf], dx, mode="shortest")
+        dist2b = box_dist2(xcent[ileaf], xcent, dx[ileaf], dx, mode="longest")
 
         isort = jnp.lexsort([dist2b, dist2])
 
@@ -76,3 +83,4 @@ def leaf_knn_estimates(xleaf, npart_leaf, level_leaf, bins=None, k=32):
     interactions = jax.lax.fori_loop(0, nleaves, insert_interactions, interactions)
 
     return rneed, interactions, offsets
+knn_interactions.jit = jax.jit(knn_interactions, static_argnames=["bins", "k", "batch_size"])
