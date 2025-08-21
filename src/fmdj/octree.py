@@ -39,7 +39,7 @@ class BinaryTree:
 @partial(jax.tree_util.register_dataclass, 
          data_fields=["parent", "lchild", "rchild", "level_binary", "is_valid", "height",  
                       "maxheight", "nnodes",
-                      "leaf_particle_bounds", "node_of_particle", "xnode", "xleaf", "mp",], 
+                      "leaf_particle_bounds", "node_of_leaf", "node_of_particle", "xnode", "xleaf", "mp",], 
          meta_fields=["max_leaf_size", "p", "min_level", "max_level"])
 @dataclass
 class Octree:
@@ -53,6 +53,7 @@ class Octree:
     nnodes: jnp.ndarray = None
 
     leaf_particle_bounds: jnp.ndarray = None
+    node_of_leaf: jnp.ndarray = None
     node_of_particle: jnp.ndarray = None
 
     xnode: jnp.ndarray = None
@@ -304,7 +305,7 @@ def define_leaf_maps(tree, keep_as_node, keep_as_leaf, keep_lchild_leaf, keep_rc
         return ar.at[jnp.where(mask, ind, max_new_leaves+1)].set(value, indices_are_sorted=True)
 
     # Create pointers to the old parents of new leaves
-    parent_of_leaf = jnp.full(max_new_leaves+1, fill_value=max_old_leaves, dtype=jnp.int32)
+    parent_of_leaf = jnp.full(max_new_leaves, fill_value=max_old_leaves, dtype=jnp.int32)
     parent_of_leaf = masked_update(parent_of_leaf, keep_as_leaf, parent)
     parent_of_leaf = masked_update(parent_of_leaf, keep_lchild_leaf, jnp.arange(max_old_nodes, dtype=jnp.int32))
     parent_of_leaf = masked_update(parent_of_leaf, keep_rchild_leaf, jnp.arange(max_old_nodes, dtype=jnp.int32), 
@@ -390,6 +391,7 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
     newtree.height, newtree.maxheight = get_tree_height(newtree)
 
     newtree.leaf_particle_bounds = lbound_leaf
+    newtree.node_of_leaf = imap_node[parent_of_leaf]
     newtree.node_of_particle = imap_node[parent_of_leaf][leaf_of_part]
     
     newtree.xleaf = get_new_leaf_positions(leaf_of_part, xpart, mpart, max_new_leaves)
@@ -431,6 +433,7 @@ def put_nodes_in_level_order(octree : Octree) -> Octree:
         nnodes=octree.nnodes,
         
         leaf_particle_bounds=octree.leaf_particle_bounds,
+        node_of_leaf=inv_i[octree.node_of_leaf],
         node_of_particle=inv_i[octree.node_of_particle],
 
         xleaf = octree.xleaf,
@@ -462,12 +465,5 @@ def sort_and_build_octree(pos0, mass0, use_cj=True, max_leaf_size=64) -> Octree:
 sort_and_build_octree.jit = jax.jit(sort_and_build_octree, 
                                     static_argnames=("use_cj", "max_leaf_size"))
 
-# =================================== Some utility functions ===================================== #
+# ================================== Dispatcher Functions ======================================== #
 
-# def get_oct_level_info(octree):
-#     level_oct = octree.level_binary // 3
-#     is_intermediate = jnp.where(octree.level_binary > 0, level_oct[octree.parent] == level_oct, False)
-#     parent_oct = octree.parent
-#     for i in range(0, 3):
-#         parent_oct = jnp.where(is_intermediate[parent_oct], parent_oct[parent_oct], parent_oct)
-#     return level_oct, parent_oct, is_intermediate

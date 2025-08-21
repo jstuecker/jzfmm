@@ -23,7 +23,7 @@ def build_octree_with_multipoles(pos, mass, max_leaf_size=64, p=2, use_cj=True):
     Returns: (octree, pos_sorted, mass_sorted, isort)
     """
 
-    octree, posz, massz, isortz = sort_and_build_octree(pos, mass, use_cj=use_cj)
+    octree, posz, massz, isortz = sort_and_build_octree(pos, mass, use_cj=use_cj, max_leaf_size=max_leaf_size)
 
     octree = multipoles.calculate_multipoles_for_tree(octree, posz, massz, p=p)
     
