@@ -8,7 +8,7 @@ _enabled = set()
 def available_plugins() -> dict[str, object]:
     return {ep.name: ep for ep in entry_points(group="fmdj.plugins")}
 
-def enable_plugins(names: list[str] | None = None, *, include_default=True, strict=True, verbose=True):
+def enable_plugins(names: list[str] | None = None, *, include_default=True, strict=True, verbose=False):
     eps = available_plugins()
     allow = set(names or [])
     if include_default: allow |= _DEFAULT_ALLOW
