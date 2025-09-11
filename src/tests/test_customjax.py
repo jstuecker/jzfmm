@@ -49,3 +49,22 @@ def test_compare_octrees():
     for key in ("parent", "lchild", "rchild", "is_valid", "height"):
         assert np.all(octree1.__getattribute__(key)[:octree1.nnodes] 
                       == octree2.__getattribute__(key)[:octree2.nnodes])
+
+def test_double_summarize():
+    pos0, mass0 = setup_particles()
+    posz, idz = cj.tree.pos_zorder_sort.jit(pos0)
+    spl_ref, nleaf_ref, llvl_ref, xleaf_ref, numleaves_ref = cj.tree.summarize_leaves.jit(posz, max_size=13)
+
+    spl, nleaf, llvl, xleaf, numleaves = cj.tree.summarize_leaves.jit(posz, max_size=6)
+    spl, nleaf, llvl, xleaf, numleaves = cj.tree.summarize_leaves.jit(xleaf, max_size=13, nleaf=nleaf, num_part=len(posz))
+    
+    assert np.all(nleaf == nleaf_ref)
+    assert np.all(xleaf == xleaf_ref)
+    assert numleaves == numleaves_ref
+
+    spl_ref, nleaf_ref, llvl_ref, xleaf_ref, numleaves_ref = cj.tree.summarize_leaves.jit(posz, max_size=64)
+    spl, nleaf, llvl, xleaf, numleaves = cj.tree.summarize_leaves.jit(xleaf, max_size=64, nleaf=nleaf, num_part=len(posz))
+
+    assert np.all(nleaf == nleaf_ref)
+    assert np.all(xleaf == xleaf_ref)
+    assert numleaves == numleaves_ref

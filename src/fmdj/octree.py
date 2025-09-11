@@ -378,8 +378,7 @@ def get_reduced_octree(tree : BinaryTree, xpart, mpart, max_leaf_size=4) -> Octr
 
     newtree = Octree(nnodes=nnodes, max_leaf_size=max_leaf_size, 
                      min_level=tree.min_level, max_level=tree.max_level)
-    inewnode = jnp.arange(max_new_nodes, dtype=jnp.int32
-    )
+    inewnode = jnp.arange(max_new_nodes, dtype=jnp.int32)
 
     iparent = get_parent_binary(tree.level_binary, tree.lbound, tree.rbound)[0]
     newtree.parent = map_node(iparent[ifrom_node])
