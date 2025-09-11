@@ -10,55 +10,28 @@ import numpy as np
 
 sys.stdout = Tee(sys.stdout, open("logs/knn.log", "a+"))
 
-print(f"============== Starting KNN Tests  ==============")
+print(f"============== Simplify (sort) ==============")
+timer = Timer(verbose=True, loops=100, print_compile=False, print_warmup=False)
 
-timer = Timer(verbose=True, loops=40, print_compile=False, print_warmup=False)
+boxsize = 0.
 
-def setup(N=1024*1024, k=16):
+def prepare_ilist(N=1024*1024, k=16):
     pos0 = jax.random.uniform(jax.random.PRNGKey(0), (N,3), minval=0, maxval=1, dtype=jnp.float32)
+    posz = cj.tree.pos_zorder_sort.jit(pos0)[0]
+    spl, nleaf, llvl, xleaf, numleaves = cj.tree.summarize_leaves.jit(posz, max_size=32)
+    il, ispl = cj.knn.build_ilist_recursive(
+        xleaf, llvl, nleaf, max_size=32*8, refine_fac=8, num_part=len(posz), k=k, boxsize=boxsize, sort=True)
+    return posz, spl, xleaf, llvl, il, ispl
 
-    octree, posz, massz, isort_z = fmdj.fmm.build_octree_with_multipoles.jit(pos0, jnp.ones(pos0.shape[0]), use_cj=True, max_leaf_size=32, p=1)
-
-    npart_leaf = octree.leaf_particle_bounds[1:] - octree.leaf_particle_bounds[:-1]
-    level_leaf = octree.level_binary[octree.node_of_leaf] - 1
-
-    leaf_cent, leaf_ext = cj.knn.get_node_box(octree.xleaf, level_leaf)
-    rmin, ilist, isplit = cj.knn.knn_interactions.jit(leaf_cent, leaf_ext, npart_leaf, alloc_fac=128, k=32)
-    assert isplit[-1] < len(ilist)
-
-    nleaves = octree.nnodes - 1
-    leaf_level = octree.level_binary[octree.node_of_leaf] - 1
-    leaf_isplit = octree.leaf_particle_bounds[:nleaves+1]
-    leaf_level = leaf_level[:nleaves]
-    leaf_cent = leaf_cent[:nleaves]
-
-    return posz, leaf_isplit, leaf_cent, leaf_level, ilist, isplit
-
-def run_or_load(N = 1024*1024, k = 16, redo=False):
-    filename = f"logs/tmp/knn_{k}_{N}.npz"
-
-    if redo:
-        # print("Running setup for N =", N, " k =", k)
-        res = setup(N=1024*1024, k=k)
-        np.savez(filename, *res)
-    else:
-        # print("Loading from ", filename)
-        res = np.load(filename)
-        res = [jnp.array(res[k]) for k in res]
-    return res
-
-k = 16
-posz, leaf_isplit, leaf_cent, leaf_level, ilist, isplit = run_or_load(N=1024*1024, k=k, redo=False)
-
-rnn, inn = cj.knn.ilist_knn_search.jit(posz, leaf_isplit, leaf_cent, leaf_level, ilist, isplit, k=k, interactions_per_block=1)
-
+posz, leaf_isplit, leaf_cent, leaf_level, ilist, isplit = prepare_ilist(N=1024*1024, k=16)
+rnn, inn = cj.knn.ilist_knn_search.jit(posz, leaf_isplit, leaf_cent, leaf_level, ilist, isplit, k=16, boxsize=boxsize)
 tree = cKDTree(posz)
-rknn2, iknn2 = tree.query(posz, k=k)
+rknn2, iknn2 = tree.query(posz, k=16)
 
 print(jnp.allclose(rnn, rknn2))
 print(jnp.allclose(inn, iknn2), jnp.sum(inn != iknn2))
 
-for k in (4,8,16,32):
+for k in (4,8,12,16,32,64):
     timer.set_tag(N=1024**2, k=k)
-    posz, leaf_isplit, leaf_cent, leaf_level, ilist, isplit = run_or_load(N=1024*1024, k=k, redo=False)
-    rnn, inn = timer.timeit_jit(cj.knn.ilist_knn_search.jit, posz, leaf_isplit, leaf_cent, leaf_level, ilist, isplit, k=k)
+    posz, leaf_isplit, leaf_cent, leaf_level, ilist, isplit = prepare_ilist(N=1024*1024, k=k)
+    rnn, inn = timer.timeit_jit(cj.knn.ilist_knn_search.jit, posz, leaf_isplit, leaf_cent, leaf_level, ilist, isplit, k=k, boxsize=boxsize)

@@ -9,11 +9,11 @@ import numpy as np
 
 boxsize = 0.
 k = 16
-N = 512*1024
+N = 1024*1024
 
 sys.stdout = Tee(sys.stdout, open("logs/knn_ilist.log", "a+"))
 
-print(f"============== Lowest level Ilist build (alloc 300) ==============")
+print(f"============== Lowest level Ilist build (1024*1024) ==============")
 timer = Timer(verbose=True, loops=50, print_compile=False, print_warmup=False)
 timer.set_tag(N=N, k=k)
 
@@ -45,5 +45,5 @@ for rfac in 2, 4, 8, 16:
     il, ispl = cj.knn.build_ilist_recursive.jit(
         xleaf2, llvl2, nleaf2, max_size=32*rfac*rfac, refine_fac=8, num_part=len(posz), k=16, boxsize=boxsize)
     par = (xleaf, llvl, nleaf, spl2, il, ispl)
-    timer.timeit_jit(cj.knn.build_ilist_knn.jit, *par, alloc_fac=300, k=k, sort=False, name="nosort")
+    timer.timeit_jit(cj.knn.build_ilist_knn.jit, *par, alloc_fac=200, k=k, sort=False, name="nosort")
     # timer.timeit_jit(cj.knn.build_ilist_knn.jit, *par, alloc_fac=180, k=k, sort=True, name="sort")
