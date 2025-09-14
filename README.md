@@ -14,6 +14,14 @@ Which parts of the algorithm could still be sped up?
 * How to treat softening consistently in the Node interactions?
 * Is Plummer softening the right choice?
 
+# ToDo KNN:
+ - Fix Sorting for > 1024 segment size
+ - Consider Early exit based on radii at node level
+ - Can I use fewer radial bins?
+ - Allow Query Points != Tree Points
+ - Interface to reuse same pre-computed structure
+ - Make sure things work independently of blocksize assumptions
+
 # ToDo:
 * Think about how to do force
 * Name and structure all evaluation code consistently

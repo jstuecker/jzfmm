@@ -10,7 +10,7 @@ import numpy as np
 
 sys.stdout = Tee(sys.stdout, open("logs/knn.log", "a+"))
 
-print(f"============== Simplify (sort) ==============")
+print(f"============== Reffac = 15, sc 64 ==============")
 timer = Timer(verbose=True, loops=100, print_compile=False, print_warmup=False)
 
 boxsize = 0.
@@ -20,7 +20,7 @@ def prepare_ilist(N=1024*1024, k=16):
     posz = cj.tree.pos_zorder_sort.jit(pos0)[0]
     spl, nleaf, llvl, xleaf, numleaves = cj.tree.summarize_leaves.jit(posz, max_size=32)
     il, ispl = cj.knn.build_ilist_recursive(
-        xleaf, llvl, nleaf, max_size=32*8, refine_fac=8, num_part=len(posz), k=k, boxsize=boxsize, sort=True)
+        xleaf, llvl, nleaf, max_size=32*8, refine_fac=8, num_part=len(posz), k=k, boxsize=boxsize, sort=True, alloc_fac=256)
     return posz, spl, xleaf, llvl, il, ispl
 
 posz, leaf_isplit, leaf_cent, leaf_level, ilist, isplit = prepare_ilist(N=1024*1024, k=16)
@@ -35,3 +35,5 @@ for k in (4,8,12,16,32,64):
     timer.set_tag(N=1024**2, k=k)
     posz, leaf_isplit, leaf_cent, leaf_level, ilist, isplit = prepare_ilist(N=1024*1024, k=k)
     rnn, inn = timer.timeit_jit(cj.knn.ilist_knn_search.jit, posz, leaf_isplit, leaf_cent, leaf_level, ilist, isplit, k=k, boxsize=boxsize)
+
+    rnn, inn = timer.timeit_jit(cj.knn.knn.jit, posz, k=k, boxsize=boxsize, alloc_fac=256, name="full knn")
