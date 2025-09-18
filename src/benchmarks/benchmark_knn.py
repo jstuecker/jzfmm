@@ -8,7 +8,7 @@ from fmdj.utility import Tee, Timer
 import sys
 import numpy as np
 
-sys.stdout = Tee(sys.stdout, open("logs/knn.log", "a+"))
+sys.stdout = Tee(sys.stdout, open("logs/knn_eval.log", "a+"))
 
 print(f"============== simplify refinement (sc. 2048, cleanup) ==============")
 timer = Timer(verbose=True, loops=100, print_compile=False, print_warmup=False)
@@ -24,7 +24,7 @@ def prepare_ilist(N=1024*1024, k=16, max_leaf_size=32):
     return posz, spl, xleaf, llvl, il, ir2l, ispl
 
 posz, leaf_isplit, leaf_cent, leaf_level, il, ir2l, isplit = prepare_ilist(N=1024*1024, k=16, max_leaf_size=128)
-rnn, inn = cj.knn.ilist_knn_search.jit(posz, leaf_isplit, leaf_cent, leaf_level, il, ir2l, isplit, k=16, boxsize=boxsize)
+rnn, inn = cj.knn.ilist_knn_search.jit(posz, leaf_isplit, il, ir2l, isplit, k=16, boxsize=boxsize)
 tree = cKDTree(posz)
 rknn2, iknn2 = tree.query(posz, k=16)
 
@@ -37,13 +37,13 @@ for k in (4,8,12,16,32,64):
     if k >= 16:
         timer.loops = 50
 
-    rnn, inn = timer.timeit_jit(cj.knn.ilist_knn_search.jit, posz, leaf_isplit, leaf_cent, leaf_level, il, ir2l, isplit, k=k, boxsize=boxsize)
+    rnn, inn = timer.timeit_jit(cj.knn.ilist_knn_search.jit, posz, leaf_isplit, il, ir2l, isplit, k=k, boxsize=boxsize)
 
     # rnn, inn = timer.timeit_jit(cj.knn.knn.jit, posz, k=k, boxsize=boxsize, alloc_fac=256, 
     #                             name="full knn l16", max_leaf_size=16)
-    rnn, inn = timer.timeit_jit(cj.knn.knn.jit, posz, k=k, boxsize=boxsize, alloc_fac=256, 
+    rnn, inn = timer.timeit_jit(cj.knn.knn_old.jit, posz, k=k, boxsize=boxsize, alloc_fac=256, 
                                 name="full knn l32", max_leaf_size=32)
-    rnn, inn = timer.timeit_jit(cj.knn.knn.jit, posz, k=k, boxsize=boxsize, alloc_fac=256, 
+    rnn, inn = timer.timeit_jit(cj.knn.knn_old.jit, posz, k=k, boxsize=boxsize, alloc_fac=256, 
                                 name="full knn l48", max_leaf_size=48)
     # rnn, inn = timer.timeit_jit(cj.knn.knn.jit, posz, k=k, boxsize=boxsize, alloc_fac=256, 
     #                             name="full knn l64", max_leaf_size=64)

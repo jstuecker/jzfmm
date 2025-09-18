@@ -35,7 +35,7 @@ ispl.block_until_ready()
 
 il2, ir2l2, ispl2 = cj.knn.build_ilist_knn.jit(*par, alloc_fac=256, k=k, boxsize=boxsize)
 
-rnn, inn = cj.knn.ilist_knn_search.jit(posz, spl, xleaf, llvl, il, ir2l2, ispl, k=k, boxsize=boxsize)
+rnn, inn = cj.knn.ilist_knn_search.jit(posz, spl, il, ir2l2, ispl, k=k, boxsize=boxsize)
 
 tree = cKDTree(np.array(posz), boxsize=boxsize if boxsize > 0 else None)
 rknn2, iknn2 = tree.query(posz, k=k)
