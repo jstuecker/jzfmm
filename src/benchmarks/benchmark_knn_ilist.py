@@ -10,11 +10,11 @@ import numpy as np
 boxsize = 0.
 k = 16
 N = 1024*1024
-read = True
+read = False
 
 sys.stdout = Tee(sys.stdout, open("logs/knn_ilist.log", "a+"))
 
-print(f"============== Lowest level Ilist build (1024*1024), cleanup ==============")
+print(f"============== Lowest level Ilist build (1024*1024), compress dense ilist ==============")
 timer = Timer(verbose=True, loops=500, print_compile=False, print_warmup=False)
 timer.set_tag(N=N, k=k)
 
@@ -24,9 +24,9 @@ posz, idz = cj.tree.pos_zorder_sort.jit(pos0)
 
 spl, nleaf, llvl, xleaf, numleaves = cj.tree.summarize_leaves.jit(posz, max_size=32)
 spl2, nleaf2, llvl2, xleaf2, numleaves2 = cj.tree.summarize_leaves.jit(
-    xleaf, max_size=32*8, nleaf=nleaf, num_part=len(posz))
+    xleaf, max_size=32, nleaf=nleaf, num_part=len(posz), ref_fac=8)
 il, ir2l2, ispl = cj.knn.build_ilist_recursive.jit(
-    xleaf2, llvl2, nleaf2, max_size=32*64, refine_fac=8, num_part=len(posz), k=16, boxsize=boxsize)
+    xleaf2, llvl2, nleaf2, max_size=32, refine_fac=8, num_part=len(posz), k=16, boxsize=boxsize)
 
 par = (xleaf, llvl, nleaf, spl2, il, ir2l2, ispl)
 
@@ -42,17 +42,17 @@ rknn2, iknn2 = tree.query(posz, k=k)
 print(jnp.allclose(rnn, rknn2))
 print(jnp.allclose(inn, iknn2), jnp.sum(inn != iknn2))
 
-for rfac in 2, 4, 8, 16:
+for rfac in 2, 4, 8, 16, 32, 48:
     timer.set_tag(rfac=rfac)
     spl2, nleaf2, llvl2, xleaf2, numleaves2 = cj.tree.summarize_leaves.jit(
-        xleaf, max_size=32*rfac, nleaf=nleaf, num_part=len(posz))
+        xleaf, max_size=32*rfac, nleaf=nleaf, num_part=len(posz), ref_fac=rfac)
     if read:
         il = jnp.load(f"logs/tmp/ilist_knn_ilist_{N}_{rfac}.npy")
         ir2l = jnp.load(f"logs/tmp/ilist_knn_r2il_{N}_{rfac}.npy")
         ispl = jnp.load(f"logs/tmp/ilist_knn_ispl_{N}_{rfac}.npy")
     else:
         il, ir2l, ispl = cj.knn.build_ilist_recursive.jit(
-            xleaf2, llvl2, nleaf2, max_size=32*rfac*rfac, refine_fac=8, num_part=len(posz), k=16, boxsize=boxsize)
+            xleaf2, llvl2, nleaf2, max_size=32*rfac, refine_fac=rfac, num_part=len(posz), k=16, boxsize=boxsize)
         jnp.save(f"logs/tmp/ilist_knn_ilist_{N}_{rfac}.npy", np.array(il))
         jnp.save(f"logs/tmp/ilist_knn_r2il_{N}_{rfac}.npy", np.array(ir2l))
         jnp.save(f"logs/tmp/ilist_knn_ispl_{N}_{rfac}.npy", np.array(ispl))
