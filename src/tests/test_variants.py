@@ -1,4 +1,4 @@
-from fmdj.variants import VariantsNew as Variants, Variant, VariantLineNew
+from fmdj.variants import V, Variant, VariantLine
 
 def f1(x):
     return x + 1
@@ -13,17 +13,17 @@ def test_hashes():
     assert hash(v1) == hash(v1b)
     assert hash(v1) != hash(v2)
 
-    vline = VariantLineNew()
+    vline = VariantLine()
     h0 = hash(vline)
-    vline[Variants.direct_summation_force] = v1
+    vline[V.direct_summation_force] = v1
     h1 = hash(vline)
-    vline[Variants.direct_summation_force] = v2
+    vline[V.direct_summation_force] = v2
     h2 = hash(vline)
-    vline[Variants.direct_summation_force] = v1
+    vline[V.direct_summation_force] = v1
     h1b = hash(vline)
 
-    vline2 = VariantLineNew()
-    vline2[Variants.direct_summation_force] = v1
+    vline2 = VariantLine()
+    vline2[V.direct_summation_force] = v1
     h1c = hash(vline2)
 
     assert h0 != h1

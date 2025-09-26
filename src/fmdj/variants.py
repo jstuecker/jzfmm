@@ -40,7 +40,7 @@ class Variant:
 
 # ============================= Define Variants that can be overriden ==============================
 
-class VariantsNew(Enum):
+class V(Enum):
     ilist_node_to_node : int = auto()
     ilist_node_to_leaf : int = auto()
     ilist_leaf_to_node : int = auto()
@@ -55,7 +55,7 @@ class VariantConfig:
     variants : HashableDict = field(default_factory=HashableDict)
     verbose : int = 0
 
-class VariantLineNew(HashableDict):
+class VariantLine(HashableDict):
     def add(self, var : Variant, tag=None):
         if not isinstance(var, Variant):
             raise TypeError(f"Value must be a Variant, got {type(var)}")
@@ -82,17 +82,17 @@ class VariantLineNew(HashableDict):
         else:
             return None
 
-class VariantManagerNew(HashableDict):
+class VariantManager(HashableDict):
     """Manages a dictionary of variants for each allowed function that allows variants"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for v in VariantsNew:
-            self[v] = VariantLineNew()
+        for v in V:
+            self[v] = VariantLine()
 
-    def register_variants(self, vman : "VariantManagerNew"):
+    def register_variants(self, vman : "VariantManager"):
         for v in self.keys():
             if v in vman.keys():
-                if isinstance(vman[v], VariantLineNew):
+                if isinstance(vman[v], VariantLine):
                     self[v].update(vman[v])
                 else:
                     raise TypeError(f"Unknown variant type {type(vman[v])} for field '{v}'")
@@ -139,7 +139,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 T = TypeVar("T", bound=Callable[..., Any])
 
-def make_dispatcher(var : VariantLineNew, base_func: T, add_jit=True) -> T:
+def make_dispatcher(var : VariantLine, base_func: T, add_jit=True) -> T:
     """Create a dispatcher function that selects the appropriate variant based on the config."""
     var[TAG_BASE] = Variant(base_func)
 
@@ -160,6 +160,6 @@ def make_dispatcher(var : VariantLineNew, base_func: T, add_jit=True) -> T:
 
 # ====================================== Global Variables ==========================================
 
-vm = VariantManagerNew()
+vm = VariantManager()
 
 TAG_BASE = "base"
