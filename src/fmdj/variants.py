@@ -70,10 +70,12 @@ class VariantConfig:
     verbose : int = 0
 
 class VariantLineNew(HashableDict):
-    def add(self, var : Variant):
+    def add(self, var : Variant, tag=None):
         if not isinstance(var, Variant):
             raise TypeError(f"Value must be a Variant, got {type(var)}")
-        self[var.tag] = var
+        if tag is None:
+            tag = var.tag
+        self[tag] = var
 
     def select(self, cfg, require=False) -> Variant | None:
         all_variants = self
@@ -185,6 +187,53 @@ class VariantManager(Variants):
             all_variants = getattr(self, field_name)
             print(f"-- {field_name}: -> {tuple(all_variants.v.keys())}")
 
+class VariantManagerNew(HashableDict):
+    """Manages a dictionary of variants for each allowed function that allows variants"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for v in VariantsNew:
+            self[v] = VariantLineNew()
+
+    def register_variants(self, vman : "VariantManagerNew"):
+        for v in self.keys():
+            if v in vman.keys():
+                if isinstance(vman[v], VariantLineNew):
+                    self[v].update(vman[v])
+                else:
+                    raise TypeError(f"Unknown variant type {type(vman[v])} for field '{v}'")
+
+    def resolve_all_variants(self, cfg: VariantConfig, require_all=True) -> Variants:
+        """Returns an object containing all the variants for a given config."""
+        if not isinstance(cfg, VariantConfig):
+            raise TypeError("config must be an instance of BaseConfig or a subclass")
+
+        selected_variants = HashableDict()
+        for k,vdict in self.items():
+            if cfg.verbose >= 4:
+                print("Checking variants of {k}")
+            selected_variants[k] = vdict.select(cfg, require=require_all)
+        
+        if cfg.verbose >= 3:
+            print("Selected variants:")
+            for field_name, variant in selected_variants.items():
+                if variant is None:
+                    print(f"  {field_name}: None")
+                else:
+                    print(f"  {field_name}: {variant.tag}")
+        
+        return selected_variants
+    
+    def config_with_variants(self, cfg : VariantConfig) -> VariantConfig:
+        """If variants are not set, return a new config with resolved variants."""
+        if cfg.variants is None:
+            cfg = replace(cfg, variants=self.resolve_all_variants(cfg))
+        return cfg
+    
+    def print_available_variants(self):
+        print("Available Variants:")
+        for k,vline in self.items():
+            print(f"-- {k.name}: -> {tuple(vline.keys())}")
+
 # ============================== Helper classes for managing Variants ==============================
 
 from typing import Any, TypeVar, Callable
@@ -195,7 +244,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 T = TypeVar("T", bound=Callable[..., Any])
 
-def make_dispatcher(var : VariantDict, base_func: T, add_jit=True) -> T:
+def make_dispatcher(var : VariantLineNew, base_func: T, add_jit=True) -> T:
     """Create a dispatcher function that selects the appropriate variant based on the config."""
     var[TAG_BASE] = Variant(base_func)
 
@@ -216,6 +265,6 @@ def make_dispatcher(var : VariantDict, base_func: T, add_jit=True) -> T:
 
 # ====================================== Global Variables ==========================================
 
-vm = VariantManager()
+vm = VariantManagerNew()
 
 TAG_BASE = "base"

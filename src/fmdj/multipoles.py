@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from .octree import Octree
 import numpy as np
 from . import config
-from .variants import Variant, vm, TAG_BASE, make_dispatcher
+from .variants import Variant, vm, TAG_BASE, make_dispatcher, VariantsNew as Var
 
 try:
     import custom_jax as cj
@@ -653,8 +653,8 @@ def _direct_summation_force(xpart, mpart, cfg : config.Config, get_potential=Fal
 # If the config sets priority to "mytag" the new version will be prefered, e.g.:
 # myconfig = config.Config(tags=("mytag", "base"))
 
-ilist_node_to_node = make_dispatcher(vm.ilist_node_to_node, _ilist_node_to_node_base, add_jit=True)
-ilist_node_to_leaf = make_dispatcher(vm.ilist_node_to_leaf, _ilist_node_to_leaf_base, add_jit=True)
-ilist_leaf_to_node = make_dispatcher(vm.ilist_leaf_to_node, _ilist_leaf_to_node_base, add_jit=True)
-ilist_leaf_to_leaf = make_dispatcher(vm.ilist_leaf_to_leaf, _ilist_leaf_leaf_base, add_jit=True)
-direct_summation_force = make_dispatcher(vm.direct_summation_force, _direct_summation_force, add_jit=True)
+ilist_node_to_node = make_dispatcher(vm[Var.ilist_node_to_node], _ilist_node_to_node_base, add_jit=True)
+ilist_node_to_leaf = make_dispatcher(vm[Var.ilist_node_to_leaf], _ilist_node_to_leaf_base, add_jit=True)
+ilist_leaf_to_node = make_dispatcher(vm[Var.ilist_leaf_to_node], _ilist_leaf_to_node_base, add_jit=True)
+ilist_leaf_to_leaf = make_dispatcher(vm[Var.ilist_leaf_to_leaf], _ilist_leaf_leaf_base, add_jit=True)
+direct_summation_force = make_dispatcher(vm[Var.direct_summation_force], _direct_summation_force, add_jit=True)
