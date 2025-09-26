@@ -643,7 +643,7 @@ def _ilist_leaf_leaf_base(xpart, mpart, leaf_bounds, interactions, irange, cfg :
 
     return phi
 
-def _direct_summation_force(xpart, mpart, cfg : config.Config, get_potential=False):
+def _direct_summation_force(xpart, mpart, cfg : config.Config):
     raise NotImplementedError("Direct summation force not implemented yet.")
 
 # ================================== Dispatcher Functions ======================================== #
