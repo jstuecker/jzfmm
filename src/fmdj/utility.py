@@ -61,8 +61,10 @@ class Timer():
                 val.lchild.block_until_ready()
             elif isinstance(val, Octree):
                 val.lchild.block_until_ready()
-            else:
+            elif isinstance(val, jax.Array):
                 val.block_until_ready()
+            else:
+                jax.tree_util.default_registry.flatten(val)[0][0].block_until_ready()
             return res
 
         t0 = time.time()

@@ -15,12 +15,24 @@ Which parts of the algorithm could still be sped up?
 * Is Plummer softening the right choice?
 
 # ToDo KNN:
- - Fix Sorting for > 1024 segment size
- - Consider Early exit based on radii at node level
- - Can I use fewer radial bins?
- - Allow Query Points != Tree Points
- - Interface to reuse same pre-computed structure
- - Make sure things work independently of blocksize assumptions
+ - Test Query Points != Tree Points
+ - Check optimizations for reduced query points (most simple and promising: larger leafsizes)
+
+
+ - Learn to deal with infinite nodes ? 
+
+
+ - Consider possibility of building interaction list partially to reduce memory usage
+ - make double inputs work
+ - remove radii fromn PosR?
+
+ - noradii output option
+ - subset option
+
+ - Consider recursive summarization for large initial max_size or large rfac
+ - Fix tiny bug for rfac = 2
+
+- test non-uniform distributions
 
 # ToDo:
 * Think about how to do force

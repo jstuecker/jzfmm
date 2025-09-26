@@ -27,6 +27,7 @@ class Variants:
     ilist_node_to_leaf : Variant = None
     ilist_leaf_to_node : Variant = None
     ilist_leaf_to_leaf : Variant = None
+    direct_summation_force : Variant = None
 
 # ============================== Helper classes for managing Variants ==============================
 

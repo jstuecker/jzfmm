@@ -643,6 +643,9 @@ def _ilist_leaf_leaf_base(xpart, mpart, leaf_bounds, interactions, irange, cfg :
 
     return phi
 
+def _direct_summation_force(xpart, mpart, cfg : config.Config, get_potential=False):
+    raise NotImplementedError("Direct summation force not implemented yet.")
+
 # ================================== Dispatcher Functions ======================================== #
 # Below we define the default behaviour of these function
 # However, they can be replaced by custom variants through the pattern
@@ -654,3 +657,4 @@ ilist_node_to_node = make_dispatcher(vm.ilist_node_to_node, _ilist_node_to_node_
 ilist_node_to_leaf = make_dispatcher(vm.ilist_node_to_leaf, _ilist_node_to_leaf_base, add_jit=True)
 ilist_leaf_to_node = make_dispatcher(vm.ilist_leaf_to_node, _ilist_leaf_to_node_base, add_jit=True)
 ilist_leaf_to_leaf = make_dispatcher(vm.ilist_leaf_to_leaf, _ilist_leaf_leaf_base, add_jit=True)
+direct_summation_force = make_dispatcher(vm.direct_summation_force, _direct_summation_force, add_jit=True)
