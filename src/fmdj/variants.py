@@ -6,12 +6,31 @@ to override the default behavior based on runtime conditions or user preferences
 from dataclasses import dataclass, replace, field
 import jax
 from typing import Callable, TypeVar, ParamSpec  # Python 3.10+, or typing_extensions
+from enum import Enum, auto
 
 def has_gpu():
     try:
         return any(d.platform == "gpu" for d in jax.devices())
     except Exception:
         return False
+
+class HashableDict(dict):
+    """Hashable by content; recomputes hash each time (no cache)."""
+
+    def __hash__(self):
+        # Canonicalize as a sorted tuple of (key, value) pairs.
+        def key_fn(k):
+            if isinstance(k, Enum):
+                return (0, k.__class__.__qualname__, k.name)
+            return (1, type(k).__qualname__, repr(k))
+        items = tuple(sorted(self.items(), key=lambda kv: key_fn(kv[0])))
+        # NOTE: values must be hashable; otherwise this raises TypeError (good).
+        return hash(items)
+
+    def __eq__(self, other):
+        if not isinstance(other, dict):
+            return NotImplemented
+        return dict.__eq__(self, other)
 
 @dataclass(frozen=True)
 class Variant:
@@ -20,6 +39,13 @@ class Variant:
     tag : str = ""
 
 # ============================= Define Variants that can be overriden ==============================
+
+class VariantsNew(Enum):
+    ilist_node_to_node : int = auto()
+    ilist_node_to_leaf : int = auto()
+    ilist_leaf_to_node : int = auto()
+    ilist_leaf_to_leaf : int = auto()
+    direct_summation_force : int = auto()
 
 @dataclass(unsafe_hash=True)
 class Variants:
@@ -31,11 +57,43 @@ class Variants:
 
 # ============================== Helper classes for managing Variants ==============================
 
+@dataclass(unsafe_hash=True)
+class VariantConfigNew:
+    tags : tuple[str] = ("cuda", "base")
+    variants : HashableDict = field(default_factory=HashableDict)
+    verbose : int = 0
+
 @dataclass(frozen=True)
 class VariantConfig:
     tags : tuple[str] = ("cuda", "base")
     variants : Variants = None
     verbose : int = 0
+
+class VariantLineNew(HashableDict):
+    def add(self, var : Variant):
+        if not isinstance(var, Variant):
+            raise TypeError(f"Value must be a Variant, got {type(var)}")
+        self[var.tag] = var
+
+    def select(self, cfg, require=False) -> Variant | None:
+        all_variants = self
+        applicable_variants = {vtag: v for vtag, v in all_variants.items() if v.applicable(cfg)}
+
+        if cfg.verbose >= 3:
+            print(f"-- All variants: {tuple(vtag for vtag in all_variants)}")
+            print(f"-- Applicable variants: {tuple(vtag for vtag in applicable_variants)}")
+        
+        for tag in cfg.tags:
+            if tag in applicable_variants:
+                if cfg.verbose >= 3:
+                    print(f"-- Selected variant: {tag}")
+                return replace(applicable_variants[tag], tag=tag)
+        
+        if require:
+            raise ValueError(f"No applicable variant found for tags {cfg.tags} in variants {tuple(all_variants.keys())}")
+        else:
+            return None
+
 
 @dataclass(unsafe_hash=True)
 class VariantDict():
