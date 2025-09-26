@@ -46,19 +46,22 @@ class V(Enum):
     ilist_leaf_to_node : int = auto()
     ilist_leaf_to_leaf : int = auto()
     direct_summation_force : int = auto()
+    test_function : int = auto()
 
 # ============================== Helper classes for managing Variants ==============================
 
-@dataclass(frozen=True)
+@dataclass(unsafe_hash=True)
 class VariantConfig:
-    tags : tuple[str] = ("cuda", "base")
+    tags : tuple[str] = ("user", "cuda", "base")
     variants : HashableDict = field(default_factory=HashableDict)
     verbose : int = 0
 
 class VariantLine(HashableDict):
-    def add(self, var : Variant, tag=None):
+    def set(self, var : Variant | Callable, tag="user"):
+        if callable(var):
+            var = Variant(var, tag=tag)
         if not isinstance(var, Variant):
-            raise TypeError(f"Value must be a Variant, got {type(var)}")
+            raise TypeError(f"Value must be callable or a Variant, got {type(var)}")
         if tag is None:
             tag = var.tag
         self[tag] = var
@@ -120,14 +123,19 @@ class VariantManager(HashableDict):
     
     def config_with_variants(self, cfg : VariantConfig) -> VariantConfig:
         """If variants are not set, return a new config with resolved variants."""
-        if cfg.variants is None:
-            cfg = replace(cfg, variants=self.resolve_all_variants(cfg))
+        cfg = replace(cfg, variants=self.resolve_all_variants(cfg))
+        
         return cfg
     
-    def print_available_variants(self):
+    def print_available_variants(self, cfg : VariantConfig = None):
         print("Available Variants:")
         for k,vline in self.items():
-            print(f"-- {k.name}: -> {tuple(vline.keys())}")
+            if cfg is not None:
+                vsel = vline.select(cfg).tag
+                print(f"-- {k.name}: -> {tuple(vline.keys())} -> {vsel}")
+            else:
+                print(f"-- {k.name}: -> {tuple(vline.keys())}")
+            
 
 # ============================== Helper classes for managing Variants ==============================
 
@@ -163,3 +171,10 @@ def make_dispatcher(var : VariantLine, base_func: T, add_jit=True) -> T:
 vm = VariantManager()
 
 TAG_BASE = "base"
+
+
+def _test_function(x, cfg : VariantConfig = None):
+    print("Tracing Test function, returns 0")
+    return x*0.
+
+test_function = make_dispatcher(vm[V.test_function], _test_function, add_jit=True)
