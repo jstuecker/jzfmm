@@ -13,10 +13,10 @@ class OpeningRelative:
 
 @dataclass(unsafe_hash=True)
 class PotentialField:
-    def potential(self, x, t=None, cfg=None):
+    def potential(self, x, t=0., cfg=None):
         """External potential field"""
         raise NotImplementedError
-    def acceleration(self, x, t=None, cfg=None):
+    def acceleration(self, x, t=0., cfg=None):
         """External acceleration field, calculated through autodiff"""
         return -jax.grad(lambda x: jnp.sum(self.potential(x, t=t, cfg=cfg)))(x)
 

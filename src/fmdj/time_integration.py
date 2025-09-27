@@ -53,29 +53,36 @@ def find_center(p : Particles, cfg : Config = None):
 
 def shift_reference_center(p : Particles, cfg : Config = None):
     cpos, cvel = find_center(p, cfg=cfg)
-    if p.cpos is None:
-        dcpos = cpos
-        dcvel = cvel
-    else:
-        dcpos = cpos - p.cpos
-        dcvel = cvel - p.cvel
+
+    dcpos = cpos - p.cpos if p.cpos is not None else cpos
+    dcvel = cvel - p.cvel if p.cvel is not None else cvel
     
     # Shift to the new frame
     p = replace(p, pos=p.pos-dcpos, vel=p.vel-dcvel, cpos=cpos, cvel=cvel)
 
     return p
 
-def timestep(p : Particles, dt, cfg : Config, mask=None):
+def ext_acc(p : Particles, t, cfg : Config):
+    if cfg.external_potential is None:
+        return jnp.zeros_like(p.pos)
+    else:
+        acc = cfg.external_potential.acceleration(p.apos(), t=t, cfg=cfg)
+
+        ## Later also think about centering here
+        
+        return acc
+
+def timestep(p : Particles, dt, cfg : Config, t=0., mask=None):
     p = replace(p)  # Make a copy to avoid modifying the input
 
     if p.acc is None:
         p.acc, p.pot = fmdj.multipoles.direct_summation_force.jit(p.pos, p.mass, cfg=cfg)
 
-    vh = kick(p.vel, p.acc, 0.5*dt, mask=mask)
+    vh = kick(p.vel, p.acc + ext_acc(p, t, cfg), 0.5*dt, mask=mask)
     p.pos = drift(p.pos, vh, dt, mask=mask)
 
     p.acc, p.pot = fmdj.multipoles.direct_summation_force.jit(p.pos, p.mass, cfg=cfg)
-    p.vel = kick(vh, p.acc, 0.5*dt, mask=mask)
+    p.vel = kick(vh, p.acc + ext_acc(p, t + dt, cfg), 0.5*dt, mask=mask)
 
     if cfg.centered:
         p = shift_reference_center(p, cfg=cfg)
@@ -83,12 +90,13 @@ def timestep(p : Particles, dt, cfg : Config, mask=None):
     return p
 timestep.jit = jax.jit(timestep, static_argnames=("cfg",))
 
-def simulate(p : Particles, tmax, nsteps, cfg):
+def simulate(p : Particles, tmax, nsteps, cfg, tstart=0.):
     # Make an initial dt=0 step to get the correct initial acceleration
-    p = fmdj.time_integration.timestep(p, dt=0., cfg=cfg)
-    def step(i, p : Particles):
-        return fmdj.time_integration.timestep.jit(p, dt=tmax/nsteps, cfg=cfg)
+    p = fmdj.time_integration.timestep(p, dt=0., cfg=cfg, t=tstart)
+    def step(i, carry):
+        p, t = carry
+        return fmdj.time_integration.timestep.jit(p, dt=tmax/nsteps, cfg=cfg, t=t), t + tmax/nsteps
 
-    p = jax.lax.fori_loop(0, nsteps, step, p)
+    p, t = jax.lax.fori_loop(0, nsteps, step, (p, tstart))
     return p
 simulate.jit = jax.jit(simulate, static_argnames=("cfg",))
