@@ -24,4 +24,7 @@ class Config(VariantConfig):
     ilist_max_mb : int = 1024      # Maximum memory for ilist evaluation in MB
 
     # Optional outputs
-    get_potential : bool = False
+    get_potential : bool = True
+
+    def G(self) -> float:
+        return 4.30071057317063e-06
