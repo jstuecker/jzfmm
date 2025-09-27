@@ -19,6 +19,9 @@ class Config(VariantConfig):
     # Tree Walk
     opening: OpeningBarnesAndHut | OpeningRelative = OpeningBarnesAndHut()
 
+    # Time integration
+    centered : int = 100       # If > 0, express positions relative to the #N most bound particles
+
     # Memory parameters
     ilist_chunk_fac : float = 4.0  # For ilist evaluation. Will improve this parameter later
     ilist_max_mb : int = 1024      # Maximum memory for ilist evaluation in MB
