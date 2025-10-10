@@ -142,3 +142,23 @@ class Timer():
             plt.savefig(save, bbox_inches="tight")
 
         return ax
+
+def bytes_str(bytes):
+    if bytes < 1024:
+        return f"{bytes} B"
+    elif bytes < 1024**2:
+        return f"{bytes / 1024:.1f} kB"
+    elif bytes < 1024**3:
+        return f"{bytes / 1024**2:.1f} MB"
+    else:
+        return f"{bytes / 1024**3:.1f} GB"
+
+def print_memory_usage(fcompiled):
+    """Use with fcompiled=jax.jit(f).lower(args).compile()"""
+    m = fcompiled.memory_analysis()
+
+    print(f"temp bytes: {bytes_str(m.temp_size_in_bytes)}")
+    print(f"arg  bytes: {bytes_str(m.argument_size_in_bytes)}")
+    print(f"output bytes: {bytes_str(m.output_size_in_bytes)}")
+    print(f"alias bytes: {bytes_str(m.alias_size_in_bytes)}")
+    print(f"EST. peak bytes: {bytes_str(m.temp_size_in_bytes + m.argument_size_in_bytes + m.output_size_in_bytes - m.alias_size_in_bytes)}")
