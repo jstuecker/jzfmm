@@ -1,5 +1,6 @@
 # Specific Directories
 checks/old_benchmarks/logs/
+checks/benchmarks/.results
 checks/accuracy_checks/logs/
 notebooks
 
