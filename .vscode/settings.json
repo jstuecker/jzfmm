@@ -1,6 +1,6 @@
 {
     "python.testing.pytestArgs": [
-        ".",
+        "--rootdir=checks",
         "-s",
         "-v"
     ],

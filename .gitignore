@@ -1,6 +1,7 @@
 # Specific Directories
-src/benchmarks/logs/
-src/accuracy_checks/logs/
+checks/old_benchmarks/logs/
+checks/accuracy_checks/logs/
+notebooks
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
