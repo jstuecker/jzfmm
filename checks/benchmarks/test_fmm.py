@@ -24,62 +24,89 @@ def test_fmm_steps(jax_bench, particles):
     )[1]
 
 @pytest.fixture
-def interactions(particles):
+def tree(particles, request):
     pos0, mass0 = particles
-    octree, posz, massz, isortz = fmdj.fmm.build_octree_with_multipoles.jit(pos0+0.5, mass0, p=2)
+    p = getattr(request, "param", 2)
+    octree, posz, massz, isortz = fmdj.fmm.build_octree_with_multipoles.jit(pos0+0.5, mass0, p=p)
+
+    return octree, posz, massz, isortz
+
+@pytest.fixture
+def interactions(tree, request):
+    octree, posz, massz, isortz = tree
     err, (ilist, nilist) = fmdj.fmm.build_interaction_list.jit(octree)
     err.throw()
     ilist, iranges = fmdj.fmm.organize_interactions.jit(ilist, nilist, sort=False)
     ilist.block_until_ready()
     return octree, posz, massz, ilist, nilist, iranges
 
-@pytest.mark.parametrize("particles", [1024*256,1024*1024, 1024*1024*2], indirect=True)
-def test_interactions(jax_bench, interactions):
+def profile_interactions(jb, interactions, mode="base"):
     octree, posz, massz, ilist, nilist, iranges = interactions
 
-    jb = jax_bench(jit_rounds=10, jit_warmup=1, eager_rounds=0, eager_warmup=0)
+    cfg = fmdj.Config(tags=(mode, "base"), p=octree.p, softening=1e-3)
 
-    for mode in "base", "cuda":
-        cfg = fmdj.Config(tags=(mode, "base"), p=octree.p, softening=1e-3)
+    Loc = jb.measure(
+        fmdj.multipoles.ilist_node_to_node, fmdj.multipoles.ilist_node_to_node.jit,
+        octree.xnode, octree.mp, ilist, iranges, cfg=cfg,
+        tag=f"n2n-{mode}"
+    )[1]
+
+    jb.measure(
+        fmdj.multipoles.ilist_leaf_to_node, fmdj.multipoles.ilist_leaf_to_node.jit,
+        octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, iranges, cfg=cfg,
+        tag=f"l2n-{mode}"
+    )
+
+    jb.measure(
+        fmdj.multipoles.ilist_leaf_to_leaf, fmdj.multipoles.ilist_leaf_to_leaf.jit,
+        posz, massz, octree.leaf_particle_bounds, ilist, iranges, cfg=cfg,
+        tag=f"l2l-{mode}"
+    )
+
+    if mode == "base":
+        jb.measure(
+            fmdj.multipoles.ilist_node_to_leaf, fmdj.multipoles.ilist_node_to_leaf.jit,
+            octree.xnode, octree.mp, posz, octree.leaf_particle_bounds, ilist, iranges, cfg=cfg,
+            tag="n2l-base"
+        )
 
         Loc = jb.measure(
-            fmdj.multipoles.ilist_node_to_node, fmdj.multipoles.ilist_node_to_node.jit,
-            octree.xnode, octree.mp, ilist, iranges, cfg=cfg,
-            tag=f"n2n-{mode}"
+            fmdj.multipoles.local_to_local_via_height, fmdj.multipoles.local_to_local_via_height.jit,
+            octree, Loc,
+            tag="Loc-Down"
+        )[1]
+        phi = jb.measure(
+            fmdj.multipoles.evaluate_local, fmdj.multipoles.evaluate_local.jit,
+            Loc[octree.node_of_particle], posz - octree.xnode[octree.node_of_particle],
+            tag="Loc-Eval"
         )[1]
 
-        jb.measure(
-            fmdj.multipoles.ilist_leaf_to_node, fmdj.multipoles.ilist_leaf_to_node.jit,
-            octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, iranges, cfg=cfg,
-            tag=f"l2n-{mode}"
-        )
+    jb.measure(
+        fmdj.fmm.evaluate_interaction_lists, fmdj.fmm.evaluate_interaction_lists.jit,
+        octree, posz, massz, ilist, nilist, sort=False, cfg=cfg,
+        tag=f"tot-{mode}"
+    )
 
-        jb.measure(
-            fmdj.multipoles.ilist_leaf_to_leaf, fmdj.multipoles.ilist_leaf_to_leaf.jit,
-            posz, massz, octree.leaf_particle_bounds, ilist, iranges, cfg=cfg,
-            tag=f"l2l-{mode}"
-        )
+@pytest.mark.parametrize("particles", [1024*256,1024*1024, 1024*1024*2], indirect=True)
+def test_interactions_base(jax_bench, interactions):
+    jb = jax_bench(jit_rounds=10, jit_warmup=1, eager_rounds=0, eager_warmup=0)
 
-        if mode == "base":
-            jb.measure(
-                fmdj.multipoles.ilist_node_to_leaf, fmdj.multipoles.ilist_node_to_leaf.jit,
-                octree.xnode, octree.mp, posz, octree.leaf_particle_bounds, ilist, iranges, cfg=cfg,
-                tag="n2l-base"
-            )
+    profile_interactions(jb, interactions, mode="base")
 
-            Loc = jb.measure(
-                fmdj.multipoles.local_to_local_via_height, fmdj.multipoles.local_to_local_via_height.jit,
-                octree, Loc,
-                tag="Loc-Down"
-            )[1]
-            phi = jb.measure(
-                fmdj.multipoles.evaluate_local, fmdj.multipoles.evaluate_local.jit,
-                Loc[octree.node_of_particle], posz - octree.xnode[octree.node_of_particle],
-                tag="Loc-Eval"
-            )[1]
+@pytest.mark.parametrize("particles", [1024*256,1024*1024, 1024*1024*2], indirect=True)
+def test_interactions_cuda(jax_bench, interactions):
+    jb = jax_bench(jit_rounds=10, jit_warmup=1, eager_rounds=0, eager_warmup=0)
 
-        jb.measure(
-            fmdj.fmm.evaluate_interaction_lists, fmdj.fmm.evaluate_interaction_lists.jit,
-            octree, posz, massz, ilist, nilist, sort=False, cfg=cfg,
-            tag=f"tot-{mode}"
-        )
+    profile_interactions(jb, interactions, mode="cuda")
+
+@pytest.mark.parametrize("tree", [2,3,4], indirect=True)
+def test_interactions_p_cuda(jax_bench, interactions):
+    jb = jax_bench(jit_rounds=10, jit_warmup=1, eager_rounds=0, eager_warmup=0)
+
+    profile_interactions(jb, interactions, mode="cuda")
+
+@pytest.mark.parametrize("tree", [2,3,4], indirect=True)
+def test_interactions_p_base(jax_bench, interactions):
+    jb = jax_bench(jit_rounds=10, jit_warmup=1, eager_rounds=0, eager_warmup=0)
+
+    profile_interactions(jb, interactions, mode="base")
