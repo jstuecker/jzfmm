@@ -27,8 +27,7 @@ def tree(particles, request):
 @pytest.fixture
 def interactions(tree, request):
     octree, posz, massz, isortz = tree
-    err, (ilist, nilist) = fmdj.fmm.build_interaction_list.jit(octree)
-    err.throw()
+    ilist, nilist = fmdj.fmm.build_interaction_list.jit(octree)
     ilist, iranges = fmdj.fmm.organize_interactions.jit(ilist, nilist, sort=False)
     ilist.block_until_ready()
     return octree, posz, massz, ilist, nilist, iranges

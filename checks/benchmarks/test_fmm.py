@@ -10,12 +10,11 @@ def test_fmm_steps(jax_bench, particles):
         tag = "octree"
     )[1]
 
-    err, (ilist, nilist) = jb.measure(
+    ilist, nilist = jb.measure(
         fn_jit=fmdj.fmm.build_interaction_list.jit,
         octree=octree, thetamax=0.75, ilist_fac=512,
         tag = "ilist"
     )[1]
-    err.throw()
 
     ilist, isplits = jb.measure(
         fn_jit=fmdj.fmm.organize_interactions.jit, 
@@ -27,11 +26,10 @@ def test_ilist_construction(jax_bench, tree):
     jb = jax_bench(jit_rounds=40, jit_warmup=1)
     octree, posz, massz, isortz = tree
 
-    err, (ilist, nilist) = jb.measure(
+    ilist, nilist = jb.measure(
         fn_jit=fmdj.fmm.build_interaction_list.jit,
         octree=octree
     )[1]
-    err.throw()
 
 def profile_interactions(jb, interactions, mode="base"):
     octree, posz, massz, ilist, nilist, iranges = interactions

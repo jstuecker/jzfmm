@@ -1,10 +1,10 @@
 import jax
 import jax.numpy as jnp
-from jax.experimental import checkify
 from .octree import Octree, sort_and_build_octree
 from . import multipoles
 from . import config
 from .variants import Variant, vm, TAG_BASE
+from .tools import conditional_callback
 
 # ================================ Tree Preperation functions===================================== #
 
@@ -81,8 +81,6 @@ def opening_criterion(octree : Octree, nodeA, nodeB, thetamax=0.75):
     openB = ((need_open & (L2 >= L1) & ~imA) | imB) & (nodeB > 0)
     return openA, openB
 
-# @partial(jax.jit, static_argnames=('bits', 'ilist_fac', 'clist_fac', 'check_fac', 'maxiter'))
-@checkify.checkify
 def build_interaction_list(octree : Octree, thetamax=0.75, ilist_fac=512, clist_fac=128, check_fac=8):
     """Build an interaction list for the octree, using a binary tree walk
     
@@ -162,12 +160,19 @@ def build_interaction_list(octree : Octree, thetamax=0.75, ilist_fac=512, clist_
         (0, clist, ilist, 1, 0)
     )
 
-    # Expected errors:
-    checkify.check(nclist <= clist.shape[0], "Check list overflow. Increase clist_fac")
-    checkify.check(nilist <= ilist.shape[0], "Interaction list overflow. Increase ilist_fac")
-    # Unexpected errors:
-    checkify.check(i < maxiter, "Something went wrong... Not finished after many many iterations")
-    checkify.check(nclist == 0, "Something went wrong... Checklist wasn't emptied properly")
+    # Expected errors
+    def cerror(n1, n2): 
+        raise MemoryError(f"The check list is too small (need: {n1} have: {n2})")
+    nilist = nilist + conditional_callback(nclist>clist.shape[0], cerror, nclist, clist.shape[0])
+
+    def ierror(n1, n2): 
+        raise MemoryError(f"The interaction list is too small (need: {n1} have: {n2})")
+    nilist = nilist + conditional_callback(nilist>ilist.shape[0], ierror, nilist, ilist.shape[0])
+
+    # Unexpected errors
+    def uerror(i_max): 
+        raise RuntimeError(f"Something went wrong... Not finished after {i_max} iterations")
+    nilist = nilist + conditional_callback(i>=maxiter, uerror, maxiter)
 
     return ilist, nilist
 build_interaction_list.jit = jax.jit(
@@ -245,7 +250,7 @@ def fast_multipole_potential(pos, mass, cfg : config.Config, return_sorted=False
     octree, posz, massz, isortz = build_octree_with_multipoles.jit(
         pos, mass, max_leaf_size=cfg.max_leaf_size, p=cfg.p)
     
-    err, (ilist, nilist) = build_interaction_list.jit(octree, thetamax=cfg.opening.opening_angle)
+    ilist, nilist = build_interaction_list.jit(octree, thetamax=cfg.opening.opening_angle)
     # ilist, iranges = organize_interactions.jit(ilist, nilist, sort=False)
     
     phiz = evaluate_interaction_lists.jit(octree, posz, massz, ilist, nilist, cfg=cfg)
