@@ -23,22 +23,15 @@ def test_fmm_steps(jax_bench, particles):
         tag="organize"
     )[1]
 
-@pytest.fixture
-def tree(particles, request):
-    pos0, mass0 = particles
-    p = getattr(request, "param", 2)
-    octree, posz, massz, isortz = fmdj.fmm.build_octree_with_multipoles.jit(pos0+0.5, mass0, p=p)
-
-    return octree, posz, massz, isortz
-
-@pytest.fixture
-def interactions(tree, request):
+def test_ilist_construction(jax_bench, tree):
+    jb = jax_bench(jit_rounds=40, jit_warmup=1)
     octree, posz, massz, isortz = tree
-    err, (ilist, nilist) = fmdj.fmm.build_interaction_list.jit(octree)
+
+    err, (ilist, nilist) = jb.measure(
+        fn_jit=fmdj.fmm.build_interaction_list.jit,
+        octree=octree
+    )[1]
     err.throw()
-    ilist, iranges = fmdj.fmm.organize_interactions.jit(ilist, nilist, sort=False)
-    ilist.block_until_ready()
-    return octree, posz, massz, ilist, nilist, iranges
 
 def profile_interactions(jb, interactions, mode="base"):
     octree, posz, massz, ilist, nilist, iranges = interactions
@@ -99,13 +92,13 @@ def test_interactions_cuda(jax_bench, interactions):
 
     profile_interactions(jb, interactions, mode="cuda")
 
-@pytest.mark.parametrize("tree", [2,3,4], indirect=True)
+@pytest.mark.parametrize("tree", [2,3,4,5], indirect=True)
 def test_interactions_p_cuda(jax_bench, interactions):
     jb = jax_bench(jit_rounds=10, jit_warmup=1, eager_rounds=0, eager_warmup=0)
 
     profile_interactions(jb, interactions, mode="cuda")
 
-@pytest.mark.parametrize("tree", [2,3,4], indirect=True)
+@pytest.mark.parametrize("tree", [2,3,4,5], indirect=True)
 def test_interactions_p_base(jax_bench, interactions):
     jb = jax_bench(jit_rounds=10, jit_warmup=1, eager_rounds=0, eager_warmup=0)
 
