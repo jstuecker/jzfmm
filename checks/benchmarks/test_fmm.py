@@ -26,13 +26,14 @@ def test_fmm_steps(jax_bench, particles):
 @pytest.fixture
 def interactions(particles):
     pos0, mass0 = particles
-    octree, posz, massz, isortz = fmdj.fmm.build_octree_with_multipoles.jit(pos0+0.5, mass0, p=3)
+    octree, posz, massz, isortz = fmdj.fmm.build_octree_with_multipoles.jit(pos0+0.5, mass0, p=2)
     err, (ilist, nilist) = fmdj.fmm.build_interaction_list.jit(octree)
     err.throw()
     ilist, iranges = fmdj.fmm.organize_interactions.jit(ilist, nilist, sort=False)
     ilist.block_until_ready()
     return octree, posz, massz, ilist, nilist, iranges
 
+@pytest.mark.parametrize("particles", [1024*256,1024*1024, 1024*1024*2], indirect=True)
 def test_interactions(jax_bench, interactions):
     octree, posz, massz, ilist, nilist, iranges = interactions
 

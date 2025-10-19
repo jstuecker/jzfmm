@@ -11,4 +11,7 @@ def get_particles(N = 1024*1024):
     return jax.block_until_ready((pos0, mass))
 
 @pytest.fixture
-def particles(): return get_particles(1024*1024)
+def particles(request):
+    Npart = getattr(request, "param", 1024*1024)
+    
+    return get_particles(Npart)
