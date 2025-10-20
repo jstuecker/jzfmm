@@ -27,5 +27,8 @@ def test_tree_hierarchy(tree_hierarchy : list[nt.TreePlane]):
         assert jnp.all((lvls >= -100 ) & (lvls < 100))
 
 def test_tree_multipoles(particlesz : nt.Particles, tree_hierarchy : list[nt.TreePlane]):
-    mp = nt.multipoles_from_particles(tree_hierarchy[0], particlesz, p=2)
+    mp = nt.multipoles_from_particles.jit(tree_hierarchy[0], particlesz, p=2)
     assert jnp.allclose(tree_hierarchy[0].npart, mp.get(0))
+
+    mp_coarse = nt.coarsen_multipoles.jit(mp, tree_hierarchy[1])
+    assert jnp.allclose(tree_hierarchy[1].npart, mp_coarse.get(0))

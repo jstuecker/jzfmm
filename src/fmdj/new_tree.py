@@ -2,11 +2,15 @@ import fmdj
 import custom_jax as cj
 import jax
 import jax.numpy as jnp
+from fmdj.multipoles import x_moment, shift_multipoles, shift_multipoles
 
-import dataclasses
+from dataclasses import dataclass, field
 from jax.tree_util import register_dataclass
 
-@dataclasses.dataclass(frozen=True)
+def static_field(*args, **kwargs):
+    return field(*args, metadata=dict(static=True), **kwargs)
+
+@dataclass(frozen=True)
 class TreeConfig():
     max_leaf_size : int = 64
     alloc_fac_nodes : float = 1.0
@@ -15,7 +19,22 @@ class TreeConfig():
     stop_coarsen : int = 512
 
 @jax.tree_util.register_dataclass
-@dataclasses.dataclass
+@dataclass
+class Multipoles:
+    xcent : jnp.ndarray # (3,) center of expansion
+    values: jnp.ndarray # Multipoles in (M, Nnodes) layout
+
+    p: int = static_field(default=2)
+
+    around_com : bool = static_field(default=True)
+
+    def center(self):
+        return self.xcent
+    def get(self, i):
+        return self.values[:, i]
+
+@jax.tree_util.register_dataclass
+@dataclass
 class TreePlane():
     # Defined per node:
     ispl: jnp.ndarray # relation to children
@@ -28,10 +47,14 @@ class TreePlane():
     nnodes: jnp.ndarray
 
     # metadata (data independent)
-    max_node_size: int
-    tot_npart: int
+    max_node_size: int = static_field()
+    tot_npart: int = static_field()
 
-    size_fine : int  # the size of the finer level
+    size_fine : int = static_field()
+
+    # Optional data:
+
+    mp: Multipoles = None
 
     def icoarse_of_fine(self) -> jnp.ndarray:
         return jnp.searchsorted(self.ispl, jnp.arange(self.size_fine), side="right") - 1
@@ -41,22 +64,7 @@ class TreePlane():
         return self.lvl.shape[0]
 
 @jax.tree_util.register_dataclass
-@dataclasses.dataclass
-class Multipoles:
-    xcent : jnp.ndarray # (3,) center of expansion
-    values: jnp.ndarray # Multipoles in (M, Nnodes) layout
-
-    p: int = 2
-
-    around_com : bool = True
-
-    def center(self):
-        return self.xcent
-    def get(self, i):
-        return self.values[:, i]
-
-@jax.tree_util.register_dataclass
-@dataclasses.dataclass
+@dataclass
 class Particles:
     pos: jnp.ndarray  # (Nparticles, 3)
     mass: jnp.ndarray  # (Nparticles,)
@@ -95,8 +103,6 @@ build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg']
 #                                            Multipoles                                            #
 # ------------------------------------------------------------------------------------------------ #
 
-from fmdj.multipoles import x_moment, shift_multipoles
-
 def multi_to_flat(kx, ky, kz):
     k = kx + ky + kz
     npoff = ((k+2)*(k+1)*k // 6)
@@ -114,21 +120,21 @@ def iterate_multi_indices(p, istart=0):
                     yield i, (nx, ny, nz)
                 i += 1
 
-def multipoles_from_particles(tlvl : TreePlane, part : Particles, 
+def multipoles_from_particles(tp : TreePlane, part : Particles, 
                               p : int = 2, around_com : bool = True) -> Multipoles:
     dtype = part.mass.dtype
 
-    parent = tlvl.icoarse_of_fine()
+    parent = tp.icoarse_of_fine()
     kwargs = dict(
         segment_ids=parent,
-        num_segments=tlvl.size(),
+        num_segments=tp.size(),
         indices_are_sorted=True
     )
 
     # Compute the center of mass
     mnode = jax.ops.segment_sum(part.mass, **kwargs)
 
-    dx = part.pos - tlvl.geom_center()[parent]
+    dx = part.pos - tp.geom_center()[parent]
     mxnode = [jax.ops.segment_sum(dx[...,d]*part.mass, **kwargs) for d in range(3)]
 
     mp = [mnode]
@@ -137,7 +143,7 @@ def multipoles_from_particles(tlvl : TreePlane, part : Particles,
         xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1)
         mp.extend([jnp.zeros_like(mnode, dtype=dtype)]*3)
     else:
-        xcent = tlvl.geom_center()
+        xcent = tp.geom_center()
         mp.extend(mxnode)
     dx = part.pos - xcent[parent]
 
@@ -151,3 +157,44 @@ def multipoles_from_particles(tlvl : TreePlane, part : Particles,
         p=p,
         around_com=around_com
     )
+multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnames=['p', 'around_com'])
+
+def coarsen_multipoles(mp : Multipoles, tp : TreePlane) -> Multipoles:
+    """Determines the multipoles at the next coarser tree plane"""
+    dtype = mp.values.dtype
+
+    parent = tp.icoarse_of_fine()
+    kwargs = dict(
+        segment_ids=parent,
+        num_segments=tp.size(),
+        indices_are_sorted=True
+    )
+
+    # Compute the center of mass
+    mnode = jax.ops.segment_sum(mp.get(0), **kwargs)
+
+    dx = mp.center() - tp.geom_center()[parent]
+    mxnode = [jax.ops.segment_sum(dx[...,d]*mp.get(0), **kwargs) for d in range(3)]
+
+    # mp = [mnode]
+    
+    if mp.around_com:
+        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1)
+        # mp.extend([jnp.zeros_like(mnode, dtype=dtype)]*3)
+    else:
+        xcent = tp.geom_center()
+        # mp.extend(mxnode)
+    
+    dx = mp.center() - xcent[parent]
+    
+    mpshift = shift_multipoles(mp.values, dx, p=mp.p)
+
+    mp_coarse = [jax.ops.segment_sum(mpshift[...,k], **kwargs) for k in range(mpshift.shape[-1])]
+
+    return Multipoles(
+        xcent=xcent,
+        values=jnp.stack(mp_coarse, axis=-1),
+        p=mp.p,
+        around_com=mp.around_com
+    )
+coarsen_multipoles.jit = jax.jit(coarsen_multipoles)
