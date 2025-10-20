@@ -29,6 +29,8 @@ def generate_combinations(p):
             combos.append((k, j, i))
     return combos
 
+
+
 fact = np.array([1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880], dtype=np.int32)
 binomial = np.zeros((8, 8), dtype=np.int32)
 for n in range(8):

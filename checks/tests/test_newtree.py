@@ -10,11 +10,22 @@ def posz():
     posz, isort = cj.tree.pos_zorder_sort(pos0)
     return posz
 
-def test_tree_hierarchy(posz):
-    cfg = nt.TreeConfig(alloc_fac_nodes=1.2, coarse_fac=4.0)
-    ths = jax.block_until_ready(nt.build_level_hierarchy.jit(posz, cfg))
+@pytest.fixture
+def particlesz(posz):
+    return nt.Particles(posz, jnp.ones(posz.shape[0]))
 
-    for th in ths:
-        assert jnp.sum(th.npart) == th.num_part
-        lvls = th.lvl[:th.nnodes]
+@pytest.fixture
+def tree_hierarchy(particlesz):
+    cfg = nt.TreeConfig(coarse_fac=4.0)
+    ths : list[nt.TreePlane] = jax.block_until_ready(nt.build_tree_hierarchy.jit(particlesz, cfg))
+    return ths
+
+def test_tree_hierarchy(tree_hierarchy : list[nt.TreePlane]):
+    for tplane  in tree_hierarchy:
+        assert jnp.sum(tplane.npart) == tplane.tot_npart
+        lvls = tplane.lvl[:tplane.nnodes]
         assert jnp.all((lvls >= -100 ) & (lvls < 100))
+
+def test_tree_multipoles(particlesz : nt.Particles, tree_hierarchy : list[nt.TreePlane]):
+    mp = nt.multipoles_from_particles(tree_hierarchy[0], particlesz, p=2)
+    assert jnp.allclose(tree_hierarchy[0].npart, mp.get(0))
