@@ -51,10 +51,9 @@ def coarsen_level(fine: TreeLevel, cfg : TreeConfig) -> TreeLevel:
 coarsen_level.jit = jax.jit(coarsen_level, static_argnames=['cfg'])
 
 def build_level_hierarchy(posz, cfg : TreeConfig) -> list[TreeLevel]:
-
     res = cj.tree.summarize_leaves(
         posz, max_size=cfg.max_leaf_size, num_part=posz.shape[0],
-        ref_fac=cfg.coarse_fac, alloc_fac_nodes=cfg.alloc_fac_nodes
+        alloc_fac_nodes=cfg.alloc_fac_nodes
     )
     leaves = TreeLevel(*res, max_size=cfg.max_leaf_size, num_part=posz.shape[0])
 
