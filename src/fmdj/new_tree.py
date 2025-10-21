@@ -173,8 +173,6 @@ multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnam
 
 def coarsen_multipoles(mp : Multipoles, tp : TreePlane) -> Multipoles:
     """Determines the multipoles at the next coarser tree plane"""
-    dtype = mp.values.dtype
-
     parent = tp.icoarse_of_fine()
     kwargs = dict(
         segment_ids=parent,
