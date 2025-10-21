@@ -3,9 +3,13 @@ import jax
 import jax.numpy as jnp
 from fmdj.multipoles import x_moment, shift_multipoles, shift_multipoles
 from dataclasses import dataclass, field
+from typing import Callable
+from functools import wraps
 
 def static_field(*args, **kwargs):
     return field(*args, metadata=dict(static=True), **kwargs)
+
+
 
 @dataclass(frozen=True)
 class TreeConfig():
@@ -68,6 +72,9 @@ class TreePlane():
 class Particles:
     pos: jnp.ndarray  # (Nparticles, 3)
     mass: jnp.ndarray  # (Nparticles,)
+
+    def posm(self):
+        return jnp.concatenate([self.pos, self.mass[:, None]], axis=-1)
 
 def coarsen_plane(fine: TreePlane, cfg : TreeConfig) -> TreePlane:
     """Gets the next coarser tree plane from a finer one"""
@@ -145,7 +152,7 @@ def multipoles_from_particles(tp : TreePlane, part : Particles,
     mp = [mnode]
     
     if around_com:
-        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1)
+        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_center()
         mp.extend([jnp.zeros_like(mnode, dtype=dtype)]*3)
     else:
         xcent = tp.geom_center()
