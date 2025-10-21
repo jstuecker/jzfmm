@@ -53,6 +53,8 @@ class TreePlane():
         return self.cent
     def size(self) -> int:
         return self.lvl.shape[0]
+    def node_extent(self) -> jnp.ndarray:
+        return jnp.ldexp(1., self.lvl)
 
 @jax.tree_util.register_dataclass
 @dataclass
@@ -197,8 +199,92 @@ def _coarsen_multipoles_base(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> M
     )
 
 # ------------------------------------------------------------------------------------------------ #
+#                                         Interaction Lists                                        #
+# ------------------------------------------------------------------------------------------------ #
+
+@jax.tree_util.register_dataclass
+@dataclass
+class InteractionList:
+    """Node i0 will interact with all indices iother[ispl[i0]:ispl[i0+1]]"""
+    ispl: jnp.ndarray
+    iother: jnp.ndarray
+
+    nfilled : jnp.ndarray  # Total number of filled interactions
+
+    def get_interaction_range(self, a, b):
+        """Returns (i0, i1, valid) indicating two interaction nodes and validity"""
+        iint = jnp.arange(b - a, dtype=self.iother.dtype) + a
+        i0 = jnp.searchsorted(self.ispl, iint, side='right') - 1
+        i1 = self.iother[iint]
+        valid = iint < self.nfilled
+        return i0, i1, valid
+    
+    def size(self):
+        return self.iother.size
+
+
+def offset_sum(num):
+    cs = jnp.cumsum(num, axis=0)
+    return cs - num, cs[-1]
+
+def masked_prefix_sum(mask):
+    off, n = offset_sum(mask)
+    off_masked = jnp.where(mask, off, len(mask))
+    return off_masked, n
+
+def dense_interaction_list(size: int, nnodes: jnp.ndarray = None) -> InteractionList:
+    """A dense interaction list where all nodes interact with all other nodes.
+
+    size: size of the node array that will use the interaction list. (Required at compile time)
+    nnodes: actual number of filled nodes (Can be dynamic, used to invalidating unused nodes)
+    """
+
+    if nnodes is None: # size = nnodes will only work outside of jit
+        nnodes = jnp.array(size, dtype=jnp.int32)  
+    dtype = nnodes.dtype
+
+    # We need to work around JAX's lack of dynamic array sizes
+    i1, i2 = jnp.indices((size, size), dtype=dtype)
+    
+    valid = (i1 < nnodes) & (i2 < nnodes)
+
+    ioff, nfilled = masked_prefix_sum(valid.flatten())
+
+    ilist = jnp.zeros(i1.size, dtype=i1.dtype).at[ioff].set(i2.flatten())
+
+    ispl = jnp.arange(0, size, dtype=i1.dtype) * nnodes
+    ispl = jnp.where(ispl < nfilled, ispl, nfilled)
+    
+    return InteractionList(ispl=ispl, iother=ilist, nfilled=nfilled)
+dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size'])
+
+# ------------------------------------------------------------------------------------------------ #
+#                                             Tree Walk                                            #
+# ------------------------------------------------------------------------------------------------ #
+
+def norm2(dx: jnp.ndarray) -> jnp.ndarray:
+    return dx[...,0]**2 + dx[...,1]**2 + dx[...,2]**2
+
+def opening_criterion_bnh(plane: TreePlane, i0: jnp.ndarray, i1: jnp.ndarray, cfg: Config):
+    """Barnes & Hut Opening Criterion."""
+    theta = cfg.opening.opening_angle
+
+    r2 = norm2(plane.cent[i1] - plane.cent[i0])
+
+    L0, L1 = plane.node_extent()[i0], plane.node_extent()[i1]
+
+    need_open = (L0 + L1)**2 > theta**2 * r2
+
+    print(jnp.nanmin((L0 + L1)**2 / r2), theta**2)
+    print(jnp.nanmean(need_open))
+
+    return need_open
+
+# ------------------------------------------------------------------------------------------------ #
 #                                       Register Dispatchers                                       #
 # ------------------------------------------------------------------------------------------------ #
 
 multipoles_from_particles = make_dispatcher(vm[V.multipoles_from_particles], _multipoles_from_particles_base, add_jit=True)
 coarsen_multipoles = make_dispatcher(vm[V.coarsen_multipoles], _coarsen_multipoles_base, add_jit=True)
+
+
