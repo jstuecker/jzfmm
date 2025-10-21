@@ -105,7 +105,6 @@ def shift_multipoles(m, x0, p=2):
         mnew = 0.
         for i in range(a+1):
             idx_src = index_of_mp[i, b, c]
-            idx_dst = index_of_mp[a, b, c]
             coeff = binomial[a, i].astype(m.dtype)
             mnew = mnew + coeff * x0[..., 0]**(a - i) * m[idx_src]
         mx.append(mnew)
