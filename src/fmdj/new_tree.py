@@ -189,7 +189,7 @@ def coarsen_multipoles(mp : Multipoles, tp : TreePlane) -> Multipoles:
     mxnode = [jax.ops.segment_sum(dx[...,d]*mp.get(0), **kwargs) for d in range(3)]
     
     if mp.around_com:
-        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1)
+        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_center()
     else:
         xcent = tp.geom_center()
     
