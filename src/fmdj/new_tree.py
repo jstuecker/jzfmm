@@ -3,25 +3,12 @@ import jax
 import jax.numpy as jnp
 from fmdj.multipoles import x_moment, shift_multipoles, shift_multipoles
 from dataclasses import dataclass, field
-from typing import Callable
-from functools import wraps
+from .config import Config, TreeConfig
+
+from .variants import vm, make_dispatcher, V, VariantConfig
 
 def static_field(*args, **kwargs):
     return field(*args, metadata=dict(static=True), **kwargs)
-
-
-
-@dataclass(frozen=True)
-class TreeConfig():
-    # important
-    p : int = 2
-    max_leaf_size : int = 64
-    coarse_fac : float = 16.0
-
-    # less relevant
-    alloc_fac_nodes : float = 1.0
-    alloc_min : int = 128
-    stop_coarsen : int = 512
 
 @jax.tree_util.register_dataclass
 @dataclass
@@ -76,40 +63,45 @@ class Particles:
     def posm(self):
         return jnp.concatenate([self.pos, self.mass[:, None]], axis=-1)
 
-def coarsen_plane(fine: TreePlane, cfg : TreeConfig) -> TreePlane:
+def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
     """Gets the next coarser tree plane from a finer one"""
-    max_size = int(fine.max_node_size * cfg.coarse_fac)
+    cfg_tree: TreeConfig = cfg.tree
+
+    max_size = int(fine.max_node_size * cfg_tree.coarse_fac)
     
     res = cj.tree.summarize_leaves(
         fine.cent, fine.npart, max_size=max_size, num_part=fine.tot_npart,
-        ref_fac=cfg.coarse_fac, alloc_fac_nodes=cfg.alloc_fac_nodes
+        ref_fac=cfg_tree.coarse_fac, alloc_fac_nodes=cfg_tree.alloc_fac_nodes
     )
 
     coarse = TreePlane(*res, max_node_size = max_size, tot_npart = fine.tot_npart, size_fine = len(fine.lvl))
 
     if fine.mp is not None:
-        coarse.mp = coarsen_multipoles(fine.mp, coarse)
+        coarse.mp = coarsen_multipoles(fine.mp, coarse, cfg=cfg)
 
     return coarse
 coarsen_plane.jit = jax.jit(coarsen_plane, static_argnames=['cfg'])
 
-def build_tree_hierarchy(part : Particles, cfg : TreeConfig, with_multipoles : bool = False) -> list[TreePlane]:
+def build_tree_hierarchy(part: Particles, cfg: Config) -> list[TreePlane]:
+    cfg_tree: TreeConfig = cfg.tree
+    with_multipoles = cfg_tree.p > 0
+
     res = cj.tree.summarize_leaves(
-        part.pos, max_size=cfg.max_leaf_size, num_part=part.pos.shape[0],
-        alloc_fac_nodes=cfg.alloc_fac_nodes
+        part.pos, max_size=cfg_tree.max_leaf_size, num_part=part.pos.shape[0],
+        alloc_fac_nodes=cfg_tree.alloc_fac_nodes
     )
-    leaves = TreePlane(*res, max_node_size=cfg.max_leaf_size, tot_npart=part.pos.shape[0], size_fine=len(part.pos))
+    leaves = TreePlane(*res, max_node_size=cfg_tree.max_leaf_size, tot_npart=part.pos.shape[0], size_fine=len(part.pos))
     if with_multipoles:
-        leaves.mp = multipoles_from_particles(leaves, part, p=cfg.p)
+        leaves.mp = multipoles_from_particles(leaves, part, cfg=cfg)
 
     tree_levels : list[TreePlane] = [leaves]
 
     new_level = leaves
-    while len(new_level.lvl) > cfg.stop_coarsen:
+    while len(new_level.lvl) > cfg_tree.stop_coarsen:
         new_level = coarsen_plane.jit(tree_levels[-1], cfg)
         tree_levels.append(new_level)
     return tree_levels
-build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg', 'with_multipoles'])
+build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg'])
 
 # ------------------------------------------------------------------------------------------------ #
 #                                            Multipoles                                            #
@@ -132,8 +124,9 @@ def iterate_multi_indices(p, istart=0):
                     yield i, (nx, ny, nz)
                 i += 1
 
-def multipoles_from_particles(tp : TreePlane, part : Particles, 
-                              p : int = 2, around_com : bool = True) -> Multipoles:
+def _multipoles_from_particles_base(tp: TreePlane, part: Particles, *, cfg: Config) -> Multipoles:
+    cfg_tree: TreeConfig = cfg.tree
+
     dtype = part.mass.dtype
 
     parent = tp.icoarse_of_fine()
@@ -151,7 +144,7 @@ def multipoles_from_particles(tp : TreePlane, part : Particles,
 
     mp = [mnode]
     
-    if around_com:
+    if cfg_tree.multipoles_around_com:
         xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_center()
         mp.extend([jnp.zeros_like(mnode, dtype=dtype)]*3)
     else:
@@ -160,18 +153,17 @@ def multipoles_from_particles(tp : TreePlane, part : Particles,
     dx = part.pos - xcent[parent]
 
     # Compute multipole moments
-    for i, nvec in iterate_multi_indices(p, istart=4):
+    for i, nvec in iterate_multi_indices(cfg_tree.p, istart=4):
         mp.append(jax.ops.segment_sum(x_moment(dx, nvec) * part.mass, **kwargs))
 
     return Multipoles(
         xcent=xcent,
         values=jnp.stack(mp, axis=-1),
-        p=p,
-        around_com=around_com
+        p=cfg_tree.p,
+        around_com=cfg_tree.multipoles_around_com
     )
-multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnames=['p', 'around_com'])
 
-def coarsen_multipoles(mp : Multipoles, tp : TreePlane) -> Multipoles:
+def _coarsen_multipoles_base(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipoles:
     """Determines the multipoles at the next coarser tree plane"""
     parent = tp.icoarse_of_fine()
     kwargs = dict(
@@ -203,4 +195,10 @@ def coarsen_multipoles(mp : Multipoles, tp : TreePlane) -> Multipoles:
         p=mp.p,
         around_com=mp.around_com
     )
-coarsen_multipoles.jit = jax.jit(coarsen_multipoles)
+
+# ------------------------------------------------------------------------------------------------ #
+#                                       Register Dispatchers                                       #
+# ------------------------------------------------------------------------------------------------ #
+
+multipoles_from_particles = make_dispatcher(vm[V.multipoles_from_particles], _multipoles_from_particles_base, add_jit=True)
+coarsen_multipoles = make_dispatcher(vm[V.coarsen_multipoles], _coarsen_multipoles_base, add_jit=True)

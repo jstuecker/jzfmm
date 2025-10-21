@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from .octree import Octree
 import numpy as np
 from . import config
-from .variants import Variant, vm, TAG_BASE, make_dispatcher, V
+from .variants import vm, make_dispatcher, V
 
 try:
     import custom_jax as cj

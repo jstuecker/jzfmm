@@ -48,6 +48,9 @@ class V(Enum):
     direct_summation_force : int = auto()
     test_function : int = auto()
 
+    multipoles_from_particles : int = auto()
+    coarsen_multipoles : int = auto()
+
 # ============================== Helper classes for managing Variants ==============================
 
 @dataclass(unsafe_hash=True)

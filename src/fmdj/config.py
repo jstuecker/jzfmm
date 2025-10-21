@@ -21,7 +21,29 @@ class PotentialField:
         return -jax.grad(lambda x: jnp.sum(self.potential(x, t=t, cfg=cfg)))(x)
 
 @dataclass(unsafe_hash=True)
+class TreeConfig():
+    # Multipole order:
+    p : int = 2
+
+    # important
+    max_leaf_size : int = 64
+    coarse_fac : float = 4.0
+
+    # less relevant
+    alloc_fac_nodes : float = 1.0
+    alloc_min : int = 128
+    stop_coarsen : int = 512
+
+    # untested:
+    multipoles_around_com : bool = True
+
+@dataclass(unsafe_hash=True)
 class Config(VariantConfig):
+    # New tree parameters
+    tree : TreeConfig = TreeConfig()
+
+    # everything below might be outdated
+
     # Physical parameters
     external_potential : PotentialField | None = None
 

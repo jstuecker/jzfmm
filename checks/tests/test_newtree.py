@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import custom_jax as cj
 import pytest
-from custom_jax.cj_new_tree import multipoles_from_particles as cj_multipoles_from_particles, cj_coarsen_multipoles
+from fmdj.config import Config, TreeConfig
 
 @pytest.fixture
 def posz():
@@ -16,10 +16,17 @@ def particlesz(posz):
     return nt.Particles(posz, jnp.ones(posz.shape[0]))
 
 @pytest.fixture
-def tree_hierarchy(particlesz):
-    cfg = nt.TreeConfig(coarse_fac=4.0)
-    ths : list[nt.TreePlane] = jax.block_until_ready(nt.build_tree_hierarchy.jit(particlesz, cfg))
+def tree_hierarchy(particlesz, cfg_cuda):
+    ths : list[nt.TreePlane] = jax.block_until_ready(nt.build_tree_hierarchy.jit(particlesz, cfg=cfg_cuda))
     return ths
+
+@pytest.fixture
+def cfg_base():
+    return Config(tags=("base",))
+
+@pytest.fixture
+def cfg_cuda():
+    return Config(tags=("cuda", "base"))
 
 def test_tree_hierarchy(tree_hierarchy : list[nt.TreePlane]):
     for tplane  in tree_hierarchy:
@@ -27,17 +34,18 @@ def test_tree_hierarchy(tree_hierarchy : list[nt.TreePlane]):
         lvls = tplane.lvl[:tplane.nnodes]
         assert jnp.all((lvls >= -100 ) & (lvls < 100))
 
-def test_tree_multipoles(particlesz : nt.Particles, tree_hierarchy : list[nt.TreePlane]):
-    mp = nt.multipoles_from_particles.jit(tree_hierarchy[0], particlesz, p=2)
-    mp2 = cj_multipoles_from_particles(tree_hierarchy[0], particlesz, p=2)
-    assert jnp.allclose(tree_hierarchy[0].npart, mp.get(0))
+def test_tree_multipoles(particlesz: nt.Particles, tree_hierarchy: list[nt.TreePlane], 
+                         cfg_base: Config, cfg_cuda: Config):
+    mp_base = nt.multipoles_from_particles.jit(tree_hierarchy[0], particlesz, cfg=cfg_base)
+    mp_cuda = nt.multipoles_from_particles.jit(tree_hierarchy[0], particlesz, cfg=cfg_cuda)
+    assert jnp.allclose(tree_hierarchy[0].npart, mp_base.get(0))
     
-    for i in range(mp.values.shape[1]):
-        assert jnp.allclose(mp.get(i), mp2.get(i), rtol=1e-3)
-    assert jnp.allclose(mp.center(), mp2.center(), rtol=1e-6, equal_nan=True)
+    for i in range(mp_base.values.shape[1]):
+        assert jnp.allclose(mp_base.get(i), mp_cuda.get(i), rtol=1e-3)
+    assert jnp.allclose(mp_base.center(), mp_cuda.center(), rtol=1e-6, equal_nan=True)
 
-    mp_coarse = nt.coarsen_multipoles.jit(mp, tree_hierarchy[1])
-    mp_coarse2 = cj_coarsen_multipoles(mp2, tree_hierarchy[1])
+    mp_coarse = nt.coarsen_multipoles.jit(mp_base, tree_hierarchy[1], cfg=cfg_base)
+    mp_coarse2 = nt.coarsen_multipoles.jit(mp_cuda, tree_hierarchy[1], cfg=cfg_cuda)
     assert jnp.allclose(tree_hierarchy[1].npart, mp_coarse.get(0))
-    for i in range(mp.values.shape[1]):
+    for i in range(mp_base.values.shape[1]):
         assert jnp.allclose(mp_coarse.get(i), mp_coarse2.get(i), rtol=1e-3, atol=1e-4)
