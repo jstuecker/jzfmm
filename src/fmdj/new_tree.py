@@ -218,6 +218,21 @@ def find_group(ispl, index):
 @jax.tree_util.register_dataclass
 @dataclass
 class SegmentedNDArray():
+    """This class provides index mapping strategies to define ndarrays with locally varying shapes
+    
+    We define splitting points so that the elements that have first index i0 are located
+    between spl[i0] and spl[i0+1] on the next finer level.
+
+    For example, consdier an ndarray x with shape (4,3), we could represent it through splits
+    spl[0] = [0, 3, 6, 9, 12]. E.g. to get x[a,b] you could use x.flat[multi_to_flat(a,b)] to 
+    index it. However, here we can also create more general shaped arrays.
+
+    To also support higher dimensions than 2, it is possible to define a hierarchy of splits. For
+    example a (4, 3, 2) array would be represented through
+    spl[0] = [0, 3, 6, 9, 12]
+    spl[1] = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24]
+    """
+
     ispl: List[jnp.ndarray]
 
     def global_ispl(self, axis=0):
@@ -226,18 +241,6 @@ class SegmentedNDArray():
         else:
             ispl = self.global_ispl(axis=axis+1)
             return ispl[self.ispl[axis]]
-        
-    # def all_global_ispl(self):
-    #     ispls = []
-    #     for axis in range(len(self.ispl)):
-    #         ispls.append( self.global_ispl(axis=axis) )
-    #     return ispls
-
-    # def flat_to_group_offset(self, iflat, axis=0):
-    #     ispl = self.global_ispl(axis=axis)
-    #     igroup_start = find_group(ispl, iflat)
-
-    #     return iflat - igroup_start
 
     def n(self, idx=None, axis=0):
         if idx is None:
@@ -289,15 +292,15 @@ class InteractionList:
 
     nfilled : jnp.ndarray  # Total number of filled interactions
 
-    def get_interaction_range(self, a, b):
+    def get_interactions(self):
         """Returns (i0, i1, valid) indicating two interaction nodes and validity"""
-        iint = jnp.arange(b - a, dtype=self.iother.dtype) + a
+        iint = jnp.arange(self.size(), dtype=self.dtype())
         i0 = jnp.searchsorted(self.ispl, iint, side='right') - 1
         i1 = self.iother[iint]
         valid = iint < self.nfilled
         return i0, i1, valid
     
-    def filter(self, mask: jnp.ndarray, size=None) -> 'InteractionList':
+    def filter(self, mask: jnp.ndarray, size: int | None = None) -> 'InteractionList':
         """Returns a filtered interaction list according to the boolean mask"""
         if size is None:
             size = self.iother.size
@@ -309,6 +312,9 @@ class InteractionList:
     
     def size(self):
         return self.iother.size
+    
+    def dtype(self):
+        return self.iother.dtype
 
 def expand_interactions(
         ilist: InteractionList, 
