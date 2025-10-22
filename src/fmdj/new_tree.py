@@ -234,6 +234,11 @@ from typing import List
 def find_group(ispl, index):
     return jnp.searchsorted(ispl, index, side='right') - 1
 
+def inverse_of_splits(ispl, size):
+    """given [0, 4, 7] returns [0,0,0,0,1,1,1] for size=7"""
+    mask = jnp.zeros(size, dtype=jnp.int32).at[ispl].set(1)
+    return jnp.cumsum(mask) - 1
+
 @jax.tree_util.register_dataclass
 @dataclass
 class SegmentedNDArray():
@@ -279,7 +284,7 @@ class SegmentedNDArray():
         valid = True
         for ispl in self.ispl[::-1]:
             valid = valid & (iflat < ispl[-1])
-            igroup = find_group(ispl, iflat)
+            igroup = inverse_of_splits(ispl, iflat.shape[0])[iflat]
             imult.append(iflat - ispl[igroup])
             iflat = igroup
         imult.append(iflat)
