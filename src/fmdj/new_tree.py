@@ -475,13 +475,12 @@ def evaluate_plane_interactions(plane: TreePlane,
     if loc_lr is not None:
         x0 = plane_lr.mp.center()[plane_lr.icoarse_of_fine()]
         loc = loc + shift_local_to_local(loc, plane.mp.center() - x0)
-    loc = 0.
 
     # Some logging
     open_frac = ilist_open.nfilled / ilist.nfilled
     fmdj.log("Interactions opened {}/{} ({:.1%}) sizefac: {:.1f} ({:.1%} of allocation)", 
              ilist_open.nfilled, ilist.nfilled, open_frac, ilist.nfilled / plane.size(), 
-             ilist.nfilled / ilist.size(), level=0, cfg=cfg)
+             ilist.nfilled / ilist.size(), level=2, cfg=cfg)
     
     return loc, ilist_open
 evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
