@@ -40,9 +40,15 @@ class TreeConfig():
     multipoles_around_com : bool = True
 
 @dataclass(unsafe_hash=True)
+class LoggingConfig():
+    level : int = 1
+    show_loc : bool = True
+
+@dataclass(unsafe_hash=True)
 class Config(VariantConfig):
     # New tree parameters
     tree : TreeConfig = TreeConfig()
+    logging : LoggingConfig = LoggingConfig()
 
     # everything below might be outdated
 

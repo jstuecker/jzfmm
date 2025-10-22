@@ -7,5 +7,6 @@ from . import potential
 from . import tools
 from .plugins import enable_plugins
 from .variants import V, vm
+from .tools import log
 
 enable_plugins()

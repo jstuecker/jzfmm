@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from .config import Config, TreeConfig
 from fmdj.tools import conditional_callback
 from typing import Tuple
+import fmdj
 
 from .variants import vm, make_dispatcher, V, VariantConfig
 
@@ -378,8 +379,6 @@ def expand_interactions(
     def size_error(nfilled, size):
         raise ValueError(f"Expanded interaction list ({nfilled}) does not fit into buffer ({size})")
 
-    print(f"Expanded ilist from {ilist.nfilled} to {ispln[-1]} interactions. {ispln[-1]/size_new_ilist:.2%} of allocated size used.")
-
     ispln = ispln + conditional_callback(ispln[-1] >= size_new_ilist, size_error, ispln[-1], size_new_ilist)
     
     return InteractionList(ispl = ispln, iother = iother_new, nfilled = ispln[-1])
@@ -472,13 +471,18 @@ def evaluate_plane_interactions(plane: TreePlane,
     interactions = jnp.stack(ilist_eval.get_interactions(get_valid=False), axis=-1)
     irange = jnp.stack([0, ilist_eval.nfilled])
 
-    # loc = ilist_node_to_node(plane.mp.center(), plane.mp.values, interactions, irange, cfg=cfg)
-    # if loc_lr is not None:
-    #     x0 = plane_lr.mp.center()[plane_lr.icoarse_of_fine()]
-    #     loc = loc + shift_local_to_local(loc, plane.mp.center() - x0)
+    loc = ilist_node_to_node(plane.mp.center(), plane.mp.values, interactions, irange, cfg=cfg)
+    if loc_lr is not None:
+        x0 = plane_lr.mp.center()[plane_lr.icoarse_of_fine()]
+        loc = loc + shift_local_to_local(loc, plane.mp.center() - x0)
     loc = 0.
-    print(f"evalfrac: {jnp.mean(~need_open[:ilist.nfilled]):.3f} sizefac: {ilist_open.nfilled / plane.size():.1f}")
 
+    # Some logging
+    open_frac = ilist_open.nfilled / ilist.nfilled
+    fmdj.log("Interactions opened {}/{} ({:.1%}) sizefac: {:.1f} ({:.1%} of allocation)", 
+             ilist_open.nfilled, ilist.nfilled, open_frac, ilist.nfilled / plane.size(), 
+             ilist.nfilled / ilist.size(), level=0, cfg=cfg)
+    
     return loc, ilist_open
 evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
 
