@@ -5,6 +5,7 @@ from fmdj.multipoles import x_moment, shift_multipoles, shift_multipoles
 from dataclasses import dataclass, field
 from .config import Config, TreeConfig
 from fmdj.tools import conditional_callback
+from typing import Tuple
 
 from .variants import vm, make_dispatcher, V, VariantConfig
 
@@ -85,7 +86,7 @@ def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
         ref_fac=cfg_tree.coarse_fac, alloc_fac_nodes=cfg_tree.alloc_fac_nodes
     )
 
-    coarse = TreePlane(*res, max_node_size = max_size, tot_npart = fine.tot_npart, size_children = len(fine.lvl))
+    coarse = TreePlane(*res, max_node_size = max_size, tot_npart = fine.tot_npart, size_children = fine.size())
 
     if fine.mp is not None:
         coarse.mp = coarsen_multipoles(fine.mp, coarse, cfg=cfg)
@@ -425,6 +426,24 @@ def opening_criterion_bnh(plane: TreePlane, i0: jnp.ndarray, i1: jnp.ndarray, cf
     print(jnp.nanmean(need_open))
 
     return need_open
+
+def evaluate_plane_interactions(plane: TreePlane, ilist: InteractionList, cfg: Config
+                                ) -> Tuple[jnp.ndarray, InteractionList]:
+    """Evaluate all interactions for a given tree plane."""
+    ilist_alloc_fac = cfg.tree.ilist_alloc_fac
+
+    # Interaction indices
+    i0, i1, valid = ilist.get_interactions()
+
+    need_open = opening_criterion_bnh(plane, i0, i1, cfg=cfg)
+
+    ilist_open = ilist.filter(valid & need_open)
+    ilist_eval = ilist.filter(valid & ~need_open)
+    
+    size_new = ilist_alloc_fac * plane.size_children
+    ilist_new = expand_interactions(ilist_open, plane.ispl, plane.size_children, size_new)
+
+    return jnp.mean(need_open[:ilist.nfilled]), ilist_new
 
 # ------------------------------------------------------------------------------------------------ #
 #                                       Register Dispatchers                                       #
