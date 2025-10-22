@@ -42,19 +42,27 @@ class TreePlane():
     max_node_size: int = static_field()
     tot_npart: int = static_field()
 
-    size_fine : int = static_field()
+    size_children : int = static_field()
 
     # Optional data:
     mp: Multipoles = None
 
     def icoarse_of_fine(self) -> jnp.ndarray:
-        return jnp.searchsorted(self.ispl, jnp.arange(self.size_fine), side="right") - 1
+        return jnp.searchsorted(self.ispl, jnp.arange(self.size_children), side="right") - 1
     def geom_center(self) -> jnp.ndarray:
         return self.cent
     def size(self) -> int:
         return self.lvl.shape[0]
     def node_extent(self) -> jnp.ndarray:
         return jnp.ldexp(1., self.lvl)
+    def get_child_indices(self, nchild : jnp.ndarray = None):
+        """Returns (igroup, idx, valid) indicating indices of group, child and validity"""
+        if nchild is None:
+            nchild = self.size_children
+        isub = jnp.arange(self.size_children, dtype=self.ispl.dtype)
+        igroup = jnp.searchsorted(self.ispl, isub, side='right') - 1
+        valid = (igroup < self.nnodes) & (isub < nchild)
+        return igroup, isub, valid
 
 @jax.tree_util.register_dataclass
 @dataclass
@@ -76,7 +84,7 @@ def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
         ref_fac=cfg_tree.coarse_fac, alloc_fac_nodes=cfg_tree.alloc_fac_nodes
     )
 
-    coarse = TreePlane(*res, max_node_size = max_size, tot_npart = fine.tot_npart, size_fine = len(fine.lvl))
+    coarse = TreePlane(*res, max_node_size = max_size, tot_npart = fine.tot_npart, size_children = len(fine.lvl))
 
     if fine.mp is not None:
         coarse.mp = coarsen_multipoles(fine.mp, coarse, cfg=cfg)
@@ -92,7 +100,7 @@ def build_tree_hierarchy(part: Particles, cfg: Config) -> list[TreePlane]:
         part.pos, max_size=cfg_tree.max_leaf_size, num_part=part.pos.shape[0],
         alloc_fac_nodes=cfg_tree.alloc_fac_nodes
     )
-    leaves = TreePlane(*res, max_node_size=cfg_tree.max_leaf_size, tot_npart=part.pos.shape[0], size_fine=len(part.pos))
+    leaves = TreePlane(*res, max_node_size=cfg_tree.max_leaf_size, tot_npart=part.pos.shape[0], size_children=len(part.pos))
     if with_multipoles:
         leaves.mp = multipoles_from_particles(leaves, part, cfg=cfg)
 
@@ -202,6 +210,76 @@ def _coarsen_multipoles_base(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> M
 #                                         Interaction Lists                                        #
 # ------------------------------------------------------------------------------------------------ #
 
+from typing import List
+
+def find_group(ispl, index):
+    return jnp.searchsorted(ispl, index, side='right') - 1
+
+@jax.tree_util.register_dataclass
+@dataclass
+class SegmentedNDArray():
+    ispl: List[jnp.ndarray]
+
+    def global_ispl(self, axis=0):
+        if axis == len(self.ispl) - 1:
+            return self.ispl[axis]
+        else:
+            ispl = self.global_ispl(axis=axis+1)
+            return ispl[self.ispl[axis]]
+        
+    # def all_global_ispl(self):
+    #     ispls = []
+    #     for axis in range(len(self.ispl)):
+    #         ispls.append( self.global_ispl(axis=axis) )
+    #     return ispls
+
+    # def flat_to_group_offset(self, iflat, axis=0):
+    #     ispl = self.global_ispl(axis=axis)
+    #     igroup_start = find_group(ispl, iflat)
+
+    #     return iflat - igroup_start
+
+    def n(self, idx=None, axis=0):
+        if idx is None:
+            return self.ispl[axis][1:] - self.ispl[axis][:-1]
+        else:
+            # Note: if idx is out ouf bounds this will return 0
+            return self.ispl[axis][idx+1] - self.ispl[axis][idx]
+    
+    def multi_indices(self, size, get_valid=False):
+        return self.flat_to_multi(jnp.arange(size, dtype=self.ispl[0].dtype), get_valid=get_valid)
+
+    def flat_to_multi(self, iflat, get_valid=False):
+        imult = []
+        valid = True
+        for ispl in self.ispl[::-1]:
+            valid = valid & (iflat < ispl[-1])
+            igroup = find_group(ispl, iflat)
+            imult.append(iflat - ispl[igroup])
+            iflat = igroup
+        imult.append(iflat)
+        if get_valid:
+            return imult[::-1], valid
+        else:
+            return imult[::-1]
+    
+    def multi_to_flat(self, imult, get_valid=False):
+        assert len(imult) == len(self.ispl) + 1
+        valid = jnp.ones_like(imult[0], dtype=bool)
+        iflat = jnp.zeros_like(imult[0])
+        for i, ispl in enumerate(self.ispl):
+            iflat = ispl[iflat + imult[i]]
+            valid = valid & (iflat < ispl[-1])
+        if get_valid:
+            return iflat + imult[-1], valid
+        else:
+            return iflat + imult[-1]
+    
+    def expand(self, n):
+        """Segmentation that is given by replicating each element n[i] times"""
+        ispl_new = cumsum_starting_with_zero(n)
+        return SegmentedNDArray(ispl=[*self.ispl, ispl_new])
+
 @jax.tree_util.register_dataclass
 @dataclass
 class InteractionList:
@@ -219,9 +297,53 @@ class InteractionList:
         valid = iint < self.nfilled
         return i0, i1, valid
     
+    def filter(self, mask: jnp.ndarray, size=None) -> 'InteractionList':
+        """Returns a filtered interaction list according to the boolean mask"""
+        if size is None:
+            size = self.iother.size
+        ioff, nfilled = offset_sum(mask)
+        iother_new = jnp.zeros(size, dtype=self.iother.dtype).at[ioff].set(self.iother)
+        ispl_new = ioff[self.ispl]
+
+        return InteractionList(ispl=ispl_new, iother=iother_new, nfilled=nfilled)
+    
     def size(self):
         return self.iother.size
 
+def expand_interactions(ilist: InteractionList, plane: TreePlane, size: int):
+    """Expands the interaction list to the children"""
+    # This works by adding two (variable size) extra dimensions to the interaction list.
+    # Since the indexing logic of segmented arrays is rather complicated, we use a 
+    # helper class SegmentedNDArray to handle the indexing.
+
+    # Helper, Node->interaction
+    seg_ilist = SegmentedNDArray(ispl=[ilist.ispl])
+    size_children = 20 #plane.size_children
+
+    # Node->Child segments
+    seg_nodes = SegmentedNDArray(ispl=[plane.ispl])
+
+    # Expand to Node->Child->Nodeinteraction
+    (in0, ic0), valid = seg_ilist.multi_indices(size_children, get_valid=True)
+    node_exp = seg_nodes.expand(seg_ilist.n(in0) * valid)
+
+    # Expand to Node->Child->Nodeinteraction->Otherchild
+    (in0, ic0, iint), valid = node_exp.multi_indices(size, get_valid=True)
+    i1 = ilist.iother[seg_ilist.multi_to_flat((in0, iint))]
+    node_cc = node_exp.expand(seg_nodes.n(i1) * valid)
+
+    # Get interaction list
+    (in0, ic0, iint, ic1), valid = node_cc.multi_indices(size, get_valid=True)
+    inode1 = ilist.iother[seg_ilist.multi_to_flat((in0, iint))]
+    iother_new = jnp.where(valid, seg_nodes.multi_to_flat((inode1, ic1)), size)
+
+    # Discard last dimension
+    ispl = node_cc.global_ispl(1)
+    
+    return InteractionList(ispl = ispl, iother = iother_new, nfilled = size)
+
+def cumsum_starting_with_zero(x):
+    return jnp.concatenate((jnp.zeros((1,) + x.shape[1:], dtype=x.dtype), jnp.cumsum(x, axis=0)))
 
 def offset_sum(num):
     cs = jnp.cumsum(num, axis=0)
