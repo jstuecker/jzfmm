@@ -1,7 +1,7 @@
 import custom_jax as cj
 import jax
 import jax.numpy as jnp
-from fmdj.multipoles import x_moment, shift_multipoles, shift_multipoles
+from fmdj.multipoles import x_moment, shift_multipoles, shift_local_to_local, ilist_node_to_node
 from dataclasses import dataclass, field
 from .config import Config, TreeConfig
 from fmdj.tools import conditional_callback
@@ -55,8 +55,24 @@ class TreePlane():
         return self.cent
     def size(self) -> int:
         return self.lvl.shape[0]
-    def node_extent(self) -> jnp.ndarray:
-        return jnp.ldexp(1., self.lvl)
+    def node_extent(self, diag2=False) -> jnp.ndarray:
+        # return jnp.ldexp(1., self.lvl)
+        olvl, omod = self.lvl//3, self.lvl % 3
+
+        dx = jnp.ldexp(1., olvl)
+        dy = jnp.ldexp(1., olvl + (omod >= 2).astype(jnp.int32))
+        dz = jnp.ldexp(1., olvl + (omod >= 1).astype(jnp.int32))
+
+        if diag2:
+            return dx*dx + dy*dy + dz*dz
+        else:
+            return jnp.stack((dx, dy, dz), axis=-1)
+    
+def lvl_to_ext(level_binary):
+    olvl, omod = level_binary//3, level_binary % 3
+    levels_3d = jnp.stack((olvl, olvl + (omod >= 2).astype(jnp.int32), olvl + (omod >= 1).astype(jnp.int32)),axis=-1)
+    return 2.**levels_3d
+
     def get_child_indices(self, nchild : jnp.ndarray = None):
         """Returns (igroup, idx, valid) indicating indices of group, child and validity"""
         if nchild is None:
@@ -297,13 +313,16 @@ class InteractionList:
 
     nfilled : jnp.ndarray  # Total number of filled interactions
 
-    def get_interactions(self):
+    def get_interactions(self, get_valid=False):
         """Returns (i0, i1, valid) indicating two interaction nodes and validity"""
         iint = jnp.arange(self.size(), dtype=self.dtype())
         i0 = jnp.searchsorted(self.ispl, iint, side='right') - 1
         i1 = self.iother[iint]
         valid = iint < self.nfilled
-        return i0, i1, valid
+        if get_valid:
+            return i0, i1, valid
+        else:
+            return i0, i1
     
     def filter(self, mask: jnp.ndarray, size: int | None = None) -> 'InteractionList':
         """Returns a filtered interaction list according to the boolean mask"""
@@ -338,7 +357,7 @@ def expand_interactions(
     seg_nodes = SegmentedNDArray(ispl=[ispl])
 
     # Expand to Node->Child->Nodeinteraction
-    (in0, ic0), valid = seg_ilist.multi_indices(size_children, get_valid=True)
+    (in0, ic0), valid = seg_nodes.multi_indices(size_children, get_valid=True)
     node_exp = seg_nodes.expand(seg_ilist.n(in0) * valid)
 
     # Expand to Node->Child->Nodeinteraction->Otherchild
@@ -353,15 +372,17 @@ def expand_interactions(
     iother_new = jnp.where(valid, seg_nodes.multi_to_flat((inode1, ic1)), size_new_ilist)
 
     # Discard last dimension
-    ispl = node_cc.global_ispl(1)
+    ispln = node_cc.global_ispl(1)
 
     # Check that the sizes are big enough
     def size_error(nfilled, size):
         raise ValueError(f"Expanded interaction list ({nfilled}) does not fit into buffer ({size})")
 
-    ispl = ispl + conditional_callback(ispl[-1] >= size_new_ilist, size_error, ispl[-1], size_new_ilist)
+    print(f"Expanded ilist from {ilist.nfilled} to {ispln[-1]} interactions. {ispln[-1]/size_new_ilist:.2%} of allocated size used.")
+
+    ispln = ispln + conditional_callback(ispln[-1] >= size_new_ilist, size_error, ispln[-1], size_new_ilist)
     
-    return InteractionList(ispl = ispl, iother = iother_new, nfilled = ispl[-1])
+    return InteractionList(ispl = ispln, iother = iother_new, nfilled = ispln[-1])
 expand_interactions.jit = jax.jit(expand_interactions, static_argnames=['size_children', 'size_new_ilist'])
 
 
@@ -414,36 +435,52 @@ def opening_criterion_bnh(plane: TreePlane, i0: jnp.ndarray, i1: jnp.ndarray, cf
     """Barnes & Hut Opening Criterion."""
     theta = cfg.opening.opening_angle
 
-    r2 = norm2(plane.cent[i1] - plane.cent[i0])
+    r2 = norm2(plane.mp.center()[i1] - plane.mp.center()[i0])
 
+    # L0, L1 = plane.node_extent()[i0], plane.node_extent()[i1]
     L0, L1 = plane.node_extent()[i0], plane.node_extent()[i1]
 
-    need_open = (L0 + L1)**2 > theta**2 * r2
+    need_open = norm2(L0 + L1) > theta**2 * r2
     # To avoid dealing with overflow issues, we open very large nodes explicitly:
-    need_open = need_open | (plane.lvl[i1] >= 300) | (plane.lvl[i0] >= 300)
-
-    print(jnp.nanmin((L0 + L1)**2 / r2), theta**2)
-    print(jnp.nanmean(need_open))
+    need_open = need_open | (plane.lvl[i1] >= 150) | (plane.lvl[i0] >= 150)
 
     return need_open
 
-def evaluate_plane_interactions(plane: TreePlane, ilist: InteractionList, cfg: Config
+def evaluate_plane_interactions(plane: TreePlane, 
+                                plane_lr: TreePlane | None = None,
+                                ilist_lr: InteractionList | None = None,
+                                loc_lr: jnp.ndarray | None = None,
+                                cfg: Config = None
                                 ) -> Tuple[jnp.ndarray, InteractionList]:
     """Evaluate all interactions for a given tree plane."""
-    ilist_alloc_fac = cfg.tree.ilist_alloc_fac
+    if plane_lr is None or ilist_lr is None: # Root level
+        ilist = dense_interaction_list(plane.size(), nnodes=plane.nnodes)
+    else:
+        # Add all child-child pairs for each coarser interaction
+        ilist_size_new = cfg.tree.ilist_alloc_fac * plane.size()
+        ilist = expand_interactions(ilist_lr, plane_lr.ispl, plane.size(), ilist_size_new)
 
     # Interaction indices
-    i0, i1, valid = ilist.get_interactions()
+    i0, i1, valid = ilist.get_interactions(get_valid=True)
 
     need_open = opening_criterion_bnh(plane, i0, i1, cfg=cfg)
 
     ilist_open = ilist.filter(valid & need_open)
     ilist_eval = ilist.filter(valid & ~need_open)
     
-    size_new = ilist_alloc_fac * plane.size_children
-    ilist_new = expand_interactions(ilist_open, plane.ispl, plane.size_children, size_new)
+    # Evaluate multipole interactions
+    interactions = jnp.stack(ilist_eval.get_interactions(get_valid=False), axis=-1)
+    irange = jnp.stack([0, ilist_eval.nfilled])
 
-    return jnp.mean(need_open[:ilist.nfilled]), ilist_new
+    # loc = ilist_node_to_node(plane.mp.center(), plane.mp.values, interactions, irange, cfg=cfg)
+    # if loc_lr is not None:
+    #     x0 = plane_lr.mp.center()[plane_lr.icoarse_of_fine()]
+    #     loc = loc + shift_local_to_local(loc, plane.mp.center() - x0)
+    loc = 0.
+    print(f"evalfrac: {jnp.mean(~need_open[:ilist.nfilled]):.3f} sizefac: {ilist_open.nfilled / plane.size():.1f}")
+
+    return loc, ilist_open
+evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
 
 # ------------------------------------------------------------------------------------------------ #
 #                                       Register Dispatchers                                       #
