@@ -5,7 +5,7 @@ from fmdj.multipoles import x_moment, shift_multipoles, shift_local_to_local, il
 from dataclasses import dataclass, field
 from .config import Config, TreeConfig
 from fmdj.tools import conditional_callback
-from typing import Tuple
+from typing import Tuple, List
 import fmdj
 
 from .variants import vm, make_dispatcher, V, VariantConfig
@@ -51,7 +51,7 @@ class TreePlane():
     mp: Multipoles = None
 
     def icoarse_of_fine(self) -> jnp.ndarray:
-        return jnp.searchsorted(self.ispl, jnp.arange(self.size_children), side="right") - 1
+        return inverse_of_splits(self.ispl, self.size_children)
     def geom_center(self) -> jnp.ndarray:
         return self.cent
     def size(self) -> int:
@@ -73,15 +73,6 @@ def lvl_to_ext(level_binary):
     olvl, omod = level_binary//3, level_binary % 3
     levels_3d = jnp.stack((olvl, olvl + (omod >= 2).astype(jnp.int32), olvl + (omod >= 1).astype(jnp.int32)),axis=-1)
     return 2.**levels_3d
-
-    def get_child_indices(self, nchild : jnp.ndarray = None):
-        """Returns (igroup, idx, valid) indicating indices of group, child and validity"""
-        if nchild is None:
-            nchild = self.size_children
-        isub = jnp.arange(self.size_children, dtype=self.ispl.dtype)
-        igroup = jnp.searchsorted(self.ispl, isub, side='right') - 1
-        valid = (igroup < self.nnodes) & (isub < nchild)
-        return igroup, isub, valid
 
 @jax.tree_util.register_dataclass
 @dataclass
@@ -229,14 +220,12 @@ def _coarsen_multipoles_base(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> M
 #                                         Interaction Lists                                        #
 # ------------------------------------------------------------------------------------------------ #
 
-from typing import List
-
 def find_group(ispl, index):
     return jnp.searchsorted(ispl, index, side='right') - 1
 
 def inverse_of_splits(ispl, size):
     """given [0, 4, 7] returns [0,0,0,0,1,1,1] for size=7"""
-    mask = jnp.zeros(size, dtype=jnp.int32).at[ispl].set(1)
+    mask = jnp.zeros(size, dtype=jnp.int32).at[ispl].add(1)
     return jnp.cumsum(mask) - 1
 
 @jax.tree_util.register_dataclass
@@ -284,8 +273,8 @@ class SegmentedNDArray():
         valid = True
         for ispl in self.ispl[::-1]:
             valid = valid & (iflat < ispl[-1])
-            igroup = find_group(ispl, iflat)
-            # igroup = inverse_of_splits(ispl, iflat.shape[0])[iflat]
+            # igroup = find_group(ispl, iflat)
+            igroup = inverse_of_splits(ispl, iflat.shape[0])[iflat]
             imult.append(iflat - ispl[igroup])
             iflat = igroup
         imult.append(iflat)
@@ -323,10 +312,10 @@ class InteractionList:
     def get_interactions(self, get_valid=False):
         """Returns (i0, i1, valid) indicating two interaction nodes and validity"""
         iint = jnp.arange(self.size(), dtype=self.dtype())
-        i0 = jnp.searchsorted(self.ispl, iint, side='right') - 1
-        i1 = self.iother[iint]
-        valid = iint < self.nfilled
+        i0 = inverse_of_splits(self.ispl, self.size())
+        i1 = self.iother#[iint]
         if get_valid:
+            valid = iint < self.nfilled
             return i0, i1, valid
         else:
             return i0, i1
