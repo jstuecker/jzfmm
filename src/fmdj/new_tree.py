@@ -284,7 +284,8 @@ class SegmentedNDArray():
         valid = True
         for ispl in self.ispl[::-1]:
             valid = valid & (iflat < ispl[-1])
-            igroup = inverse_of_splits(ispl, iflat.shape[0])[iflat]
+            igroup = find_group(ispl, iflat)
+            # igroup = inverse_of_splits(ispl, iflat.shape[0])[iflat]
             imult.append(iflat - ispl[igroup])
             iflat = igroup
         imult.append(iflat)
@@ -333,9 +334,10 @@ class InteractionList:
     def filter(self, mask: jnp.ndarray, size: int | None = None) -> 'InteractionList':
         """Returns a filtered interaction list according to the boolean mask"""
         if size is None:
-            size = self.iother.size
+            size = mask.size
         ioff, nfilled = offset_sum(mask)
-        iother_new = jnp.zeros(size, dtype=self.iother.dtype).at[ioff].set(self.iother)
+        iupdate = jnp.where(mask, ioff, size)
+        iother_new = jnp.zeros(size, dtype=self.iother.dtype).at[iupdate].set(self.iother)
         ispl_new = ioff[self.ispl]
 
         return InteractionList(ispl=ispl_new, iother=iother_new, nfilled=nfilled)
@@ -478,8 +480,8 @@ def evaluate_plane_interactions(plane: TreePlane,
 
     loc = ilist_node_to_node(plane.mp.center(), plane.mp.values, interactions, irange, cfg=cfg)
     if loc_lr is not None:
-        x0 = plane_lr.mp.center()[plane_lr.icoarse_of_fine()]
-        loc = loc + shift_local_to_local(loc, plane.mp.center() - x0)
+        ipar = plane_lr.icoarse_of_fine()
+        loc = loc + shift_local_to_local(loc_lr[ipar], plane.mp.center() - plane_lr.mp.center()[ipar])
 
     # Some logging
     open_frac = ilist_open.nfilled / ilist.nfilled
@@ -489,6 +491,15 @@ def evaluate_plane_interactions(plane: TreePlane,
     
     return loc, ilist_open
 evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
+
+def evaluate_interaction_hierarchy(th, cfg):
+    ilist, loc, last_plane = None, None, None
+    for i in reversed(range(0, len(th))):
+        loc, ilist = evaluate_plane_interactions(th[i], last_plane, ilist, loc, cfg=cfg)
+        last_plane = th[i]
+    return loc, ilist
+evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, static_argnames=['cfg'])
+
 
 # ------------------------------------------------------------------------------------------------ #
 #                                       Register Dispatchers                                       #
