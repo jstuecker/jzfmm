@@ -4,6 +4,7 @@ import jax.numpy as jnp
 from fmdj.multipoles import x_moment, shift_multipoles, shift_multipoles
 from dataclasses import dataclass, field
 from .config import Config, TreeConfig
+from fmdj.tools import conditional_callback
 
 from .variants import vm, make_dispatcher, V, VariantConfig
 
@@ -225,12 +226,15 @@ class SegmentedNDArray():
 
     For example, consdier an ndarray x with shape (4,3), we could represent it through splits
     spl[0] = [0, 3, 6, 9, 12]. E.g. to get x[a,b] you could use x.flat[multi_to_flat(a,b)] to 
-    index it. However, here we can also create more general shaped arrays.
+    index it. However, here we can also create adaptively shaped arrays.
 
     To also support higher dimensions than 2, it is possible to define a hierarchy of splits. For
     example a (4, 3, 2) array would be represented through
     spl[0] = [0, 3, 6, 9, 12]
     spl[1] = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24]
+
+    For nd-arrays the shape of each split corresponds to the product of lower levels shapes + 1
+    and the largest element in the split is the product of the lower levels + the new one
     """
 
     ispl: List[jnp.ndarray]
@@ -349,6 +353,12 @@ def expand_interactions(
 
     # Discard last dimension
     ispl = node_cc.global_ispl(1)
+
+    # Check that the sizes are big enough
+    def size_error(nfilled, size):
+        raise ValueError(f"Expanded interaction list ({nfilled}) does not fit into buffer ({size})")
+
+    ispl = ispl + conditional_callback(ispl[-1] >= size_new_ilist, size_error, ispl[-1], size_new_ilist)
     
     return InteractionList(ispl = ispl, iother = iother_new, nfilled = ispl[-1])
 expand_interactions.jit = jax.jit(expand_interactions, static_argnames=['size_children', 'size_new_ilist'])
@@ -408,6 +418,8 @@ def opening_criterion_bnh(plane: TreePlane, i0: jnp.ndarray, i1: jnp.ndarray, cf
     L0, L1 = plane.node_extent()[i0], plane.node_extent()[i1]
 
     need_open = (L0 + L1)**2 > theta**2 * r2
+    # To avoid dealing with overflow issues, we open very large nodes explicitly:
+    need_open = need_open | (plane.lvl[i1] >= 300) | (plane.lvl[i0] >= 300)
 
     print(jnp.nanmin((L0 + L1)**2 / r2), theta**2)
     print(jnp.nanmean(need_open))
