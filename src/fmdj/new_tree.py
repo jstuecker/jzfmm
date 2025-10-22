@@ -310,7 +310,11 @@ class InteractionList:
     def size(self):
         return self.iother.size
 
-def expand_interactions(ilist: InteractionList, plane: TreePlane, size: int):
+def expand_interactions(
+        ilist: InteractionList, 
+        ispl: jnp.ndarray, 
+        size_children: int, 
+        size_new_ilist: int) -> InteractionList:
     """Expands the interaction list to the children"""
     # This works by adding two (variable size) extra dimensions to the interaction list.
     # Since the indexing logic of segmented arrays is rather complicated, we use a 
@@ -318,29 +322,31 @@ def expand_interactions(ilist: InteractionList, plane: TreePlane, size: int):
 
     # Helper, Node->interaction
     seg_ilist = SegmentedNDArray(ispl=[ilist.ispl])
-    size_children = 20 #plane.size_children
 
     # Node->Child segments
-    seg_nodes = SegmentedNDArray(ispl=[plane.ispl])
+    seg_nodes = SegmentedNDArray(ispl=[ispl])
 
     # Expand to Node->Child->Nodeinteraction
     (in0, ic0), valid = seg_ilist.multi_indices(size_children, get_valid=True)
     node_exp = seg_nodes.expand(seg_ilist.n(in0) * valid)
 
     # Expand to Node->Child->Nodeinteraction->Otherchild
-    (in0, ic0, iint), valid = node_exp.multi_indices(size, get_valid=True)
+    # Note: this one is only needed temporarily and could in principle use a smaller size
+    (in0, ic0, iint), valid = node_exp.multi_indices(size_new_ilist, get_valid=True)
     i1 = ilist.iother[seg_ilist.multi_to_flat((in0, iint))]
     node_cc = node_exp.expand(seg_nodes.n(i1) * valid)
 
     # Get interaction list
-    (in0, ic0, iint, ic1), valid = node_cc.multi_indices(size, get_valid=True)
+    (in0, ic0, iint, ic1), valid = node_cc.multi_indices(size_new_ilist, get_valid=True)
     inode1 = ilist.iother[seg_ilist.multi_to_flat((in0, iint))]
-    iother_new = jnp.where(valid, seg_nodes.multi_to_flat((inode1, ic1)), size)
+    iother_new = jnp.where(valid, seg_nodes.multi_to_flat((inode1, ic1)), size_new_ilist)
 
     # Discard last dimension
     ispl = node_cc.global_ispl(1)
     
-    return InteractionList(ispl = ispl, iother = iother_new, nfilled = size)
+    return InteractionList(ispl = ispl, iother = iother_new, nfilled = ispl[-1])
+expand_interactions.jit = jax.jit(expand_interactions, static_argnames=['size_children', 'size_new_ilist'])
+
 
 def cumsum_starting_with_zero(x):
     return jnp.concatenate((jnp.zeros((1,) + x.shape[1:], dtype=x.dtype), jnp.cumsum(x, axis=0)))
