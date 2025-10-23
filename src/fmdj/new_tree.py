@@ -513,17 +513,17 @@ coarsen_multipoles = make_dispatcher(vm[V.coarsen_multipoles], _coarsen_multipol
 #                                             New walk                                             #
 # ------------------------------------------------------------------------------------------------ #
 
-def prefix(ispl, size, weights=1):
+def invert_splits(ispl, size, weights=1):
     iarr = jnp.arange(size)
     mask = jnp.zeros_like(iarr).at[ispl[1:]].add(weights)
     return jnp.cumsum(mask)
 
 def get_double_index(ispl, size, absolute=False):
-    i0 = prefix(ispl, size)
+    i0 = invert_splits(ispl, size)
     if absolute:
         return i0, jnp.arange(size, dtype=ispl.dtype)
     else:
-        ioff = prefix(ispl, size, weights=(ispl[1:] - ispl[:-1]))
+        ioff = invert_splits(ispl, size, weights=(ispl[1:] - ispl[:-1]))
         return i0, jnp.arange(size, dtype=ispl.dtype) - ioff
 
 
@@ -569,48 +569,80 @@ def new_eval(plane: TreePlane, plane_lr: TreePlane, ilist: InteractionList, cfg:
     node_size = spl_nodes[1:] - spl_nodes[:-1]
 
     int_p1 = ilist.iother
+    ilist_size = plane.size() * cfg.tree.ilist_alloc_fac
 
-    iparent, i0 = get_double_index(spl_nodes, plane.size(), absolute=True)
+    # Pre-calculate some variables
+    i0 = jnp.arange(plane.size(), dtype=jnp.int32)
+    iparent = invert_splits(spl_nodes, plane.size())
+    irange = jnp.stack((jnp.array(0), plane.nnodes))
 
+    # Calculate loop boundaries
     ip0, ip1, valid = ilist.get_interactions(get_valid = True)
     nint = jax.ops.segment_sum(node_size[ip1]*valid, ip0, num_segments=plane.size())
 
-    nmax = jnp.max(nint)
-
-    irange = jnp.stack((jnp.array(0), plane.nnodes))
-
-    def loop_body(iter, state):
-        nopen, iint, isub, Loc = state[0:4]
-
+    def handle_counters(iint, isub):
         ip1 = int_p1[iint]
         i1 = spl_nodes[ip1] + isub
         valid = iint < spl_int[iparent+1]
-
-        need_open = opening_criterion_bnh(plane, i0, i1, cfg=cfg)
-
-        nopen += need_open & valid
 
         next_parent_interaction = isub+1 >= node_size[ip1]
         iint = jnp.where(next_parent_interaction, iint+1, iint)
         isub = jnp.where(next_parent_interaction, 0, isub+1)
 
+        return i1, valid, iint, isub
+
+    def loop_count(iter, state):
+        nopen, Loc, iint, isub = state[0:4]
+
+        i1, valid, iint, isub = handle_counters(iint, isub)
+
+        # Count nodes that need to be opened
+        need_open = opening_criterion_bnh(plane, i0, i1, cfg=cfg)
+        nopen += need_open & valid
+
+        # Evaluate M2L for unopened nodes
         interactions = jnp.stack((i0, i1), axis=-1)
-
         Loc_new = ilist_node_to_node(plane.mp.center(), plane.mp.values, interactions, irange, cfg=cfg)
+        Loc = Loc + Loc_new * (valid & ~need_open)[:,None]
 
-        return nopen, iint, isub, Loc + Loc_new * (valid & ~need_open)[:,None]
+        return nopen, Loc, iint, isub
 
     nopen = jnp.zeros(plane.size(), dtype=jnp.int32)
     Loc = jnp.zeros_like(plane.mp.values)
 
-    nopen, iint, isub, Loc = fori_dynamic_over_static(
-        0, nmax,
-        loop_body,
-        (nopen, spl_int[iparent], jnp.zeros_like(iparent), Loc),
+    nopen, Loc = fori_dynamic_over_static(
+        0, jnp.max(nint),
+        loop_count,
+        (nopen, Loc, spl_int[iparent], jnp.zeros_like(iparent)),
         unroll = unroll,
-        nstatic = 128,
-    )
+        nstatic = 128
+    )[0:2]
     offsets = cumsum_starting_with_zero(nopen)
 
-    return offsets, Loc
+    def loop_insert(iter, state):
+        nopen, new_ilist, iint, isub = state[0:4]
+
+        i1, valid, iint, isub = handle_counters(iint, isub)
+
+        # Count nodes that need to be opened
+        need_open = opening_criterion_bnh(plane, i0, i1, cfg=cfg)
+
+        # Insert interactions 
+        iupdate = jnp.where(need_open & valid, offsets[:-1] + nopen, new_ilist.size)
+        new_ilist = new_ilist.at[iupdate].set(i1)
+
+        nopen += need_open & valid
+
+        return nopen, new_ilist, iint, isub
+
+    new_ilist = jnp.zeros(ilist_size, dtype=jnp.int32)
+    nopen, new_ilist = fori_dynamic_over_static(
+        0, jnp.max(nint),
+        loop_insert,
+        (jnp.zeros_like(nopen), new_ilist, spl_int[iparent], jnp.zeros_like(iparent)),
+        unroll = unroll,
+        nstatic = 128
+    )[0:2]
+
+    return offsets, Loc, new_ilist
 new_eval.jit = jax.jit(new_eval, static_argnames="cfg")
