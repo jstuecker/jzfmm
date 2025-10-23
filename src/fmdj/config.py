@@ -30,6 +30,7 @@ class TreeConfig():
     coarse_fac : float = 4.0
 
     ilist_alloc_fac : int = 512
+    interact_iter_max: int = 1000
 
     # less relevant
     alloc_fac_nodes : float = 1.0

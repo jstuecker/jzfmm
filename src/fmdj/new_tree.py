@@ -509,3 +509,72 @@ multipoles_from_particles = make_dispatcher(vm[V.multipoles_from_particles], _mu
 coarsen_multipoles = make_dispatcher(vm[V.coarsen_multipoles], _coarsen_multipoles_base, add_jit=True)
 
 
+# ------------------------------------------------------------------------------------------------ #
+#                                             New walk                                             #
+# ------------------------------------------------------------------------------------------------ #
+
+def prefix(ispl, size, weights=1):
+    iarr = jnp.arange(size)
+    mask = jnp.zeros_like(iarr).at[ispl[1:]].add(weights)
+    return jnp.cumsum(mask)
+
+def get_double_index(ispl, size, absolute=False):
+    i0 = prefix(ispl, size)
+    if absolute:
+        return i0, jnp.arange(size, dtype=ispl.dtype)
+    else:
+        ioff = prefix(ispl, size, weights=(ispl[1:] - ispl[:-1]))
+        return i0, jnp.arange(size, dtype=ispl.dtype) - ioff
+
+def new_eval(plane: TreePlane, plane_lr: TreePlane, ilist: InteractionList, cfg: Config):
+    niter = cfg.tree.interact_iter_max
+
+    spl_nodes = plane_lr.ispl
+    spl_int = ilist.ispl
+    node_size = spl_nodes[1:] - spl_nodes[:-1]
+
+    int_p1 = ilist.iother
+
+    iparent, i0 = get_double_index(spl_nodes, plane.size(), absolute=True)
+
+    ip0, ip1, valid = ilist.get_interactions(get_valid = True)
+    nint = jax.ops.segment_sum(node_size[ip1]*valid, ip0, num_segments=plane.size())
+
+    nmax = jnp.max(nint)
+
+    irange = jnp.stack((jnp.array(0), plane.nnodes))
+
+    def loop_body(iter, state):
+        nopen, iint, isub, Loc = state[0:4]
+
+        ip1 = int_p1[iint]
+        i1 = spl_nodes[ip1] + isub
+        valid = iint < spl_int[iparent+1]
+
+        need_open = opening_criterion_bnh(plane, i0, i1, cfg=cfg)
+
+        nopen += need_open & valid
+
+        next_parent_interaction = isub+1 >= node_size[ip1]
+        iint = jnp.where(next_parent_interaction, iint+1, iint)
+        isub = jnp.where(next_parent_interaction, 0, isub+1)
+
+        interactions = jnp.stack((i0, i1), axis=-1)
+
+        Loc = Loc + ilist_node_to_node(plane.mp.center(), plane.mp.values*valid[:,None], interactions, irange, cfg=cfg)
+
+        return nopen, iint, isub, Loc
+
+    nopen = jnp.zeros(plane.size(), dtype=jnp.int32)
+    Loc = jnp.zeros_like(plane.mp.values)
+
+    nopen, iint, isub, Loc = jax.lax.fori_loop(
+        0, niter,
+        loop_body, 
+        (nopen, spl_int[iparent], jnp.zeros_like(iparent), Loc)
+    )
+
+    offsets = cumsum_starting_with_zero(nopen)
+
+    return offsets, Loc
+new_eval.jit = jax.jit(new_eval)
