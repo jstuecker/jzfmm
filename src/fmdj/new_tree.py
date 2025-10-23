@@ -561,14 +561,20 @@ def fori_dynamic_over_static(lower, upper, body_fun, init_val, *, unroll=None, n
     return jax.lax.fori_loop(0, ndynamic, outer_body, init_val)
 
 
-def new_eval(plane: TreePlane, plane_lr: TreePlane, ilist: InteractionList, cfg: Config):
+def new_eval(
+        plane: TreePlane, 
+        plane_lr: TreePlane | None = None,
+        ilist_lr: InteractionList | None = None,
+        loc_lr: jnp.ndarray | None = None,
+        cfg: Config = None
+    ) -> Tuple[jnp.ndarray, InteractionList]:
     unroll = cfg.tree.interact_unroll
 
     spl_nodes = plane_lr.ispl
-    spl_int = ilist.ispl
+    spl_int = ilist_lr.ispl
     node_size = spl_nodes[1:] - spl_nodes[:-1]
 
-    int_p1 = ilist.iother
+    int_p1 = ilist_lr.iother
     ilist_size = plane.size() * cfg.tree.ilist_alloc_fac
 
     # Pre-calculate some variables
@@ -577,7 +583,7 @@ def new_eval(plane: TreePlane, plane_lr: TreePlane, ilist: InteractionList, cfg:
     irange = jnp.stack((jnp.array(0), plane.nnodes))
 
     # Calculate loop boundaries
-    ip0, ip1, valid = ilist.get_interactions(get_valid = True)
+    ip0, ip1, valid = ilist_lr.get_interactions(get_valid = True)
     nint = jax.ops.segment_sum(node_size[ip1]*valid, ip0, num_segments=plane.size())
 
     def handle_counters(iint, isub):
@@ -644,5 +650,10 @@ def new_eval(plane: TreePlane, plane_lr: TreePlane, ilist: InteractionList, cfg:
         nstatic = 128
     )[0:2]
 
-    return offsets, Loc, new_ilist
+    new_ilist = InteractionList(offsets, iother = new_ilist, nfilled = offsets[-1])
+
+    if loc_lr is not None:
+        Loc = Loc + shift_local_to_local(loc_lr[iparent], plane.mp.center() - plane_lr.mp.center()[iparent])
+
+    return Loc, new_ilist
 new_eval.jit = jax.jit(new_eval, static_argnames="cfg")
