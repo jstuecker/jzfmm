@@ -621,7 +621,7 @@ def new_eval(
         loop_count,
         (nopen, Loc, spl_int[iparent], jnp.zeros_like(iparent)),
         unroll = unroll,
-        nstatic = 128
+        nstatic = 64
     )[0:2]
     offsets = cumsum_starting_with_zero(nopen)
 
@@ -654,6 +654,12 @@ def new_eval(
 
     if loc_lr is not None:
         Loc = Loc + shift_local_to_local(loc_lr[iparent], plane.mp.center() - plane_lr.mp.center()[iparent])
+
+    # Some logging
+    nfilled, ntot = offsets[-1], jnp.sum(nint*node_size[iparent])
+    fmdj.log("Interactions opened {}/{} ({:.1%}) sizefac: {:.1f} ({:.1%} of allocation)", 
+             nfilled, ntot, nfilled/ntot, new_ilist.nfilled/plane.size(), 
+             nfilled/new_ilist.size(), level=2, cfg=cfg)
 
     return Loc, new_ilist
 new_eval.jit = jax.jit(new_eval, static_argnames="cfg")
