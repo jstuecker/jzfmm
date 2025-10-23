@@ -526,8 +526,42 @@ def get_double_index(ispl, size, absolute=False):
         ioff = prefix(ispl, size, weights=(ispl[1:] - ispl[:-1]))
         return i0, jnp.arange(size, dtype=ispl.dtype) - ioff
 
+
+def div_ceil(a, b):
+    return (a + b - 1) // b
+
+def fori_dynamic_over_static(lower, upper, body_fun, init_val, *, unroll=None, nstatic=None):
+    """Does a loop with a dynamical boundary over a loop with static boundaries
+
+    This function can have two advantages over a standard jax.lax.fori_loop with dynamic
+    boundaries: (1) it allows you to unroll the (inner) static loop partially. (E.g. try unroll=4)
+    (2) Static loops seem to be a lot faster in jax. Honestly, I don't know why!
+
+    The usage is the same as jax.fori_loop, with the important difference that the loop
+    may also be executed a few extra times if (upwer-lower) is not divisible by nstatic.
+    So be sure to discard invalid iterations in your function!
+
+    Example:
+    def f(iter, x):
+        return jnp.where(iter < 10, x + 1, x)
+
+    print(fori_dynamic_over_static(0, 10, f, 0., nstatic=7))
+    """
+
+    if nstatic is None:
+        return jax.lax.fori_loop(lower, upper, body_fun, init_val, unroll=unroll)
+    
+    
+    def outer_body(iouter, state):
+        def inner_body(iinner, state):
+            return body_fun(lower + iouter*nstatic + iinner, state)
+        return jax.lax.fori_loop(0, nstatic, inner_body, state, unroll=unroll)
+
+    ndynamic = div_ceil(upper - lower, nstatic)
+    return jax.lax.fori_loop(0, ndynamic, outer_body, init_val)
+
+
 def new_eval(plane: TreePlane, plane_lr: TreePlane, ilist: InteractionList, cfg: Config):
-    niter = cfg.tree.interact_iter_max
     unroll = cfg.tree.interact_unroll
 
     spl_nodes = plane_lr.ispl
@@ -569,13 +603,13 @@ def new_eval(plane: TreePlane, plane_lr: TreePlane, ilist: InteractionList, cfg:
     nopen = jnp.zeros(plane.size(), dtype=jnp.int32)
     Loc = jnp.zeros_like(plane.mp.values)
 
-    nopen, iint, isub, Loc = jax.lax.fori_loop(
-        0, niter,
+    nopen, iint, isub, Loc = fori_dynamic_over_static(
+        0, nmax,
         loop_body,
         (nopen, spl_int[iparent], jnp.zeros_like(iparent), Loc),
-        unroll = unroll
+        unroll = unroll,
+        nstatic = 128,
     )
-
     offsets = cumsum_starting_with_zero(nopen)
 
     return offsets, Loc

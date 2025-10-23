@@ -30,7 +30,6 @@ class TreeConfig():
     coarse_fac : float = 4.0
 
     ilist_alloc_fac : int = 512
-    interact_iter_max: int = 1000
     interact_unroll: int | bool = False
 
     # less relevant
