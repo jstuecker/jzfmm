@@ -432,7 +432,6 @@ def opening_criterion_bnh(plane: TreePlane, i0: jnp.ndarray, i1: jnp.ndarray, cf
 
     r2 = norm2(plane.mp.center()[i1] - plane.mp.center()[i0])
 
-    # L0, L1 = plane.node_extent()[i0], plane.node_extent()[i1]
     L0, L1 = plane.node_extent()[i0], plane.node_extent()[i1]
 
     need_open = norm2(L0 + L1) > theta**2 * r2
@@ -489,6 +488,18 @@ def evaluate_interaction_hierarchy(th, cfg):
     return loc, ilist
 evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, static_argnames=['cfg'])
 
+def fmm_via_hierarchy_z(th, particles, cfg):
+    loc, ileft = evaluate_interaction_hierarchy.jit(th, cfg)
+
+    ipar = th[0].icoarse_of_fine()
+    phi_new1 = fmdj.multipoles.evaluate_local(loc[ipar], particles.pos - th[0].mp.center()[ipar])
+
+    interactions = jnp.stack(ileft.get_interactions(get_valid=False), axis=-1)
+    irange = jnp.array([0, ileft.nfilled])
+    phi_new2 = fmdj.multipoles.ilist_leaf_to_leaf(particles.pos, particles.mass, th[0].ispl, interactions, irange, cfg=cfg)
+
+    return phi_new1 + phi_new2
+fmm_via_hierarchy_z.jit = jax.jit(fmm_via_hierarchy_z, static_argnames=("cfg",))
 
 # ------------------------------------------------------------------------------------------------ #
 #                                       Register Dispatchers                                       #

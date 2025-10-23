@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import custom_jax as cj
 import pytest
 from fmdj.config import Config, TreeConfig
+import fmdj
 
 def test_expand_interactions():
     nnodes = 3
@@ -47,7 +48,11 @@ def cfg_base():
 
 @pytest.fixture
 def cfg_cuda():
-    return Config(tags=("cuda", "base"))
+    # return Config(tags=("cuda", "base"))
+    tcfg = TreeConfig(alloc_fac_nodes=1.2, coarse_fac=2.0, p=2, stop_coarsen=512, ilist_alloc_fac=1024)
+    cfg = Config(p=2, tree=tcfg)
+    cfg.opening.opening_angle = 0.85
+    return cfg
 
 def test_tree_hierarchy(tree_hierarchy : list[nt.TreePlane]):
     for tplane  in tree_hierarchy:
@@ -70,3 +75,17 @@ def test_tree_multipoles(particlesz: nt.Particles, tree_hierarchy: list[nt.TreeP
     assert jnp.allclose(tree_hierarchy[1].npart, mp_coarse.get(0))
     for i in range(mp_base.values.shape[1]):
         assert jnp.allclose(mp_coarse.get(i), mp_coarse2.get(i), rtol=1e-3, atol=1e-4)
+
+@pytest.fixture
+def fmm_reference(particlesz: nt.Particles, cfg_cuda: Config):
+    return fmdj.fmm.fast_multipole_potential.jit(particlesz.pos, particlesz.mass, cfg=cfg_cuda)
+
+def test_new_vs_old_tree(particlesz: nt.Particles, tree_hierarchy: list[nt.TreePlane], 
+                         cfg_cuda: Config, fmm_reference : jnp.ndarray):
+    phi_ref = fmm_reference
+    phi = nt.fmm_via_hierarchy_z(tree_hierarchy, particlesz, cfg_cuda)
+
+    for i in (1000, 1333, 1555, 1777, 5400):
+        print(f"{phi_ref[i]}, {phi[i]}, diff = {phi_ref[i]-phi[i]}, rel diff = {(phi_ref[i]-phi[i])/phi_ref[i]}")
+
+    assert phi == pytest.approx(phi_ref, rel=0.05)
