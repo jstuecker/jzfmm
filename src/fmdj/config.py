@@ -31,6 +31,7 @@ class TreeConfig():
 
     ilist_alloc_fac : int = 512
     interact_iter_max: int = 1000
+    interact_unroll: int | bool = False
 
     # less relevant
     alloc_fac_nodes : float = 1.0

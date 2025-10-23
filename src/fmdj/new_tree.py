@@ -528,6 +528,7 @@ def get_double_index(ispl, size, absolute=False):
 
 def new_eval(plane: TreePlane, plane_lr: TreePlane, ilist: InteractionList, cfg: Config):
     niter = cfg.tree.interact_iter_max
+    unroll = cfg.tree.interact_unroll
 
     spl_nodes = plane_lr.ispl
     spl_int = ilist.ispl
@@ -561,20 +562,21 @@ def new_eval(plane: TreePlane, plane_lr: TreePlane, ilist: InteractionList, cfg:
 
         interactions = jnp.stack((i0, i1), axis=-1)
 
-        Loc = Loc + ilist_node_to_node(plane.mp.center(), plane.mp.values*valid[:,None], interactions, irange, cfg=cfg)
+        Loc_new = ilist_node_to_node(plane.mp.center(), plane.mp.values, interactions, irange, cfg=cfg)
 
-        return nopen, iint, isub, Loc
+        return nopen, iint, isub, Loc + Loc_new * (valid & ~need_open)[:,None]
 
     nopen = jnp.zeros(plane.size(), dtype=jnp.int32)
     Loc = jnp.zeros_like(plane.mp.values)
 
     nopen, iint, isub, Loc = jax.lax.fori_loop(
         0, niter,
-        loop_body, 
-        (nopen, spl_int[iparent], jnp.zeros_like(iparent), Loc)
+        loop_body,
+        (nopen, spl_int[iparent], jnp.zeros_like(iparent), Loc),
+        unroll = unroll
     )
 
     offsets = cumsum_starting_with_zero(nopen)
 
     return offsets, Loc
-new_eval.jit = jax.jit(new_eval)
+new_eval.jit = jax.jit(new_eval, static_argnames="cfg")
