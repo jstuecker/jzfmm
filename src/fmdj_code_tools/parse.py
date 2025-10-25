@@ -1,5 +1,23 @@
+# pip install tree-sitter tree-sitter-cuda
+
 import tree_sitter_cuda
 from tree_sitter import Language, Parser, Query, QueryCursor, Node
+from dataclasses import dataclass
+
+@dataclass
+class ParamInfo():
+    type : str = ""
+    name : str = ""
+    is_ptr : bool = False
+    is_const : bool = False
+
+@dataclass
+class FunctionInfo():
+    name : str
+    par : list[ParamInfo]
+    type : str = "void"
+    is_kernel : bool = False
+    template_par : list[ParamInfo] | None = None
 
 CUDA = Language(tree_sitter_cuda.language())
 parser = Parser(CUDA)
@@ -13,46 +31,18 @@ def query(node: Node, query_src: str) -> dict:
 
     return caps
 
-def find_function_declarations(node: Node, txt: str, name: str | None = None) -> dict[str, Node]:
-    if name is not None:
-        name_match = f'(#eq? @fname "{name}")'
-    else:
-        name_match=""
-
-    query_src = f"""(
-        function_definition
-            declarator: (function_declarator
-                declarator: (identifier) @fname {name_match}
-                parameters: (parameter_list) @fparam
-            )
-    )"""
-
-    cursor = QueryCursor(Query(CUDA, query_src))
-    res = {}
-    for i,match in cursor.matches(node):
-        res[node_text(match["fname"][0], txt)] = match["fparam"][0]
-    return res
-
-from dataclasses import dataclass
-@dataclass
-class ParamInfo():
-    name : str = ""
-    dtype : str = ""
-    is_ptr : bool = False
-    is_const : bool = False
-
 def interprete_parameter_list(node_param: Node, txt: str):
-    assert node_param.type == "parameter_list"
+    # assert node_param.type == "parameter_list"
 
     res = []
     for c in node_param.named_children:
-        assert c.type == "parameter_declaration"
+        assert (c.type == "parameter_declaration") or (c.type == "template_parameter_declaration")
 
         pinfo = ParamInfo()
 
         pinfo.is_const = len(query(c, '(type_qualifier)? @tq (#eq? @tq "const")')) > 0
 
-        pinfo.dtype = node_text(c.child_by_field_name("type"), txt)
+        pinfo.type = node_text(c.child_by_field_name("type"), txt)
 
         decl = c.child_by_field_name("declarator")
         if decl.type == "identifier":
@@ -65,4 +55,42 @@ def interprete_parameter_list(node_param: Node, txt: str):
         
         res.append(pinfo)
 
+    return res
+
+def get_functions(node: Node, txt: str, name: str | None = None) -> list[FunctionInfo]:
+    if name is not None:
+        name_match = f'(#eq? @fname "{name}")'
+    else:
+        name_match=""
+
+    query_func = f"""
+        (function_definition
+            ("__global__")? @fglobal
+            type: (_) @ftype
+            declarator: (function_declarator
+                declarator: (identifier) @fname {name_match}
+                parameters: (parameter_list) @fparam
+            )
+        ) @node
+    """
+
+    cursor = QueryCursor(Query(CUDA, query_func))
+    # res = {}
+    res = []
+    for i,match in cursor.matches(node):
+        if (not "ftemp" in match) and () :
+            print("template function")
+        new_func = FunctionInfo(
+            name = node_text(match["fname"][0], txt),
+            par = interprete_parameter_list(match["fparam"][0], txt),
+            type = node_text(match["ftype"][0], txt),
+            is_kernel = match.get("fglobal") is not None
+        )
+        parent = match["node"][0].parent
+        if parent.type == "template_declaration":
+            tpar_list = parent.child_by_field_name("parameters")
+            new_func.template_par = interprete_parameter_list(tpar_list, txt)
+
+        res.append(new_func)
+        
     return res
