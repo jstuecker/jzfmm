@@ -12,12 +12,18 @@ class ParamInfo():
     is_const : bool = False
 
 @dataclass
+class TemplateParamInfo():
+    type : str = ""
+    name : str = ""
+    instances : list[str] = ()
+
+@dataclass
 class FunctionInfo():
     name : str
     par : list[ParamInfo]
     type : str = "void"
     is_kernel : bool = False
-    template_par : list[ParamInfo] | None = None
+    template_par : list[ParamInfo] = ()
 
 CUDA = Language(tree_sitter_cuda.language())
 parser = Parser(CUDA)
@@ -31,12 +37,14 @@ def query(node: Node, query_src: str) -> dict:
 
     return caps
 
-def interprete_parameter_list(node_param: Node, txt: str):
-    # assert node_param.type == "parameter_list"
+def interprete_parameter_list(node_param: Node, txt: str) -> list[ParamInfo]:
+    assert node_param.type == "parameter_list"
 
     res = []
     for c in node_param.named_children:
-        assert (c.type == "parameter_declaration") or (c.type == "template_parameter_declaration")
+        if c.type == "comment": continue
+
+        assert c.type == "parameter_declaration"
 
         pinfo = ParamInfo()
 
@@ -57,7 +65,23 @@ def interprete_parameter_list(node_param: Node, txt: str):
 
     return res
 
-def get_functions(node: Node, txt: str, name: str | None = None) -> list[FunctionInfo]:
+def interprete_template_list(node_param: Node, txt: str) -> list[TemplateParamInfo]:
+    assert node_param.type == "template_parameter_list"
+
+    res = []
+    for c in node_param.named_children:
+        assert c.type == "parameter_declaration"
+
+        pinfo = TemplateParamInfo()
+        pinfo.type = node_text(c.child_by_field_name("type"), txt)
+        pinfo.name = node_text(c.child_by_field_name("declarator"), txt)
+        pinfo.instances = []
+        
+        res.append(pinfo)
+
+    return res
+
+def get_functions(node: Node, txt: str, name: str | None = None) -> dict[str, FunctionInfo]:
     if name is not None:
         name_match = f'(#eq? @fname "{name}")'
     else:
@@ -76,7 +100,7 @@ def get_functions(node: Node, txt: str, name: str | None = None) -> list[Functio
 
     cursor = QueryCursor(Query(CUDA, query_func))
     # res = {}
-    res = []
+    res = {}
     for i,match in cursor.matches(node):
         if (not "ftemp" in match) and () :
             print("template function")
@@ -89,8 +113,8 @@ def get_functions(node: Node, txt: str, name: str | None = None) -> list[Functio
         parent = match["node"][0].parent
         if parent.type == "template_declaration":
             tpar_list = parent.child_by_field_name("parameters")
-            new_func.template_par = interprete_parameter_list(tpar_list, txt)
+            new_func.template_par = interprete_template_list(tpar_list, txt)
 
-        res.append(new_func)
+        res[new_func.name] = new_func
         
     return res
