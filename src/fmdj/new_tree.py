@@ -382,7 +382,7 @@ expand_interactions.jit = jax.jit(expand_interactions, static_argnames=['size_ch
 
 
 def cumsum_starting_with_zero(x):
-    return jnp.concatenate((jnp.zeros((1,) + x.shape[1:], dtype=x.dtype), jnp.cumsum(x, axis=0)))
+    return jnp.pad(jnp.cumsum(x), (1, 0))
 
 def offset_sum(num):
     cs = jnp.cumsum(num, axis=0)
