@@ -56,7 +56,7 @@ def bench_cuda(jax_bench, particlesz):
 
     nnodes = th[-5].nnodes
     n5 = ilist5.ispl[1:] - ilist5.ispl[:-1]
-    nnew = inew.ispl[:-1]
+    nnew = inew.ispl[1:] - inew.ispl[:-1]
     
     # There are some edge cases where the opening criterion triggers differently
     # I assume that these cases are triggered by roundoff errors.
