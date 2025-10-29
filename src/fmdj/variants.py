@@ -50,6 +50,7 @@ class V(Enum):
 
     multipoles_from_particles : int = auto()
     coarsen_multipoles : int = auto()
+    evaluate_plane_interactions : int = auto()
 
 # ============================== Helper classes for managing Variants ==============================
 

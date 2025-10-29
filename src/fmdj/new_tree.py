@@ -413,7 +413,7 @@ def dense_interaction_list(size: int, nnodes: jnp.ndarray = None) -> Interaction
 
     ilist = jnp.zeros(i1.size, dtype=i1.dtype).at[ioff].set(i2.flatten())
 
-    ispl = jnp.arange(0, size, dtype=i1.dtype) * nnodes
+    ispl = jnp.arange(0, size+1, dtype=i1.dtype) * nnodes
     ispl = jnp.where(ispl < nfilled, ispl, nfilled)
     
     return InteractionList(ispl=ispl, iother=ilist, nfilled=nfilled)
@@ -440,7 +440,7 @@ def opening_criterion_bnh(plane: TreePlane, i0: jnp.ndarray, i1: jnp.ndarray, cf
 
     return need_open
 
-def evaluate_plane_interactions(plane: TreePlane, 
+def _evaluate_plane_interactions_base(plane: TreePlane, 
                                 plane_lr: TreePlane | None = None,
                                 ilist_lr: InteractionList | None = None,
                                 loc_lr: jnp.ndarray | None = None,
@@ -478,7 +478,7 @@ def evaluate_plane_interactions(plane: TreePlane,
              ilist.nfilled / ilist.size(), level=2, cfg=cfg)
     
     return loc, ilist_open
-evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
+_evaluate_plane_interactions_base.jit = jax.jit(_evaluate_plane_interactions_base, static_argnames=['cfg'])
 
 def evaluate_interaction_hierarchy(th, cfg):
     ilist, loc, last_plane = None, None, None
@@ -507,7 +507,7 @@ fmm_via_hierarchy_z.jit = jax.jit(fmm_via_hierarchy_z, static_argnames=("cfg",))
 
 multipoles_from_particles = make_dispatcher(vm[V.multipoles_from_particles], _multipoles_from_particles_base, add_jit=True)
 coarsen_multipoles = make_dispatcher(vm[V.coarsen_multipoles], _coarsen_multipoles_base, add_jit=True)
-
+evaluate_plane_interactions = make_dispatcher(vm[V.evaluate_plane_interactions], _evaluate_plane_interactions_base, add_jit=True)
 
 # ------------------------------------------------------------------------------------------------ #
 #                                             New walk                                             #

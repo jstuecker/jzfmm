@@ -35,6 +35,7 @@ def bench_cuda(jax_bench, particlesz):
     loc, ilist = nt.evaluate_plane_interactions(th[-1], cfg=cfg)
     th = nt.build_tree_hierarchy(particlesz, cfg)
 
+    cfg.tags = ("base",)
     loc, ilist = nt.evaluate_plane_interactions(th[-1], cfg=cfg)
     loc2, ilist2 = nt.evaluate_plane_interactions.jit(th[-2], th[-1], ilist, loc, cfg=cfg)
     loc3, ilist3 = nt.evaluate_plane_interactions.jit(th[-3], th[-2], ilist2, loc2, cfg=cfg)
@@ -43,6 +44,7 @@ def bench_cuda(jax_bench, particlesz):
 
     jax.block_until_ready((loc4, ilist4, th, loc5, ilist5))
 
+    cfg.tags = ("cuda", "base")
     jb = jax_bench(jit_rounds=200, jit_warmup=100, eager_rounds=0, eager_warmup=0)
     # jb.measure(
     #     plane=th[-5], plane_lr=th[-4], ilist_lr=ilist4, loc_lr=loc4, cfg=cfg,
