@@ -6,6 +6,7 @@ import custom_jax as cj
 import jax.numpy as jnp
 import fmdj.new_tree as nt
 import custom_jax.cj_new_tree as cnt
+import pytest
 
 
 @pytest.fixture
@@ -38,17 +39,30 @@ def bench_cuda(jax_bench, particlesz):
     loc2, ilist2 = nt.evaluate_plane_interactions.jit(th[-2], th[-1], ilist, loc, cfg=cfg)
     loc3, ilist3 = nt.evaluate_plane_interactions.jit(th[-3], th[-2], ilist2, loc2, cfg=cfg)
     loc4, ilist4 = nt.evaluate_plane_interactions.jit(th[-4], th[-3], ilist3, loc3, cfg=cfg)
-    # loc5, ilist5 = nt.evaluate_plane_interactions.jit(th[-5], th[-4], ilist4, loc4, cfg=cfg)
+    loc5, ilist5 = nt.evaluate_plane_interactions.jit(th[-5], th[-4], ilist4, loc4*0., cfg=cfg)
 
-    jax.block_until_ready((loc4, ilist4, th))
+    jax.block_until_ready((loc4, ilist4, th, loc5, ilist5))
 
-    jb = jax_bench(jit_rounds=50, jit_warmup=10, eager_rounds=0, eager_warmup=0)
+    jb = jax_bench(jit_rounds=200, jit_warmup=100, eager_rounds=0, eager_warmup=0)
     # jb.measure(
     #     plane=th[-5], plane_lr=th[-4], ilist_lr=ilist4, loc_lr=loc4, cfg=cfg,
     #     fn_jit=nt.evaluate_plane_interactions.jit, tag="jax"
     # )
 
     bdata, (lnew, inew) = jb.measure(
-        plane=th[-5], plane_lr=th[-4], ilist_lr=ilist4, loc_lr=loc4, cfg=cfg,
+        plane=th[-5], plane_lr=th[-4], ilist_lr=ilist4, loc_lr=loc4*0., cfg=cfg,
         fn_jit=cnt.cj_evaluate_tree_plane.jit,
     )
+
+    nnodes = th[-5].nnodes
+    n5 = ilist5.ispl[1:] - ilist5.ispl[:-1]
+    nnew = inew.ispl[:-1]
+    
+    # There are some edge cases where the opening criterion triggers differently
+    # I assume that these cases are triggered by roundoff errors.
+    # This leads to legit differnces in the local terms, so we mask them out
+    mask = n5[:nnodes] == nnew[:nnodes]
+    print("differently opened:", jnp.where(~mask))
+    assert jnp.sum(~mask) < 100
+
+    assert lnew[:nnodes][mask] == pytest.approx(loc5[:nnodes][mask], rel=1e-3, abs=1e-1)
