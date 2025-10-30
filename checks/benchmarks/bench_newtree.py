@@ -105,3 +105,34 @@ def bench_leaf_leaf(jax_bench, leaf_leaf_ilist):
     )
 
     assert fphi[:,3] == pytest.approx(phi, rel=1e-2, abs=20.)
+
+def measure_fmm(jb, cfg, npart=1024**2):
+    pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
+    mass = jnp.ones_like(pos0[:,0])
+
+    res, phi2 = jb.measure(fn_jit=fmdj.fmm.new_fmm.jit, tag="new_fmm",
+               pos=pos0, mass=mass, cfg=cfg)
+
+    if npart <= 5e6:
+        res, phi1 = jb.measure(fn_jit=fmdj.fmm.fast_multipole_potential.jit, tag="old_fmm",
+                pos=pos0, mass=mass, cfg=cfg)
+    
+        assert phi1 == pytest.approx(phi2, rel=1e-1, abs=1.0)
+
+@pytest.mark.parametrize("npart", [1024*128, 1024*1024, 1024*1024*4, 8*1024*1024])
+def bench_fmm_npart(jax_bench, npart):
+    cfg = Config(p=2, tree=TreeConfig(p=2, max_leaf_size=32), softening=1e-2)
+    cfg.opening.opening_angle = 1.0
+
+    jb = jax_bench(jit_rounds=20, jit_warmup=2)
+    
+    measure_fmm(jb, cfg, npart=npart)
+
+@pytest.mark.parametrize("p", [1,2,3,4,5])
+def bench_fmm_p(jax_bench, p):
+    cfg = Config(p=p, tree=TreeConfig(p=p, max_leaf_size=32), softening=1e-2)
+    cfg.opening.opening_angle = 1.0
+
+    jb = jax_bench(jit_rounds=20, jit_warmup=3)
+    
+    measure_fmm(jb, cfg)
