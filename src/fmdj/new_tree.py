@@ -432,9 +432,10 @@ def opening_criterion_bnh(plane: TreePlane, i0: jnp.ndarray, i1: jnp.ndarray, cf
 
     r2 = norm2(plane.mp.center()[i1] - plane.mp.center()[i0])
 
-    L0, L1 = plane.node_extent()[i0], plane.node_extent()[i1]
+    Lsum = plane.node_extent()[i0] + plane.node_extent()[i1]
+    Lmax = jnp.maximum(jnp.maximum(Lsum[...,0], Lsum[...,1]), Lsum[...,2])
 
-    need_open = norm2(L0 + L1) > theta**2 * r2
+    need_open = Lmax*Lmax > theta**2 * r2
     # To avoid dealing with overflow issues, we open very large nodes explicitly:
     need_open = need_open | (plane.lvl[i1] >= 150) | (plane.lvl[i0] >= 150)
 

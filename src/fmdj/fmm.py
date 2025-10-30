@@ -261,3 +261,37 @@ def fast_multipole_potential(pos, mass, cfg : config.Config, return_sorted=False
         return jnp.zeros_like(phiz).at[isortz].set(phiz)
 fast_multipole_potential.jit = jax.jit(fast_multipole_potential,
     static_argnames=("cfg", "return_sorted"))
+
+
+# ------------------------------------------------------------------------------------------------ #
+#                                              New FMM                                             #
+# ------------------------------------------------------------------------------------------------ #
+
+def new_fmm(pos, mass, cfg : config.Config, return_sorted=False):
+    import custom_jax as cj
+    import custom_jax.cj_new_tree as cnt
+    import fmdj.new_tree as nt
+
+    if mass is None:
+        mass = jnp.ones((pos.shape[0],), dtype=pos.dtype)
+    elif jnp.shape(mass) != jnp.shape(pos)[:-1]:
+        mass = jnp.broadcast_to(mass, pos.shape[:-1])
+
+    posz, isortz = cj.tree.pos_zorder_sort(pos)
+    particlesz = nt.Particles(pos=posz, mass=mass[isortz])
+
+    th = nt.build_tree_hierarchy(particlesz, cfg)
+    loc, ilist = nt.evaluate_interaction_hierarchy(th, cfg=cfg)
+
+    parent = th[0].icoarse_of_fine()
+    phi_loc = multipoles.evaluate_local(loc[parent], posz - th[0].mp.center()[parent])
+
+    fphi = cnt.cj_new_force_and_pot(particlesz, th[0], ilist, cfg=cfg)
+    
+    phiz = fphi[:,3] + phi_loc
+
+    if return_sorted:
+        return particlesz.pos, particlesz.mass, isortz, phiz
+    else:
+        return jnp.zeros_like(phiz).at[isortz].set(phiz)
+new_fmm.jit = jax.jit(new_fmm, static_argnames=("cfg", "return_sorted"))

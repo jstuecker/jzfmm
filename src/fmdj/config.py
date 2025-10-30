@@ -26,7 +26,7 @@ class TreeConfig():
     p : int = 2
 
     # important
-    max_leaf_size : int = 64
+    max_leaf_size : int = 32
     coarse_fac : float = 4.0
 
     ilist_alloc_fac : int = 512
