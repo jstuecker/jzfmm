@@ -82,7 +82,7 @@ def leaf_leaf_ilist(particlesz, request):
     loc, ilist = nt.evaluate_interaction_hierarchy.jit(th, cfg=cfg)
     return particlesz, th[0], ilist, cfg
 
-@pytest.mark.parametrize("leaf_leaf_ilist", [8,12,16,32], indirect=True)
+@pytest.mark.parametrize("leaf_leaf_ilist", [12,16,24,32], indirect=True)
 def bench_leaf_leaf(jax_bench, leaf_leaf_ilist):
     particlesz, plane, ilist, cfg = leaf_leaf_ilist
 
