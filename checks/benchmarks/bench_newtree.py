@@ -74,6 +74,9 @@ def leaf_leaf_ilist(particlesz):
     cfg = Config(p=2, tree=TreeConfig(alloc_fac_nodes=1.2, coarse_fac=4.0, p=2, stop_coarsen=512, ilist_alloc_fac=2048, max_leaf_size=32),
                 logging=LoggingConfig(level=0))
     cfg.opening.opening_angle = 1.0
+    cfg.max_leaf_size = 32
+    cfg.tree.max_leaf_size = 32
+    cfg.softening = 0.1
 
     th = nt.build_tree_hierarchy(particlesz, cfg)
     loc, ilist = nt.evaluate_interaction_hierarchy(th, cfg=cfg)
@@ -88,14 +91,16 @@ def bench_leaf_leaf(jax_bench, leaf_leaf_ilist):
     i0 = nt.inverse_of_splits(ilist.ispl, ilist.size())
     il = jnp.stack([i0, ilist.iother], axis=1)
 
-    jb.measure(
+    res, phi = jb.measure(
         xpart=particlesz.pos, mpart=particlesz.mass, leaf_bounds=plane.ispl, interactions=il, 
         irange=irange, cfg=cfg,
         fn_jit=fmdj.multipoles.ilist_leaf_to_leaf.jit,
         tag="cu_leaf2leaf"
     )
 
-    jb.measure(particles=particlesz, plane=plane, ilist=ilist, cfg=cfg,
+    res, fphi = jb.measure(particles=particlesz, plane=plane, ilist=ilist, cfg=cfg,
         fn_jit=cnt.cj_new_force_and_pot.jit,
         tag="new_leaf2leaf"
     )
+
+    assert fphi[:,3] == pytest.approx(phi, rel=1e-2, abs=1e-1)
