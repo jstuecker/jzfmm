@@ -68,3 +68,28 @@ def bench_cuda(jax_bench, particlesz):
     assert jnp.sum(~mask) < 100
 
     assert lnew[:nnodes][mask] == pytest.approx(loc5[:nnodes][mask], rel=1e-3, abs=1e-1)
+
+@pytest.fixture
+def leaf_leaf_ilist(particlesz):
+    cfg = Config(p=2, tree=TreeConfig(alloc_fac_nodes=1.2, coarse_fac=4.0, p=2, stop_coarsen=512, ilist_alloc_fac=2048, max_leaf_size=32),
+                logging=LoggingConfig(level=0))
+    cfg.opening.opening_angle = 1.0
+
+    th = nt.build_tree_hierarchy(particlesz, cfg)
+    loc, ilist = nt.evaluate_interaction_hierarchy(th, cfg=cfg)
+    return particlesz, th[0], ilist, cfg
+
+def bench_leaf_leaf(jax_bench, leaf_leaf_ilist):
+    particlesz, plane, ilist, cfg = leaf_leaf_ilist
+
+    jb = jax_bench(jit_rounds=10, jit_warmup=1)
+
+    irange = jnp.array([0, ilist.nfilled], dtype=jnp.int32)
+    i0 = nt.inverse_of_splits(ilist.ispl, ilist.size())
+    il = jnp.stack([i0, ilist.iother], axis=1)
+
+    jb.measure(
+        xpart=particlesz.pos, mpart=particlesz.mass, leaf_bounds=plane.ispl, interactions=il, 
+        irange=irange, cfg=cfg,
+        fn_jit=fmdj.multipoles.ilist_leaf_to_leaf.jit
+    )

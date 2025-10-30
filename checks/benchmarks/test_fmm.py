@@ -38,26 +38,26 @@ def profile_interactions(jb, interactions, mode="base"):
 
     Loc = jb.measure(
         fmdj.multipoles.ilist_node_to_node, fmdj.multipoles.ilist_node_to_node.jit,
-        octree.xnode, octree.mp, ilist, iranges, cfg=cfg,
+        octree.xnode, octree.mp, ilist, iranges[0:2], cfg=cfg,
         tag=f"n2n-{mode}"
     )[1]
 
     jb.measure(
         fmdj.multipoles.ilist_leaf_to_node, fmdj.multipoles.ilist_leaf_to_node.jit,
-        octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, iranges, cfg=cfg,
+        octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, iranges[1:3], cfg=cfg,
         tag=f"l2n-{mode}"
     )
 
     jb.measure(
         fmdj.multipoles.ilist_leaf_to_leaf, fmdj.multipoles.ilist_leaf_to_leaf.jit,
-        posz, massz, octree.leaf_particle_bounds, ilist, iranges, cfg=cfg,
+        posz, massz, octree.leaf_particle_bounds, ilist, iranges[3:5], cfg=cfg,
         tag=f"l2l-{mode}"
     )
 
     if mode == "base":
         jb.measure(
             fmdj.multipoles.ilist_node_to_leaf, fmdj.multipoles.ilist_node_to_leaf.jit,
-            octree.xnode, octree.mp, posz, octree.leaf_particle_bounds, ilist, iranges, cfg=cfg,
+            octree.xnode, octree.mp, posz, octree.leaf_particle_bounds, ilist, iranges[2:4], cfg=cfg,
             tag="n2l-base"
         )
 
