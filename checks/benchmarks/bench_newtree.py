@@ -91,5 +91,11 @@ def bench_leaf_leaf(jax_bench, leaf_leaf_ilist):
     jb.measure(
         xpart=particlesz.pos, mpart=particlesz.mass, leaf_bounds=plane.ispl, interactions=il, 
         irange=irange, cfg=cfg,
-        fn_jit=fmdj.multipoles.ilist_leaf_to_leaf.jit
+        fn_jit=fmdj.multipoles.ilist_leaf_to_leaf.jit,
+        tag="cu_leaf2leaf"
+    )
+
+    jb.measure(particles=particlesz, plane=plane, ilist=ilist, cfg=cfg,
+        fn_jit=cnt.cj_new_force_and_pot.jit,
+        tag="new_leaf2leaf"
     )
