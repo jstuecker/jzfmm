@@ -86,7 +86,7 @@ def leaf_leaf_ilist(particlesz, request):
 def bench_leaf_leaf(jax_bench, leaf_leaf_ilist):
     particlesz, plane, ilist, cfg = leaf_leaf_ilist
 
-    jb = jax_bench(jit_rounds=10, jit_warmup=1)
+    jb = jax_bench(jit_rounds=20, jit_warmup=3)
 
     irange = jnp.array([0, ilist.nfilled], dtype=jnp.int32)
     i0 = nt.inverse_of_splits(ilist.ispl, ilist.size())
