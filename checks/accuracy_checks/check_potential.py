@@ -6,15 +6,15 @@ import numpy as np
 import custom_jax as cj
 import matplotlib.pyplot as plt
 
-jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_numpy_dtype_promotion", "strict")
+# jax.config.update("jax_enable_x64", True)
+# jax.config.update("jax_numpy_dtype_promotion", "strict")
 
 jax.config.update("jax_compilation_cache_dir", "logs/cache")
 # jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
 # jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
 # jax.config.update("jax_persistent_cache_enable_xla_caches", "xla_gpu_per_fusion_autotune_cache_dir")
 
-eps = 1e-3
+eps = 1e-2
 N = int(1024*32)
 
 pos0 = jax.random.normal(jax.random.PRNGKey(0), (N,3), dtype=jnp.float32) * 0.05
@@ -24,16 +24,18 @@ import time
 t0 = time.time()
 
 # for p in (1,2,3,4,5):
-for p in (2,3):
+for p in (2,3,4,5):
     config = fmdj.Config(tags=("base",), softening=eps, p=p, verbose=2)
     config_cj = fmdj.Config(tags=("cuda", "base"), softening=eps, p=p, verbose=2)
+    config_cj.tree.p = config_cj.p
 
     phi0 = fmdj.multipoles.potential_direct_sum.jit(pos0, mass0, eps=eps)
     phi_jax = fmdj.fmm.fast_multipole_potential.jit(pos0, mass0, config, return_sorted=False)
     phi_cj = fmdj.fmm.fast_multipole_potential.jit(pos0, mass0, config_cj, return_sorted=False)
+    phi_new = fmdj.fmm.new_fmm.jit(pos0, mass0, config_cj, return_sorted=False)
 
     plt.hist(np.log10(np.abs((phi_jax - phi0)/phi0)), bins=np.linspace(-7,1), label=f'p={p}', alpha=0.8)
-    plt.hist(np.log10(np.abs((phi_cj - phi0)/phi0)), bins=np.linspace(-7,1), label=f'cj p={p}', alpha=0.3,
+    plt.hist(np.log10(np.abs((phi_new - phi0)/phi0)), bins=np.linspace(-7,1), label=f'new p={p}', alpha=0.3,
              color="C%d"%(p-1), edgecolor='black')
 
     print(time.time() - t0)
