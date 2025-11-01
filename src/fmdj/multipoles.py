@@ -217,6 +217,29 @@ def evaluate_local_potential(L, x):
     return phi
 evaluate_local_potential.jit = jax.jit(evaluate_local_potential)
 
+def evaluate_local_fphi(L, x):
+    """Evaluates the function value of the expansion at x"""
+    p = ncomb_to_p[L.shape[-1]]
+    combs, index_of_mp = define_index_maps(p)
+
+    phi = 0.
+    for index, c in enumerate(combs):
+        phi +=  L[...,index] * x[...,0]**c[0] * x[...,1]**c[1] * x[...,2]**c[2]
+
+    fx, fy, fz = 0., 0., 0.
+    for index, c in enumerate(combs):
+        if c[0] > 0:
+            fx += - L[...,index] * x[...,0]**(c[0]-1) * x[...,1]**c[1] * x[...,2]**c[2] * c[0]
+        if c[1] > 0:
+            fy += - L[...,index] * x[...,0]**c[0] * x[...,1]**(c[1]-1) * x[...,2]**c[2] * c[1]
+        if c[2] > 0:
+            fz += - L[...,index] * x[...,0]**c[0] * x[...,1]**c[1] * x[...,2]**(c[2]-1) * c[2]
+    
+    fphi = jnp.stack((fx, fy, fz, phi), axis=-1)
+
+    return fphi
+evaluate_local_potential.jit = jax.jit(evaluate_local_potential)
+
 # ============================= Tree build convenience functions ================================= #
 
 def calculate_multipoles_for_tree(octree : Octree, pos, mass, p=2) -> Octree:

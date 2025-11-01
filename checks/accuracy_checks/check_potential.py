@@ -39,7 +39,7 @@ for p in (1,2,3,4,5):
     phi_new = fmdj.fmm.new_fmm_potential.jit(pos0, mass0, config_cj)
 
     # plt.hist(np.log10(np.abs((phi_jax - phi0)/phi0)), bins=np.linspace(-7,1), label=f'p={p}', alpha=0.8)
-    plt.hist(np.log10(np.abs((phi_new - phi0)/phi0)), bins=np.linspace(-7,-1), label=f'p={p}', alpha=0.5,
+    plt.hist(np.log10(np.abs((phi_new - phi0)/phi0)), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5,
              color="C%d"%(p-1), edgecolor='black')
 
     print(time.time() - t0)

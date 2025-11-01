@@ -295,3 +295,31 @@ def new_fmm_potential(pos, mass, cfg : config.Config, return_sorted=False):
     else:
         return jnp.zeros_like(phiz).at[isortz].set(phiz)
 new_fmm_potential.jit = jax.jit(new_fmm_potential, static_argnames=("cfg", "return_sorted"))
+
+def new_fmm_fphi(pos, mass, cfg : config.Config, return_sorted=False):
+    import custom_jax as cj
+    import custom_jax.cj_new_tree as cnt
+    import fmdj.new_tree as nt
+
+    if mass is None:
+        mass = jnp.ones((pos.shape[0],), dtype=pos.dtype)
+    elif jnp.shape(mass) != jnp.shape(pos)[:-1]:
+        mass = jnp.broadcast_to(mass, pos.shape[:-1])
+
+    posz, isortz = cj.tree.pos_zorder_sort(pos)
+    particlesz = nt.Particles(pos=posz, mass=mass[isortz])
+
+    th = nt.build_tree_hierarchy(particlesz, cfg)
+    loc, ilist = nt.evaluate_interaction_hierarchy(th, cfg=cfg)
+
+    parent = th[0].icoarse_of_fine()
+    fphi_loc = multipoles.evaluate_local_fphi(loc[parent], particlesz.pos - th[0].mp.center()[parent])
+
+    fphi = cnt.cj_new_force_and_pot(particlesz, th[0], ilist, cfg=cfg) + fphi_loc
+
+    if return_sorted:
+        return particlesz.pos, particlesz.mass, isortz, fphi
+    else:
+        fphi_unsorted = jnp.zeros_like(fphi).at[isortz].set(fphi)
+        return fphi_unsorted
+new_fmm_fphi.jit = jax.jit(new_fmm_fphi, static_argnames=("cfg", "return_sorted"))
