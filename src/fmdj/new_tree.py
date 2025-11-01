@@ -203,7 +203,7 @@ def _coarsen_multipoles_base(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> M
     else:
         xcent = tp.geom_center()
     
-    dx = mp.center() - xcent[parent]
+    dx = xcent[parent] - mp.center()
     
     mpshift = shift_multipoles(mp.values, dx, p=mp.p)
 
