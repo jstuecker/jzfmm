@@ -32,6 +32,8 @@ class TreeConfig():
     ilist_alloc_fac : int = 512
     interact_unroll: int | bool = False
 
+    kahan_summation : bool = False
+
     # less relevant
     alloc_fac_nodes : float = 1.0
     alloc_min : int = 128

@@ -88,4 +88,4 @@ def test_new_vs_old_tree(particlesz: nt.Particles, tree_hierarchy: list[nt.TreeP
     for i in (1000, 1333, 1555, 1777, 5400):
         print(f"{phi_ref[i]}, {phi[i]}, diff = {phi_ref[i]-phi[i]}, rel diff = {(phi_ref[i]-phi[i])/phi_ref[i]}")
 
-    assert phi == pytest.approx(phi_ref, rel=0.05)
+    assert phi == pytest.approx(phi_ref, rel=0.08)

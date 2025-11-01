@@ -28,8 +28,10 @@ for p in (2,3,4,5):
     config = fmdj.Config(tags=("base",), softening=eps, p=p, verbose=2)
     config_cj = fmdj.Config(tags=("cuda", "base"), softening=eps, p=p, verbose=2)
     config_cj.tree.p = config_cj.p
+    config_cj.tree.kahan_summation = True
+    # config_cj.opening.opening_angle = 0.6
 
-    phi0 = fmdj.multipoles.potential_direct_sum.jit(pos0, mass0, eps=eps)
+    phi0 = cj.forces.force_and_potential.jit(pos0, mass0, softening=eps, kahan=True)[:,3]
     phi_jax = fmdj.fmm.fast_multipole_potential.jit(pos0, mass0, config, return_sorted=False)
     phi_cj = fmdj.fmm.fast_multipole_potential.jit(pos0, mass0, config_cj, return_sorted=False)
     phi_new = fmdj.fmm.new_fmm.jit(pos0, mass0, config_cj, return_sorted=False)
