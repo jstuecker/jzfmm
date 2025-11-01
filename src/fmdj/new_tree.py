@@ -493,7 +493,7 @@ def fmm_via_hierarchy_z(th, particles, cfg):
     loc, ileft = evaluate_interaction_hierarchy.jit(th, cfg)
 
     ipar = th[0].icoarse_of_fine()
-    phi_new1 = fmdj.multipoles.evaluate_local(loc[ipar], particles.pos - th[0].mp.center()[ipar])
+    phi_new1 = fmdj.multipoles.evaluate_local_potential(loc[ipar], particles.pos - th[0].mp.center()[ipar])
 
     interactions = jnp.stack(ileft.get_interactions(get_valid=False), axis=-1)
     irange = jnp.array([0, ileft.nfilled])

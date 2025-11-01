@@ -218,7 +218,7 @@ def evaluate_interaction_lists(octree : Octree, posz, massz, ilist, nilist, cfg 
         octree.xnode, posz, massz, octree.leaf_particle_bounds, ilist, iranges[1:3], cfg=cfg)
     Loc = multipoles.local_to_local_via_height(octree, Loc)
 
-    phi = multipoles.evaluate_local(Loc[octree.node_of_particle], 
+    phi = multipoles.evaluate_local_potential(Loc[octree.node_of_particle], 
                                     posz - octree.xnode[octree.node_of_particle])
     phi = phi + multipoles.ilist_node_to_leaf(
         octree.xnode, octree.mp, posz, octree.leaf_particle_bounds, ilist, iranges[2:4], cfg=cfg)
@@ -267,7 +267,7 @@ fast_multipole_potential.jit = jax.jit(fast_multipole_potential,
 #                                              New FMM                                             #
 # ------------------------------------------------------------------------------------------------ #
 
-def new_fmm(pos, mass, cfg : config.Config, return_sorted=False):
+def new_fmm_potential(pos, mass, cfg : config.Config, return_sorted=False):
     import custom_jax as cj
     import custom_jax.cj_new_tree as cnt
     import fmdj.new_tree as nt
@@ -284,7 +284,7 @@ def new_fmm(pos, mass, cfg : config.Config, return_sorted=False):
     loc, ilist = nt.evaluate_interaction_hierarchy(th, cfg=cfg)
 
     parent = th[0].icoarse_of_fine()
-    phi_loc = multipoles.evaluate_local(loc[parent], posz - th[0].mp.center()[parent])
+    phi_loc = multipoles.evaluate_local_potential(loc[parent], posz - th[0].mp.center()[parent])
 
     fphi = cnt.cj_new_force_and_pot(particlesz, th[0], ilist, cfg=cfg)
     
@@ -294,4 +294,4 @@ def new_fmm(pos, mass, cfg : config.Config, return_sorted=False):
         return particlesz.pos, particlesz.mass, isortz, phiz
     else:
         return jnp.zeros_like(phiz).at[isortz].set(phiz)
-new_fmm.jit = jax.jit(new_fmm, static_argnames=("cfg", "return_sorted"))
+new_fmm_potential.jit = jax.jit(new_fmm_potential, static_argnames=("cfg", "return_sorted"))

@@ -205,7 +205,7 @@ def local_to_local_via_height(octree : Octree, Lk):
     return jax.lax.fori_loop(-octree.maxheight, 0, handle_height_level, Lk)
 local_to_local_via_height.jit = jax.jit(local_to_local_via_height)
 
-def evaluate_local(L, x):
+def evaluate_local_potential(L, x):
     """Evaluates the function value of the expansion at x"""
     p = ncomb_to_p[L.shape[-1]]
     combs, index_of_mp = define_index_maps(p)
@@ -215,7 +215,7 @@ def evaluate_local(L, x):
         phi +=  L[...,index] * x[...,0]**c[0] * x[...,1]**c[1] * x[...,2]**c[2]
 
     return phi
-evaluate_local.jit = jax.jit(evaluate_local)
+evaluate_local_potential.jit = jax.jit(evaluate_local_potential)
 
 # ============================= Tree build convenience functions ================================= #
 

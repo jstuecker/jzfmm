@@ -67,7 +67,7 @@ def profile_interactions(jb, interactions, mode="base"):
             tag="Loc-Down"
         )[1]
         phi = jb.measure(
-            fmdj.multipoles.evaluate_local, fmdj.multipoles.evaluate_local.jit,
+            fmdj.multipoles.evaluate_local_potential, fmdj.multipoles.evaluate_local_potential.jit,
             Loc[octree.node_of_particle], posz - octree.xnode[octree.node_of_particle],
             tag="Loc-Eval"
         )[1]
