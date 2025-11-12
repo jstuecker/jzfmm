@@ -248,9 +248,9 @@ def fast_multipole_potential(pos, mass, cfg : config.Config, return_sorted=False
     Returns: (phi, force)
     """
     octree, posz, massz, isortz = build_octree_with_multipoles.jit(
-        pos, mass, max_leaf_size=cfg.max_leaf_size, p=cfg.p)
+        pos, mass, max_leaf_size=cfg.fmm.max_leaf_size, p=cfg.fmm.p)
     
-    ilist, nilist = build_interaction_list.jit(octree, thetamax=cfg.opening.opening_angle)
+    ilist, nilist = build_interaction_list.jit(octree, thetamax=cfg.fmm.opening_angle)
     # ilist, iranges = organize_interactions.jit(ilist, nilist, sort=False)
     
     phiz = evaluate_interaction_lists.jit(octree, posz, massz, ilist, nilist, cfg=cfg)

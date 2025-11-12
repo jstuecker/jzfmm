@@ -1,6 +1,34 @@
 # FM-DJ
 Fast Multipoles Done with Jax
 
+# Overview:
+Currently there are multiple implementations available
+* The old tree with fixed children number per node
+    - jax functions
+    - cuda functions (currently in custom_jax)
+* The new tree hierarchy with flexible children number
+    - jax functions (slow)
+    - cuda functions (currently in custom_jax)
+Additionally there is
+    - knn search (currently in custom_jax)
+
+Questions:
+* Do I want to keep the option to use code without cuda?
+* Do I want to separate ffi calls all into one single file or call from each different .py file?
+
+How to reorganize:
+1. Separate config into old / new parts
+2. Separate every .py file into code that is used in new cuda/jax-only and old cuda/jax-only and not at all
+3. ...
+
+* FMDJ
+    old : contains most old code that I won't use anymore, except as reference
+        octree.py
+        potential.py
+    fmm.py
+    multipoles.py
+    tree_hierarchy.py
+    new_tree ->
 
 # Performance Considerations:
 Which parts of the algorithm could still be sped up?

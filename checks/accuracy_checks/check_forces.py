@@ -20,10 +20,10 @@ t0 = time.time()
 fphi = cj.forces.force_and_potential.jit(pos0, mass0, softening=eps, kahan=True)
 
 for p in (1,2,3,4,5):
-    config = fmdj.Config(tags=("base",), softening=eps, p=p, verbose=2)
-    config_cj = fmdj.Config(tags=("cuda", "base"), softening=eps, p=p, verbose=2)
-    config_cj.tree.p = config_cj.p
-    config_cj.tree.kahan_summation = True
+    config = fmdj.Config(tags=("base",), softening=eps, verbose=2)
+    config_cj = fmdj.Config(tags=("cuda", "base"), softening=eps, verbose=2)
+    config_cj.fmm.p = p
+    config_cj.fmm.kahan_summation = True
 
     fphi_new = fmdj.fmm.new_fmm_fphi.jit(pos0, mass0, config_cj)
 

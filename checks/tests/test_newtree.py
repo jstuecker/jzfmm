@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import custom_jax as cj
 import pytest
-from fmdj.config import Config, TreeConfig
+from fmdj.config import Config, FMMConfig
 import fmdj
 
 def test_expand_interactions():
@@ -49,9 +49,9 @@ def cfg_base():
 @pytest.fixture
 def cfg_cuda():
     # return Config(tags=("cuda", "base"))
-    tcfg = TreeConfig(alloc_fac_nodes=1.2, coarse_fac=2.0, p=2, stop_coarsen=512, ilist_alloc_fac=1024)
-    cfg = Config(p=2, tree=tcfg)
-    cfg.opening.opening_angle = 0.85
+    tcfg = FMMConfig(alloc_fac_nodes=1.2, coarse_fac=2.0, p=2, stop_coarsen=512, ilist_alloc_fac=1024)
+    cfg = Config(fmm=tcfg)
+    cfg.fmm.opening_angle = 0.85
     return cfg
 
 def test_tree_hierarchy(tree_hierarchy : list[nt.TreePlane]):

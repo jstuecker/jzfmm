@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 from fmdj.multipoles import x_moment, shift_multipoles, shift_local_to_local, ilist_node_to_node
 from dataclasses import dataclass, field
-from .config import Config, TreeConfig
+from .config import Config, FMMConfig
 from fmdj.tools import conditional_callback
 from typing import Tuple, List
 import fmdj
@@ -85,7 +85,7 @@ class Particles:
 
 def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
     """Gets the next coarser tree plane from a finer one"""
-    cfg_tree: TreeConfig = cfg.tree
+    cfg_tree: FMMConfig = cfg.fmm
 
     max_size = int(fine.max_node_size * cfg_tree.coarse_fac)
     
@@ -103,7 +103,7 @@ def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
 coarsen_plane.jit = jax.jit(coarsen_plane, static_argnames=['cfg'])
 
 def build_tree_hierarchy(part: Particles, cfg: Config) -> list[TreePlane]:
-    cfg_tree: TreeConfig = cfg.tree
+    cfg_tree: FMMConfig = cfg.fmm
     with_multipoles = cfg_tree.p > 0
 
     res = cj.tree.summarize_leaves(
@@ -145,7 +145,7 @@ def iterate_multi_indices(p, istart=0):
                 i += 1
 
 def _multipoles_from_particles_base(tp: TreePlane, part: Particles, *, cfg: Config) -> Multipoles:
-    cfg_tree: TreeConfig = cfg.tree
+    cfg_tree: FMMConfig = cfg.fmm
 
     dtype = part.mass.dtype
 
@@ -428,7 +428,7 @@ def norm2(dx: jnp.ndarray) -> jnp.ndarray:
 
 def opening_criterion_bnh(plane: TreePlane, i0: jnp.ndarray, i1: jnp.ndarray, cfg: Config):
     """Barnes & Hut Opening Criterion."""
-    theta = cfg.opening.opening_angle
+    theta = cfg.fmm.opening_angle
 
     r2 = norm2(plane.mp.center()[i1] - plane.mp.center()[i0])
 
@@ -452,7 +452,7 @@ def _evaluate_plane_interactions_base(plane: TreePlane,
         ilist = dense_interaction_list(plane.size(), nnodes=plane.nnodes)
     else:
         # Add all child-child pairs for each coarser interaction
-        ilist_size_new = cfg.tree.ilist_alloc_fac * plane.size()
+        ilist_size_new = cfg.fmm.ilist_alloc_fac * plane.size()
         ilist = expand_interactions(ilist_lr, plane_lr.ispl, plane.size(), ilist_size_new)
 
     # Interaction indices
@@ -569,14 +569,14 @@ def new_eval(
         loc_lr: jnp.ndarray | None = None,
         cfg: Config = None
     ) -> Tuple[jnp.ndarray, InteractionList]:
-    unroll = cfg.tree.interact_unroll
+    unroll = cfg.old.interact_unroll
 
     spl_nodes = plane_lr.ispl
     spl_int = ilist_lr.ispl
     node_size = spl_nodes[1:] - spl_nodes[:-1]
 
     int_p1 = ilist_lr.iother
-    ilist_size = plane.size() * cfg.tree.ilist_alloc_fac
+    ilist_size = plane.size() * cfg.fmm.ilist_alloc_fac
 
     # Pre-calculate some variables
     i0 = jnp.arange(plane.size(), dtype=jnp.int32)

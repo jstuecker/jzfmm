@@ -34,7 +34,8 @@ def test_ilist_construction(jax_bench, tree):
 def profile_interactions(jb, interactions, mode="base"):
     octree, posz, massz, ilist, nilist, iranges = interactions
 
-    cfg = fmdj.Config(tags=(mode, "base"), p=octree.p, softening=1e-3)
+    cfg = fmdj.Config(tags=(mode, "base"), softening=1e-3)
+    cfg.fmm.p = octree.p
 
     Loc = jb.measure(
         fmdj.multipoles.ilist_node_to_node, fmdj.multipoles.ilist_node_to_node.jit,

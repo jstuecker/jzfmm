@@ -1,6 +1,6 @@
 import fmdj
 import pytest
-from fmdj.config import Config, TreeConfig, LoggingConfig
+from fmdj.config import Config, FMMConfig, LoggingConfig
 import jax
 import custom_jax as cj
 import jax.numpy as jnp
@@ -20,7 +20,7 @@ def particlesz(request):
 def bench_tree_hierarchy(jax_bench, particlesz):
     jb = jax_bench(jit_rounds=50, jit_warmup=5, eager_rounds=3, eager_warmup=1)
     
-    cfg = Config(tags=("cuda", "base"), tree=nt.TreeConfig(coarse_fac=8.0))
+    cfg = Config(tags=("cuda", "base"), fmm=nt.FMMConfig(coarse_fac=8.0))
 
     jb.measure(
         fn=nt.build_tree_hierarchy, fn_jit=nt.build_tree_hierarchy.jit, 
@@ -28,7 +28,7 @@ def bench_tree_hierarchy(jax_bench, particlesz):
         cfg=cfg)
     
 def bench_cuda(jax_bench, particlesz):
-    cfg = Config(p=2, tree=TreeConfig(alloc_fac_nodes=1.2, coarse_fac=4.0, p=2, stop_coarsen=512, ilist_alloc_fac=2048),
+    cfg = Config(fmm=FMMConfig(alloc_fac_nodes=1.2, coarse_fac=4.0, p=2, stop_coarsen=512, ilist_alloc_fac=2048),
                 logging=LoggingConfig(level=0))
 
     th = nt.build_tree_hierarchy(particlesz, cfg)
@@ -71,11 +71,10 @@ def bench_cuda(jax_bench, particlesz):
 
 @pytest.fixture
 def leaf_leaf_ilist(particlesz, request):
-    cfg = Config(p=2, tree=TreeConfig(alloc_fac_nodes=1.2, coarse_fac=4.0, p=2),
+    cfg = Config(fmm=FMMConfig(alloc_fac_nodes=1.2, coarse_fac=4.0, p=2),
                 logging=LoggingConfig(level=0))
-    cfg.opening.opening_angle = 1.0
-    cfg.max_leaf_size = request.param if hasattr(request, "param") else 32
-    cfg.tree.max_leaf_size = cfg.max_leaf_size
+    cfg.fmm.opening_angle = 1.0
+    cfg.fmm.max_leaf_size = request.param if hasattr(request, "param") else 32
     cfg.softening = 0.1
 
     th = nt.build_tree_hierarchy.jit(particlesz, cfg)
@@ -121,8 +120,8 @@ def measure_fmm(jb, cfg, npart=1024**2):
 
 @pytest.mark.parametrize("npart", [1024*128, 1024*1024, 1024*1024*4, 8*1024*1024])
 def bench_fmm_npart(jax_bench, npart):
-    cfg = Config(p=2, tree=TreeConfig(p=2, max_leaf_size=32), softening=1e-2)
-    cfg.opening.opening_angle = 1.0
+    cfg = Config(fmm=FMMConfig(p=2, max_leaf_size=32), softening=1e-2)
+    cfg.fmm.opening_angle = 1.0
 
     jb = jax_bench(jit_rounds=20, jit_warmup=2)
     
@@ -130,8 +129,8 @@ def bench_fmm_npart(jax_bench, npart):
 
 @pytest.mark.parametrize("p", [1,2,3,4,5])
 def bench_fmm_p(jax_bench, p):
-    cfg = Config(p=p, tree=TreeConfig(p=p, max_leaf_size=32), softening=1e-2)
-    cfg.opening.opening_angle = 1.0
+    cfg = Config(fmm=FMMConfig(p=p, max_leaf_size=32), softening=1e-2)
+    cfg.fmm.opening_angle = 1.0
 
     jb = jax_bench(jit_rounds=20, jit_warmup=3)
     

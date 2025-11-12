@@ -613,9 +613,9 @@ def _reduce_fsum_chunked(f, y0, x, istart, iend, chunk_size):
 
 
 def _ilist_node_to_node_base(xnodes, multipoles, interactions, irange, cfg : config.Config):
-    p = cfg.p
+    p = cfg.fmm.p
 
-    chunk_size = int((cfg.ilist_max_mb * 1024**2) // (2 * xnodes.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)**2))
+    chunk_size = int((cfg.old.ilist_max_mb * 1024**2) // (2 * xnodes.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)**2))
     chunk_size = min(max((chunk_size//64)*64,  64), len(xnodes)*4)
 
     loc = jnp.zeros(multipoles.shape, dtype=xnodes.dtype)
@@ -629,28 +629,28 @@ def _ilist_node_to_node_base(xnodes, multipoles, interactions, irange, cfg : con
     return loc
 
 def _ilist_node_to_leaf_base(xnodes, multipoles, xpart, leaf_bounds, interactions, irange, cfg : config.Config):
-    chunk_size = int(len(xpart) * cfg.ilist_chunk_fac * 0.2)
+    chunk_size = int(len(xpart) * cfg.old.ilist_chunk_fac * 0.2)
 
     phi = jnp.zeros(xpart.shape[0], dtype=xnodes.dtype)
 
     def eval_leaf_node(phi, iab, mask):
         return phi + ilist_multipole_to_points(multipoles, xnodes, xpart, leaf_bounds, jnp.abs(iab), 
-                                               imask=mask, max_size=cfg.max_leaf_size, p=cfg.p, 
+                                               imask=mask, max_size=cfg.fmm.max_leaf_size, p=cfg.fmm.p, 
                                                eps=cfg.softening)
     phi = _reduce_fsum_chunked(eval_leaf_node, phi, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return phi
 
 def _ilist_leaf_to_node_base(xnodes, xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
-    p = cfg.p
-    chunk_size = int((cfg.ilist_max_mb * 1024**2) // (xpart.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)))
+    p = cfg.fmm.p
+    chunk_size = int((cfg.old.ilist_max_mb * 1024**2) // (xpart.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)))
     chunk_size = min(max((chunk_size//64)*64,  64), len(xnodes)*4)
 
     loc = jnp.zeros(xnodes.shape[:-1] + (p_to_ncomb[p],), dtype=xnodes.dtype)
 
     def eval_node_from_leaf(loc, iab, mask):
         return loc + ilist_monopoles_to_local(xnodes, xpart, mpart, leaf_bounds, jnp.abs(iab),
-                                              imask=mask, max_size=cfg.max_leaf_size, p=p, 
+                                              imask=mask, max_size=cfg.fmm.max_leaf_size, p=p, 
                                               eps=cfg.softening)
     loc = _reduce_fsum_chunked(eval_node_from_leaf, loc, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
@@ -659,10 +659,10 @@ def _ilist_leaf_to_node_base(xnodes, xpart, mpart, leaf_bounds, interactions, ir
 def _ilist_leaf_leaf_base(xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
     """Function with some documentation"""
     phi = jnp.zeros(xpart.shape[0], dtype=xpart.dtype)
-    chunk_size = int(len(leaf_bounds) * cfg.ilist_chunk_fac)
+    chunk_size = int(len(leaf_bounds) * cfg.old.ilist_chunk_fac)
     def eval_leaf_leaf(phi, iab, mask):
         return phi + ilist_monopoles_to_points(xpart, mpart, leaf_bounds, jnp.abs(iab), imask=mask, 
-                                               max_size=cfg.max_leaf_size, eps=cfg.softening)
+                                               max_size=cfg.fmm.max_leaf_size, eps=cfg.softening)
     phi = _reduce_fsum_chunked(eval_leaf_leaf, phi, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return phi
