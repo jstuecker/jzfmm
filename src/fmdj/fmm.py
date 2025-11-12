@@ -323,3 +323,17 @@ def new_fmm_fphi(pos, mass, cfg : config.Config, return_sorted=False):
         fphi_unsorted = jnp.zeros_like(fphi).at[isortz].set(fphi)
         return fphi_unsorted
 new_fmm_fphi.jit = jax.jit(new_fmm_fphi, static_argnames=("cfg", "return_sorted"))
+
+def get_force_and_potential(pos, mass, cfg : config.Config, separately=False):
+    if cfg.fmm is None: # Use direct summation
+        import custom_jax as cj
+        fphi = cj.forces.force_and_potential(
+            pos, mass, softening=cfg.softening, kahan=True) * cfg.G()
+    else:
+        fphi = new_fmm_fphi(pos, mass, cfg=cfg) * cfg.G()
+
+    if separately:
+        return fphi[:,0:3], fphi[:,3]
+    else:
+        return fphi
+get_force_and_potential.jit = jax.jit(get_force_and_potential, static_argnames=("cfg", "separately"))

@@ -37,8 +37,8 @@ class FMMConfig():
     kahan_summation : bool = False
 
     # less relevant
-    alloc_fac_nodes : float = 1.0
-    alloc_min : int = 128
+    alloc_fac_nodes : float = 1.5
+    alloc_min : int = 1024
     stop_coarsen : int = 512
 
     # untested:
@@ -59,7 +59,7 @@ class LoggingConfig():
 @dataclass(unsafe_hash=True)
 class Config(VariantConfig):
     # Sub config objects
-    fmm : FMMConfig = FMMConfig()
+    fmm : FMMConfig | None = FMMConfig()
     logging : LoggingConfig = LoggingConfig()
     old : OldConfig = OldConfig()
 
