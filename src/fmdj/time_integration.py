@@ -3,6 +3,7 @@ import jax
 import fmdj
 from fmdj import Config
 from dataclasses import dataclass, replace
+from typing import Generator
 
 @jax.tree_util.register_dataclass
 @dataclass
@@ -17,9 +18,9 @@ class Particles():
     cvel : jnp.ndarray | None = None
 
     def apos(self):
-        return self.pos if self.cpos is None else self.pos - self.cpos
+        return self.pos if self.cpos is None else self.pos + self.cpos
     def avel(self):
-        return self.vel if self.cvel is None else self.vel - self.cvel
+        return self.vel if self.cvel is None else self.vel + self.cvel
 
 def kick(vel, acc, dt, mask=None):
     if mask is not None:
@@ -90,13 +91,27 @@ def timestep(p : Particles, dt, cfg : Config, t=0., mask=None):
     return p
 timestep.jit = jax.jit(timestep, static_argnames=("cfg",))
 
-def simulate(p : Particles, tmax, nsteps, cfg, tstart=0.):
+def simulate(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: int = 0.) -> Particles:
     # Make an initial dt=0 step to get the correct initial acceleration
     p = fmdj.time_integration.timestep(p, dt=0., cfg=cfg, t=tstart)
+    dt = (tend - tstart) / nsteps
     def step(i, carry):
         p, t = carry
-        return fmdj.time_integration.timestep.jit(p, dt=tmax/nsteps, cfg=cfg, t=t), t + tmax/nsteps
+        return fmdj.time_integration.timestep.jit(p, dt=dt, cfg=cfg, t=t), t + dt
 
     p, t = jax.lax.fori_loop(0, nsteps, step, (p, tstart))
     return p
 simulate.jit = jax.jit(simulate, static_argnames=("cfg",))
+
+def simulate_with_outputs(
+        p : Particles, 
+        tend: float, 
+        nsnaps: int, 
+        steps_per_output: int,
+        cfg: Config,
+        tstart=0.
+    ) -> Generator[Particles, None, None]:
+    for isnap in range(nsnaps):
+        t0, t1 = tstart + isnap * (tend/nsnaps), tstart + (isnap+1) * (tend/nsnaps)
+        p = simulate.jit(p, tend=t1, nsteps=steps_per_output, cfg=cfg, tstart=t0)
+        yield t1, p
