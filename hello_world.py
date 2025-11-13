@@ -34,26 +34,19 @@ cfg.external_potential = fmdj.potential.NFWPotential(host.rs, host.rhoc)
 p0.cpos = jnp.array((150.,0.,0.))
 p0.cvel = jnp.array((0.,host.vcirc(150.)*0.9,0.))
 
-fig, ax, axins, s1, s2 = fmdj.plots.plot_particles_inset(p0, 0., skip=10)
+fig, ax, axins, s1, s2, title = fmdj.plots.plot_particles_inset(0., p0, skip=10)
 
-def update(args):
-    t, p = args
-    fmdj.plots.plot_particles_inset(p, t, previous=(fig, ax, axins, s1, s2), skip=10)
-    return ax.collections + axins.collections
+def update(t_and_p):
+    fmdj.plots.plot_particles_inset(*t_and_p, previous=(fig, ax, axins, s1, s2, title), skip=10)
+    return [s1,s2,title]
 
 sim_iter = fmdj.time_integration.simulate_with_outputs(
     p0, tend=host.tcirc(150.)*2., nout=200, steps_per_output=20, cfg=cfg,
 )
 
 # Use the generator as the frames iterable
-ani = FuncAnimation(
-    fig,
-    update,
-    frames=sim_iter,
-    blit=True,
-    interval=40,
-    repeat=True
-)
+ani = FuncAnimation(fig, update, frames=sim_iter, blit=True, interval=40, repeat=True,
+                    cache_frame_data=False)
 
 if args.show:
     plt.show()

@@ -125,20 +125,21 @@ def simulate_with_outputs(
         nout: int, 
         steps_per_output: int,
         cfg: Config,
-        tstart=0.
+        tstart: float = 0.
     ) -> Generator[Particles, None, None]:
     """Don't jit this function!"""
     p = clean_particles(p) # This helps avoiding double jit-compilations
 
     tp0 = time.perf_counter()
     fmdj.log("Compiling jitted simulation...", level=1, cfg=cfg)
-    fmdj.time_integration.simulate.jit.lower(p, tend=0., nsteps=steps_per_output, cfg=cfg, tstart=0.).compile()
+    simulate.jit.lower(p, tend=jnp.float32(0.1), nsteps=steps_per_output, cfg=cfg, tstart=jnp.float32(0.1)).compile()
     fmdj.log("Compilation done after {:.2f}s", time.perf_counter()-tp0, level=1, cfg=cfg)
 
     yield tstart, p
 
     for isnap in range(nout):
-        t0, t1 = tstart + isnap * (tend/nout), tstart + (isnap+1) * (tend/nout)
+        t0 = jnp.float32(tstart + isnap * (tend/nout))
+        t1 = jnp.float32(tstart + (isnap+1) * (tend/nout))
         tpa = time.perf_counter()
         p = simulate.jit(p, tend=t1, nsteps=steps_per_output, cfg=cfg, tstart=t0)
         fmdj.log("Reached output {} ({:.2f}s for {} steps)", 
