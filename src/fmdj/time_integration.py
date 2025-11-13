@@ -54,10 +54,10 @@ def find_center(p : Particles, cfg : Config = None):
     return cpos, cvel
 
 def shift_reference_center(p : Particles, cfg : Config = None):
-    cpos, cvel = find_center(p, cfg=cfg)
+    dcpos, dcvel = find_center(p, cfg=cfg)
 
-    dcpos = cpos - p.cpos if p.cpos is not None else cpos
-    dcvel = cvel - p.cvel if p.cvel is not None else cvel
+    cpos = p.cpos + dcpos if p.cpos is not None else dcpos
+    cvel = p.cvel + dcvel if p.cvel is not None else dcvel
     
     # Shift to the new frame
     p = replace(p, pos=p.pos-dcpos, vel=p.vel-dcvel, cpos=cpos, cvel=cvel)
@@ -82,6 +82,8 @@ def timestep(p : Particles, dt, cfg : Config, t=0., mask=None):
 
     vh = kick(p.vel, p.acc + ext_acc(p, t, cfg), 0.5*dt, mask=mask)
     p.pos = drift(p.pos, vh, dt, mask=mask)
+    if p.cpos is not None:
+        p.cpos = p.cpos + p.cvel * dt
 
     p.acc, p.pot = fmdj.fmm.get_force_and_potential.jit(p.pos, p.mass, cfg=cfg, separately=True)
     p.vel = kick(vh, p.acc + ext_acc(p, t + dt, cfg), 0.5*dt, mask=mask)
@@ -130,15 +132,17 @@ def simulate_with_outputs(
 
     tp0 = time.perf_counter()
     fmdj.log("Compiling jitted simulation...", level=1)
-    fmdj.time_integration.simulate.jit.lower(p, tend=jnp.float32(0.1), nsteps=steps_per_output, cfg=cfg, tstart=jnp.float32(0.2)).compile()
+    fmdj.time_integration.simulate.jit.lower(p, tend=0., nsteps=steps_per_output, cfg=cfg, tstart=0.).compile()
     fmdj.log("Compilation done after {:.2f}s", time.perf_counter()-tp0, level=1)
+
+    yield tstart, p
 
     for isnap in range(nout):
         t0, t1 = tstart + isnap * (tend/nout), tstart + (isnap+1) * (tend/nout)
         tpa = time.perf_counter()
-        p = simulate.jit(p, tend=jnp.float32(t1), nsteps=steps_per_output, cfg=cfg, tstart=jnp.float32(t0))
+        p = simulate.jit(p, tend=t1, nsteps=steps_per_output, cfg=cfg, tstart=t0)
         fmdj.log("Reached output {} ({:.2f}s for {} steps)", 
-                 isnap, time.perf_counter()-tpa, steps_per_output, level=1)
+                 isnap+1, time.perf_counter()-tpa, steps_per_output, level=1)
         yield t1, p
     
     fmdj.log("Total simulation time: {:.2f}s for {} steps", 
