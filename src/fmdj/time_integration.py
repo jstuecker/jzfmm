@@ -131,9 +131,9 @@ def simulate_with_outputs(
     p = clean_particles(p) # This helps avoiding double jit-compilations
 
     tp0 = time.perf_counter()
-    fmdj.log("Compiling jitted simulation...", level=1)
+    fmdj.log("Compiling jitted simulation...", level=1, cfg=cfg)
     fmdj.time_integration.simulate.jit.lower(p, tend=0., nsteps=steps_per_output, cfg=cfg, tstart=0.).compile()
-    fmdj.log("Compilation done after {:.2f}s", time.perf_counter()-tp0, level=1)
+    fmdj.log("Compilation done after {:.2f}s", time.perf_counter()-tp0, level=1, cfg=cfg)
 
     yield tstart, p
 
@@ -142,8 +142,8 @@ def simulate_with_outputs(
         tpa = time.perf_counter()
         p = simulate.jit(p, tend=t1, nsteps=steps_per_output, cfg=cfg, tstart=t0)
         fmdj.log("Reached output {} ({:.2f}s for {} steps)", 
-                 isnap+1, time.perf_counter()-tpa, steps_per_output, level=1)
+                 isnap+1, time.perf_counter()-tpa, steps_per_output, level=1, cfg=cfg)
         yield t1, p
     
     fmdj.log("Total simulation time: {:.2f}s for {} steps", 
-             time.perf_counter()-tp0, nout*steps_per_output, level=1)
+             time.perf_counter()-tp0, nout*steps_per_output, level=1, cfg=cfg)

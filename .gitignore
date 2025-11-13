@@ -1,4 +1,5 @@
 # Specific Directories
+output
 checks/old_benchmarks/logs/
 checks/benchmarks/.results
 checks/benchmarks/benchmarks/.results

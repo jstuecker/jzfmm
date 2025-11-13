@@ -20,8 +20,10 @@ def plot_particles_inset(p: Particles, t: float, previous=None, skip=1):
         axin.set_xticks([])
         axin.set_yticks([])
 
+        ax.scatter(0, 0, s=20, c="black", marker="o")
+
         s1 = ax.scatter(p.apos()[::skip,0], p.apos()[::skip,1], s=1, alpha=0.05, label=f't={t:.2f}')
-        s2 = axin.scatter(p.pos[:,0], p.pos[:,1], s=4, alpha=0.05, label=f't={t:.2f}')
+        s2 = axin.scatter(p.pos[:,0], p.pos[:,1], s=4, alpha=0.01, label=f't={t:.2f}')
     else:
         fig, ax, axin, s1, s2 = previous
         

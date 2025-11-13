@@ -1,0 +1,65 @@
+import fmdj
+import matplotlib.pyplot as plt
+import numpy as np
+import jax.numpy as jnp
+import jax
+import aegis
+import custom_jax as cj
+
+import argparse
+
+import matplotlib
+matplotlib.use("TkAgg")
+
+from matplotlib.animation import FuncAnimation
+import fmdj.plots
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--show", action="store_true", help="Visualize on the fly")
+args = parser.parse_args()
+
+print(args.show)
+
+prof = aegis.profiles.NFWProfile(conc=10., r200c=10.)
+pos0, vel0, m = prof.sample_particles(1024*128, result="pos_vel_m", rpmin=1e-3, ramax=10.)
+
+p0 = fmdj.time_integration.Particles(jnp.array(pos0), jnp.array(vel0), jnp.array(m))
+cfg = fmdj.config.Config()
+cfg.fmm.alloc_fac_nodes = 3.0
+cfg.softening = 1e-2
+
+host = aegis.profiles.NFWProfile(conc=6., m200c=1e12)
+cfg.external_potential = fmdj.potential.NFWPotential(host.rs, host.rhoc)
+
+p0.cpos = jnp.array((150.,0.,0.))
+p0.cvel = jnp.array((0.,host.vcirc(150.)*0.9,0.))
+
+fig, ax, axins, s1, s2 = fmdj.plots.plot_particles_inset(p0, 0., skip=10)
+
+def update(args):
+    t, p = args
+    fmdj.plots.plot_particles_inset(p, t, previous=(fig, ax, axins, s1, s2), skip=10)
+    return ax.collections + axins.collections
+
+sim_iter = fmdj.time_integration.simulate_with_outputs(
+    p0, tend=host.tcirc(150.)*2., nout=200, steps_per_output=20, cfg=cfg,
+)
+
+# Use the generator as the frames iterable
+ani = FuncAnimation(
+    fig,
+    update,
+    frames=sim_iter,
+    blit=True,
+    interval=40,
+    repeat=True
+)
+
+if args.show:
+    plt.show()
+else:
+    plt.close()
+    import os
+    os.makedirs("output", exist_ok=True)
+
+    ani.save("output/nbody_simulation.mp4", dpi=200)
