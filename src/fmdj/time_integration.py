@@ -4,6 +4,7 @@ import fmdj
 from fmdj import Config
 from dataclasses import dataclass, replace
 from typing import Generator
+import time
 
 @jax.tree_util.register_dataclass
 @dataclass
@@ -103,15 +104,42 @@ def simulate(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: int = 
     return p
 simulate.jit = jax.jit(simulate, static_argnames=("cfg",))
 
+def clean_particles(p: Particles) -> Particles:
+    p = replace(p)  # Make a copy to avoid modifying the input
+
+    p.pos = jnp.asarray(p.pos)
+    p.vel = jnp.asarray(p.vel)
+    p.mass = jnp.asarray(p.mass)
+
+    if p.pot is None:
+        p.pot = jnp.zeros_like(p.mass)
+    if p.acc is None:
+        p.acc = jnp.zeros_like(p.pos)
+    return p
+
 def simulate_with_outputs(
         p : Particles, 
         tend: float, 
-        nsnaps: int, 
+        nout: int, 
         steps_per_output: int,
         cfg: Config,
         tstart=0.
     ) -> Generator[Particles, None, None]:
-    for isnap in range(nsnaps):
-        t0, t1 = tstart + isnap * (tend/nsnaps), tstart + (isnap+1) * (tend/nsnaps)
-        p = simulate.jit(p, tend=t1, nsteps=steps_per_output, cfg=cfg, tstart=t0)
+    """Don't jit this function!"""
+    p = clean_particles(p) # This helps avoiding double jit-compilations
+
+    tp0 = time.perf_counter()
+    fmdj.log("Compiling jitted simulation...", level=1)
+    fmdj.time_integration.simulate.jit.lower(p, tend=jnp.float32(0.1), nsteps=steps_per_output, cfg=cfg, tstart=jnp.float32(0.2)).compile()
+    fmdj.log("Compilation done after {:.2f}s", time.perf_counter()-tp0, level=1)
+
+    for isnap in range(nout):
+        t0, t1 = tstart + isnap * (tend/nout), tstart + (isnap+1) * (tend/nout)
+        tpa = time.perf_counter()
+        p = simulate.jit(p, tend=jnp.float32(t1), nsteps=steps_per_output, cfg=cfg, tstart=jnp.float32(t0))
+        fmdj.log("Reached output {} ({:.2f}s for {} steps)", 
+                 isnap, time.perf_counter()-tpa, steps_per_output, level=1)
         yield t1, p
+    
+    fmdj.log("Total simulation time: {:.2f}s for {} steps", 
+             time.perf_counter()-tp0, nout*steps_per_output, level=1)
