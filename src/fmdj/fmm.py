@@ -327,8 +327,8 @@ new_fmm_fphi.jit = jax.jit(new_fmm_fphi, static_argnames=("cfg", "return_sorted"
 def get_force_and_potential(pos, mass, cfg : config.Config, separately=False):
     if cfg.fmm is None: # Use direct summation
         import custom_jax as cj
-        fphi = cj.forces.force_and_potential(
-            pos, mass, softening=cfg.softening, kahan=True) * cfg.G()
+        xm = jnp.concatenate([pos, mass[:,None]], axis=-1)
+        fphi = cj.forces.force_and_potential(xm, softening=cfg.softening, kahan=True) * cfg.G()
     else:
         fphi = new_fmm_fphi(pos, mass, cfg=cfg) * cfg.G()
 
