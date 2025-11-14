@@ -6,7 +6,6 @@ import custom_jax as cj
 import jax.numpy as jnp
 import fmdj.new_tree as nt
 import custom_jax.cj_new_tree as cnt
-import pytest
 
 
 @pytest.fixture

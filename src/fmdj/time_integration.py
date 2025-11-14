@@ -52,6 +52,7 @@ def find_center(p : Particles, cfg : Config = None):
         cvel = jnp.zeros(3)
 
     return cpos, cvel
+find_center.jit = jax.jit(find_center, static_argnames=("cfg",))
 
 def shift_reference_center(p : Particles, cfg : Config = None):
     dcpos, dcvel = find_center(p, cfg=cfg)
