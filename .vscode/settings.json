@@ -73,5 +73,6 @@
         "variant": "cpp",
         "list": "cpp",
         "unordered_set": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "/home/jens/repos/FM-DJ/external/custom-jax"
 }
