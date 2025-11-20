@@ -111,24 +111,24 @@ simulate.vjp = jax.custom_vjp(simulate, nondiff_argnames=("tend", "nsteps", "cfg
 
 def simulate_fwd(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float = 0.) -> Particles:
     pcom = jnp.mean(p.apos(), axis=0)
-    fmdj.log("Starting forwards pass, <pos> = ({:.2f},{:.2f},{:.2f})",
+    fmdj.log("Starting forward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
              pcom[0], pcom[1], pcom[2], level=1, cfg=cfg)
 
     p = simulate(p, tend, nsteps, cfg, tstart)
 
     pcom = jnp.mean(p.apos(), axis=0)
-    fmdj.log("Finished forwards pass, <pos> = ({:.2f},{:.2f},{:.2f})",
+    fmdj.log("Finished forward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
              pcom[0], pcom[1], pcom[2], level=1, cfg=cfg)
 
     return p, p
 
 def simulate_bwd(tend: float, nsteps: int, cfg: Config, tstart: float, p: Particles, gp: jnp.ndarray):
-    dt = (tstart - tend) / nsteps
+    dt = (tend - tstart) / nsteps
 
     def step(i, carry):
         p, t, gp = carry
 
-        p = fmdj.time_integration.timestep.jit(p, dt=dt, cfg=cfg, t=t)
+        p = fmdj.time_integration.timestep.jit(p, dt=-dt, cfg=cfg, t=t)
         _, vjp_fun = jax.vjp(lambda p: fmdj.time_integration.timestep.jit(p, dt=dt, cfg=cfg, t=t), p)
         gxp, = vjp_fun(gp)
         return p, t + dt, gxp
@@ -136,8 +136,8 @@ def simulate_bwd(tend: float, nsteps: int, cfg: Config, tstart: float, p: Partic
     p_prev, t_prev, gp_prev = jax.lax.fori_loop(0, nsteps, step, (p, tend, gp))
 
     pcom = jnp.mean(p_prev.apos(), axis=0)
-    fmdj.log("Backward pass finished... tdiff = {:.2e}, <pos> = ({:.2f},{:.2f},{:.2f})",
-             t_prev-tstart, pcom[0], pcom[1], pcom[2], level=1, cfg=cfg)
+    fmdj.log("Finished backward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
+             pcom[0], pcom[1], pcom[2], level=1, cfg=cfg)
     
     return (gp_prev,)
 

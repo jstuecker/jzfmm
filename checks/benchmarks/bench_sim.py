@@ -41,3 +41,28 @@ def bench_simulate(jax_bench, nfw_particles, stripping_cfg):
         fn=fmdj.time_integration.simulate, fn_jit=fmdj.time_integration.simulate.jit, 
         p=nfw_particles, tend=host.tcirc(150.)*1., nsteps=1000, cfg=cfg
     )[1]
+
+@pytest.mark.parametrize("nfw_particles", [1024*8], indirect=True)
+def bench_sim_direct_sum(jax_bench, nfw_particles, stripping_cfg):
+    jb = jax_bench(jit_rounds=1, jit_warmup=0, eager_rounds=0, eager_warmup=0)
+    
+    cfg, host = stripping_cfg
+    cfg.fmm = None
+
+    jb.measure(
+        fn=fmdj.time_integration.simulate, fn_jit=fmdj.time_integration.simulate.jit, 
+        p=nfw_particles, tend=host.tcirc(150.)*1., nsteps=1000, cfg=cfg, tag="sim"
+    )
+
+    def loss(p):
+        pfin = fmdj.time_integration.simulate.vjp(p, tend=host.tcirc(150.)*1., nsteps=1000, cfg=cfg)
+        return jnp.sum(jnp.mean(pfin.apos(), axis=0)**2) + jnp.sum(jnp.mean(pfin.avel(), axis=0)**2)
+    
+    @jax.jit
+    def lossgrad(p):
+        return jax.grad(loss)(p)
+
+    jb.measure(
+        fn_jit=lossgrad,
+        p=nfw_particles, tag="grad"
+    )

@@ -1,6 +1,10 @@
 # FM-DJ
 Fast Multipoles Done with Jax
 
+# ToDo:
+* Make some config parameters differentible
+* Try to make gradients with respect to a uniform acceleration field possible
+
 # Overview:
 Currently there are multiple implementations available
 * The old tree with fixed children number per node
