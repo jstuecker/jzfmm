@@ -1,7 +1,7 @@
 import fmdj.new_tree as nt
 import jax
 import jax.numpy as jnp
-import custom_jax as cj
+import fmdj_ffi as cj
 import pytest
 from fmdj.config import Config, FMMConfig
 import fmdj

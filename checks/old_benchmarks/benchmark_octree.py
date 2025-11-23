@@ -4,7 +4,7 @@ from fmdj.utility import Tee, Timer
 import jax.numpy as jnp
 import jax
 try:
-    import custom_jax as cj
+    import fmdj_ffi as cj
 except ImportError:
     print("No custom JAX found... skipping some tests.")
     cj = None

@@ -11,7 +11,7 @@ if jax.__version__ <= "0.4.2":
                       "However, we could define a custom decorator for this case")
 
 try:
-    import custom_jax as cj
+    import fmdj_ffi as cj
 except ImportError:
     print("No custom JAX found, using fall-back solutions. This may significantly degrade performance.")
     cj = None

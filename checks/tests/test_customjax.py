@@ -1,4 +1,4 @@
-import custom_jax as cj
+import fmdj_ffi as cj
 import pytest
 import fmdj
 import jax

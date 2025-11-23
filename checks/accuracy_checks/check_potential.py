@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import fmdj
 import numpy as np
-import custom_jax as cj
+import fmdj_ffi as cj
 import matplotlib.pyplot as plt
 
 # jax.config.update("jax_enable_x64", True)

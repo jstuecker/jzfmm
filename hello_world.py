@@ -4,7 +4,7 @@ import numpy as np
 import jax.numpy as jnp
 import jax
 import aegis
-import custom_jax as cj
+import fmdj_ffi as cj
 
 import argparse
 

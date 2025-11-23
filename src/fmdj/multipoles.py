@@ -6,7 +6,7 @@ from . import config
 from .variants import vm, make_dispatcher, V
 
 try:
-    import custom_jax as cj
+    import fmdj_ffi as cj
 except ImportError:
     print("No custom JAX found, using fall-back solutions. This may significantly degrade performance.")
     cj = None

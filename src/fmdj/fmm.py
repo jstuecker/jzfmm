@@ -268,8 +268,8 @@ fast_multipole_potential.jit = jax.jit(fast_multipole_potential,
 # ------------------------------------------------------------------------------------------------ #
 
 def new_fmm_potential(pos, mass, cfg : config.Config, return_sorted=False):
-    import custom_jax as cj
-    import custom_jax.cj_new_tree as cnt
+    import fmdj_ffi as cj
+    import fmdj_ffi.cj_new_tree as cnt
     import fmdj.new_tree as nt
 
     if mass is None:
@@ -297,8 +297,8 @@ def new_fmm_potential(pos, mass, cfg : config.Config, return_sorted=False):
 new_fmm_potential.jit = jax.jit(new_fmm_potential, static_argnames=("cfg", "return_sorted"))
 
 def new_fmm_fphi(pos, mass, cfg : config.Config, return_sorted=False):
-    import custom_jax as cj
-    import custom_jax.cj_new_tree as cnt
+    import fmdj_ffi as cj
+    import fmdj_ffi.cj_new_tree as cnt
     import fmdj.new_tree as nt
 
     if mass is None:
@@ -326,7 +326,7 @@ new_fmm_fphi.jit = jax.jit(new_fmm_fphi, static_argnames=("cfg", "return_sorted"
 
 def get_force_and_potential(pos, mass, cfg : config.Config, separately=False):
     if cfg.fmm is None: # Use direct summation
-        import custom_jax as cj
+        import fmdj_ffi as cj
         xm = jnp.concatenate([pos, mass[:,None]], axis=-1)
         fphi = cj.forces.force_and_potential(xm, softening=cfg.softening, kahan=True) * cfg.G()
     else:

@@ -1,4 +1,4 @@
-import custom_jax as cj
+import fmdj_ffi as cj
 import jax
 import jax.numpy as jnp
 from fmdj.multipoles import x_moment, shift_multipoles, shift_local_to_local, ilist_node_to_node

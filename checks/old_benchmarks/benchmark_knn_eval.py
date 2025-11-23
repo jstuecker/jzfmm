@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 import fmdj
-import custom_jax as cj
+import fmdj_ffi as cj
 import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 from fmdj.utility import Tee, Timer
