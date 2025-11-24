@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 import os
 
 env = Environment(
-    loader=PackageLoader("fmdj_codetools", "templates"),
+    loader=PackageLoader("fmdj_utils", "templates"),
     autoescape=select_autoescape()
 )
 

@@ -1,8 +1,8 @@
 from pathlib import Path
 import os
 
-import fmdj_codetools.parse as parse
-import fmdj_codetools.generator as gen
+import fmdj_utils.parse as parse
+import fmdj_utils.generator as gen
 
 HERE = Path(__file__).resolve().parent
 
