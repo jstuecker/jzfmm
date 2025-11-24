@@ -3,26 +3,6 @@ import jax.numpy as jnp
 from . import multipoles
 from . import config
 
-# ================================== Some utility methods ======================================== #
-
-def cumsum_starting_with_zero(x):
-    return jnp.pad(jnp.cumsum(x), (1, 0))
-
-def offset_sum(num):
-    cs = jnp.cumsum(num, axis=0)
-    return cs - num, cs[-1]
-
-def scatter_masked(y, value, mask, offset=0, get_offsets=False):
-    """Emulates y[offset:offset+sum(mask)] = value[mask], but jit-compatible."""
-    off, num = offset_sum(mask.astype(jnp.int32))
-    off_masked = jnp.where(mask & (offset+off >= 0), offset+off, y.shape[0])
-
-    ynew = y.at[off_masked].set(value)
-    if get_offsets:
-        return ynew, num + offset, off + offset
-    else:
-        return ynew, num + offset
-
 # ------------------------------------------------------------------------------------------------ #
 #                                              New FMM                                             #
 # ------------------------------------------------------------------------------------------------ #
