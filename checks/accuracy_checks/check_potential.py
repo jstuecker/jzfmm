@@ -36,11 +36,8 @@ for p in (1,2,3,4,5):
     # config_cj.tree.ilist_alloc_fac = 2056
     # config_cj.opening.opening_angle = 0.6
 
-    # phi_jax = fmdj.fmm.fast_multipole_potential.jit(pos0, mass0, config)
-    # phi_cj = fmdj.fmm.fast_multipole_potential.jit(pos0, mass0, config_cj)
-    phi_new = fmdj.fmm.new_fmm_potential.jit(pos0, mass0, config_cj)
+    phi_new = fmdj.fmm.new_fmm_fphi.jit(pos0, mass0, config_cj)[:,3]
 
-    # plt.hist(np.log10(np.abs((phi_jax - phi0)/phi0)), bins=np.linspace(-7,1), label=f'p={p}', alpha=0.8)
     plt.hist(np.log10(np.abs((phi_new - phi0)/phi0)), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5,
              color="C%d"%(p-1), edgecolor='black')
 

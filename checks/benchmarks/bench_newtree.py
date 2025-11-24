@@ -95,7 +95,7 @@ def measure_fmm(jb, cfg, npart=1024**2):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
     mass = jnp.ones_like(pos0[:,0])
 
-    res, phi2 = jb.measure(fn_jit=fmdj.fmm.new_fmm_potential.jit, tag="new_fmm",
+    jb.measure(fn_jit=fmdj.fmm.new_fmm_fphi.jit, tag="new_fmm",
                pos=pos0, mass=mass, cfg=cfg)
 
 @pytest.mark.parametrize("npart", [1024*128, 1024*1024, 1024*1024*4, 8*1024*1024])
