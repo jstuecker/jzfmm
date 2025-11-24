@@ -12,7 +12,7 @@ def test_nfw_acc():
     cfg = fmdj.config.Config()
 
     host = aegis.profiles.NFWProfile(conc=6., m200c=1e12)
-    cfg.external_potential = fmdj.potential.NFWPotential(host.rs, host.rhoc)
+    cfg.external_potential = fmdj.external_potential.NFWPotential(host.rs, host.rhoc)
 
     pos = jax.random.normal(jax.random.PRNGKey(0), (10,3)) * 200.
 

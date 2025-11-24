@@ -28,7 +28,7 @@ def stripping_cfg():
     cfg.logging.level = -1
 
     host = aegis.profiles.NFWProfile(conc=6., m200c=1e12)
-    cfg.external_potential = fmdj.potential.NFWPotential(host.rs, host.rhoc)
+    cfg.external_potential = fmdj.external_potential.NFWPotential(host.rs, host.rhoc)
 
     return cfg, host
 

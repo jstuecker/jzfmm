@@ -29,7 +29,7 @@ cfg.fmm.alloc_fac_nodes = 3.0
 cfg.softening = 1e-2
 
 host = aegis.profiles.NFWProfile(conc=6., m200c=1e12)
-cfg.external_potential = fmdj.potential.NFWPotential(host.rs, host.rhoc)
+cfg.external_potential = fmdj.external_potential.NFWPotential(host.rs, host.rhoc)
 
 p0.cpos = jnp.array((150.,0.,0.))
 p0.cvel = jnp.array((0.,host.vcirc(150.)*0.9,0.))

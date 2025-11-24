@@ -45,7 +45,7 @@ def test_sim_com():
 
     cfg = fmdj.Config(fmm=None)
     cfg.softening = 0.3
-    cfg.external_potential = fmdj.potential.UniformAcceleration(acc=acc)
+    cfg.external_potential = fmdj.external_potential.UniformAcceleration(acc=acc)
 
     def loss(p):
         pfin = fmdj.time_integration.simulate.vjp(p, tend=1e2, nsteps=100, cfg=cfg)
