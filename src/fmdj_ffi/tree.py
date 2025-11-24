@@ -7,7 +7,6 @@ from fmdj.tools import conditional_callback
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
-jax.ffi.register_ffi_target("SearchSortedZ", ffi_tree.SearchSortedZ(), platform="CUDA")
 
 def lvl_to_ext(level_binary):
     olvl, omod = level_binary//3, level_binary % 3
@@ -112,77 +111,3 @@ def summarize_leaves(xleaf, nleaf=None, max_size=64, num_part=None, ref_fac=None
     return splits, new_nleaf, new_leaf_lvl, new_leaf_cent, numleaves
 
 summarize_leaves.jit = jax.jit(summarize_leaves, static_argnames=("max_size", "num_part", "ref_fac"))
-
-# Matches CUDA's float32 behavior
-def float_xor_msb(a, b):
-    """
-    Finds the most significant differing bit "level" between two float32s.
-    Returns 128 if sign bits differ, otherwise follows the exponent/mantissa logic.
-    Works with broadcasting over arrays.
-    """
-    a = jnp.asarray(a, jnp.float32)
-    b = jnp.asarray(b, jnp.float32)
-
-    # If sign bits differ, return 128
-    sign_diff = jnp.not_equal(jnp.signbit(a), jnp.signbit(b))
-
-    # Bitcast |a| and |b| to uint32
-    a_bits = jax.lax.bitcast_convert_type(jnp.abs(a), jnp.uint32)
-    b_bits = jax.lax.bitcast_convert_type(jnp.abs(b), jnp.uint32)
-
-    # Extract unbiased exponents: (bits >> 23) - 127
-    a_exp = (a_bits >> jnp.uint32(23)).astype(jnp.int32) - jnp.int32(127)
-    b_exp = (b_bits >> jnp.uint32(23)).astype(jnp.int32) - jnp.int32(127)
-
-    same_exp = a_exp == b_exp
-
-    # If exponents equal, compare mantissas via XOR, then use leading zeros
-    xor_bits = jnp.bitwise_xor(a_bits, b_bits)
-    # lax.clz counts leading zeros on unsigned integers
-    clz = jax.lax.clz(xor_bits).astype(jnp.int32)
-
-    # CUDA comment: "There will always be 8 leading zeros due to the exponent"
-    # (sign bit is removed by fabsf, so sign is zero as well)
-    mantissa_term = a_exp + (jnp.int32(8) - clz)
-
-    # If exponents differ, choose the larger exponent
-    larger_exp = jnp.maximum(a_exp, b_exp)
-
-    result = jnp.where(same_exp, mantissa_term, larger_exp)
-    result = jnp.where(sign_diff, jnp.int32(128), result)
-    return result
-
-def ztree_diff_level(p1, p2):
-    """
-    p1, p2: (..., 3) float32 arrays (or anything broadcastable to that)
-    Returns the level: max(3*msb_x+3, 3*msb_y+2, 3*msb_z+1)
-    """
-    p1 = jnp.asarray(p1, jnp.float32)
-    p2 = jnp.asarray(p2, jnp.float32)
-
-    msb_x = float_xor_msb(p1[..., 0], p2[..., 0])
-    msb_y = float_xor_msb(p1[..., 1], p2[..., 1])
-    msb_z = float_xor_msb(p1[..., 2], p2[..., 2])
-
-    level = jnp.maximum(
-        3 * msb_x + 3,
-        jnp.maximum(3 * msb_y + 2, 3 * msb_z + 1),
-    )
-    return level
-ztree_diff_level.jit = jax.jit(ztree_diff_level)
-
-def search_sorted_z(xz, xz_query, block_size=64, leaf_search=False):
-    """Finds the indices in xz where elements of xz_query would be inserted to keep order.
-    This is similar to np.searchsorted, but works for 3D points sorted in Z-order.
-    On equality maintains the rule: xz[idx] < v <= xz[idx+1]
-    if leaf_search is True, it is assumed that xz contains one point per leaf and we 
-    return the index of the leaf that the query point belongs to.
-    """
-    assert xz.dtype ==  xz_query.dtype == jnp.float32
-    assert xz.shape[-1] == xz_query.shape[-1] == 3
-
-    out_type = jax.ShapeDtypeStruct((xz_query.shape[0],), jnp.int32)
-    inds = jax.ffi.ffi_call("SearchSortedZ", (out_type,))(
-        xz, xz_query, block_size=np.uint64(block_size), leaf_search=leaf_search)[0]
-    return inds
-search_sorted_z.jit = jax.jit(search_sorted_z, static_argnames=("block_size", "leaf_search"))
