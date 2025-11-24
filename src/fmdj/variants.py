@@ -42,9 +42,6 @@ class Variant:
 
 class V(Enum):
     ilist_node_to_node : int = auto()
-    ilist_node_to_leaf : int = auto()
-    ilist_leaf_to_node : int = auto()
-    ilist_leaf_to_leaf : int = auto()
     test_function : int = auto()
 
     multipoles_from_particles : int = auto()

@@ -530,45 +530,6 @@ def _ilist_node_to_node_base(xnodes, multipoles, interactions, irange, cfg : con
 
     return loc
 
-def _ilist_node_to_leaf_base(xnodes, multipoles, xpart, leaf_bounds, interactions, irange, cfg : config.Config):
-    chunk_size = int(len(xpart) * cfg.old.ilist_chunk_fac * 0.2)
-
-    phi = jnp.zeros(xpart.shape[0], dtype=xnodes.dtype)
-
-    def eval_leaf_node(phi, iab, mask):
-        return phi + ilist_multipole_to_points(multipoles, xnodes, xpart, leaf_bounds, jnp.abs(iab), 
-                                               imask=mask, max_size=cfg.fmm.max_leaf_size, p=cfg.fmm.p, 
-                                               eps=cfg.softening)
-    phi = _reduce_fsum_chunked(eval_leaf_node, phi, interactions, irange[0], irange[1], chunk_size=chunk_size)
-
-    return phi
-
-def _ilist_leaf_to_node_base(xnodes, xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
-    p = cfg.fmm.p
-    chunk_size = int((cfg.old.ilist_max_mb * 1024**2) // (xpart.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)))
-    chunk_size = min(max((chunk_size//64)*64,  64), len(xnodes)*4)
-
-    loc = jnp.zeros(xnodes.shape[:-1] + (p_to_ncomb[p],), dtype=xnodes.dtype)
-
-    def eval_node_from_leaf(loc, iab, mask):
-        return loc + ilist_monopoles_to_local(xnodes, xpart, mpart, leaf_bounds, jnp.abs(iab),
-                                              imask=mask, max_size=cfg.fmm.max_leaf_size, p=p, 
-                                              eps=cfg.softening)
-    loc = _reduce_fsum_chunked(eval_node_from_leaf, loc, interactions, irange[0], irange[1], chunk_size=chunk_size)
-
-    return loc
-
-def _ilist_leaf_leaf_base(xpart, mpart, leaf_bounds, interactions, irange, cfg : config.Config):
-    """Function with some documentation"""
-    phi = jnp.zeros(xpart.shape[0], dtype=xpart.dtype)
-    chunk_size = int(len(leaf_bounds) * cfg.old.ilist_chunk_fac)
-    def eval_leaf_leaf(phi, iab, mask):
-        return phi + ilist_monopoles_to_points(xpart, mpart, leaf_bounds, jnp.abs(iab), imask=mask, 
-                                               max_size=cfg.fmm.max_leaf_size, eps=cfg.softening)
-    phi = _reduce_fsum_chunked(eval_leaf_leaf, phi, interactions, irange[0], irange[1], chunk_size=chunk_size)
-
-    return phi
-
 # ================================== Dispatcher Functions ======================================== #
 # Below we define the default behaviour of these function
 # However, they can be replaced by custom variants through the pattern
@@ -577,6 +538,3 @@ def _ilist_leaf_leaf_base(xpart, mpart, leaf_bounds, interactions, irange, cfg :
 # myconfig = config.Config(tags=("mytag", "base"))
 
 ilist_node_to_node = make_dispatcher(vm[V.ilist_node_to_node], _ilist_node_to_node_base, add_jit=True)
-ilist_node_to_leaf = make_dispatcher(vm[V.ilist_node_to_leaf], _ilist_node_to_leaf_base, add_jit=True)
-ilist_leaf_to_node = make_dispatcher(vm[V.ilist_leaf_to_node], _ilist_leaf_to_node_base, add_jit=True)
-ilist_leaf_to_leaf = make_dispatcher(vm[V.ilist_leaf_to_leaf], _ilist_leaf_leaf_base, add_jit=True)

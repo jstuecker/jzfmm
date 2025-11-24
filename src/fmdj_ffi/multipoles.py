@@ -8,7 +8,6 @@ import jax.numpy as jnp
 from fmdj_cuda import ffi_multipoles as ffi_multipoles
 
 jax.ffi.register_ffi_target("IlistM2L", ffi_multipoles.IlistM2L(), platform="CUDA")
-jax.ffi.register_ffi_target("IlistLeaf2NodeM2L", ffi_multipoles.IlistLeaf2NodeM2L(), platform="CUDA")
 
 # ======= Multipole Translators =======
 
@@ -35,32 +34,3 @@ def ilist_node_to_node(xnodes, multipoles, interactions, irange=None, block_size
     
     return loc
 ilist_node_to_node.jit = jax.jit(ilist_node_to_node, static_argnames=("block_size", "cfg"))
-
-def ilist_leaf_to_node(xnodes, xpart, mpart, isplit,  interactions, irange=None, 
-                       interactions_per_block=None, cfg=None):
-    p, softening = cfg.fmm.p, cfg.softening
-    assert xnodes.dtype == jnp.float32
-    assert xpart.dtype == jnp.float32
-    assert mpart.dtype == jnp.float32
-    assert isplit.dtype == jnp.int32
-    assert interactions.dtype == jnp.int32
-    assert irange is None or irange.dtype == jnp.int32
-
-    assert xnodes.ndim >= 2 and xpart.ndim >= 2
-    xm = jnp.concatenate((xpart, mpart[..., None]), axis=-1)
-
-    ncomb = ((p+3)*(p+2)*(p+1)) // 6
-
-    if irange is None:
-        irange = jnp.array([0, len(interactions)], dtype=jnp.int32)
-    if interactions_per_block is None:
-        interactions_per_block = np.clip(len(interactions) // (4096), 2, 32)
-
-    out_type = jax.ShapeDtypeStruct(xnodes.shape[:-1] + (ncomb,), xnodes.dtype)
-    loc = jax.ffi.ffi_call("IlistLeaf2NodeM2L", (out_type,))(
-        xnodes, xm, isplit, jnp.abs(interactions), irange, p=np.int32(p), 
-        interactions_per_block=np.uint64(interactions_per_block), 
-        epsilon=np.float32(softening), block_size=np.uint64(32))[0]
-    
-    return loc
-ilist_leaf_to_node.jit = jax.jit(ilist_leaf_to_node, static_argnames=("cfg", "interactions_per_block"))

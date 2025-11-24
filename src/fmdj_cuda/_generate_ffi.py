@@ -113,7 +113,6 @@ for kernel in kernels.values():
     kernel.init_outputs_zero = True
 
 kernels["IlistM2L"].grid_size_expression = "div_ceil(interactions.element_count() / 2, block_size*interactions_per_block)"
-kernels["IlistLeaf2NodeM2L"].grid_size_expression = "div_ceil(interactions.element_count() / 2, interactions_per_block)"
 kernels["MultipolesFromParticles"].grid_size_expression = "isplit.element_count() - 1"
 kernels["CoarsenMultipoles"].grid_size_expression = "isplit.element_count() - 1"
 
