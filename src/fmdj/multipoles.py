@@ -2,13 +2,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from . import config
-from .variants import vm, make_dispatcher, V
-
-try:
-    import fmdj_ffi as cj
-except ImportError:
-    print("No custom JAX found, using fall-back solutions. This may significantly degrade performance.")
-    cj = None
 
 # ============================= Some fixed Combinatorical Computations =========================== #
 
@@ -153,28 +146,11 @@ def evaluate_local_fphi(L, x):
     fphi = jnp.stack((fx, fy, fz, phi), axis=-1)
 
     return fphi
-evaluate_local_potential.jit = jax.jit(evaluate_local_potential)
+evaluate_local_fphi.jit = jax.jit(evaluate_local_fphi)
 
 # ================================ Potential Helper Functions ==================================== #
 
-def _get_gs(x, nmax=1, eps=0.):
-    """These are the derivatives (1/r d/dr)^n (1/r)"""
-    r = jnp.sqrt(jnp.sum(x**2, axis=-1) + eps**2)
-    
-    gs = []
-
-    if nmax >= 0: gs.append(1./r)
-    if nmax >= 1: gs.append(-1./r**3)
-    if nmax >= 2: gs.append(3./r**5)
-    if nmax >= 3: gs.append(-15./r**7)
-    if nmax >= 4: gs.append(105./r**9)
-    if nmax >= 5: gs.append(-945./r**11)
-    if nmax >= 6: gs.append(10395./r**13)
-    if nmax >= 7: gs.append(-155925./r**15)
-
-    return gs
-
-def _get_gs_v2(x, nmax=1, eps=0.):
+def get_gs(x, nmax=1, eps=0.):
     """These are the derivatives (1/r d/dr)^n (1/r)"""
     rinv = 1. / jnp.sqrt(jnp.sum(x**2, axis=-1) + eps*eps)
     r2inv = rinv * rinv
@@ -184,49 +160,7 @@ def _get_gs_v2(x, nmax=1, eps=0.):
 
     return gs
 
-def _get_Dn(x, g, nx=0, ny=0, nz=0):
-    """Dn = nabla^n (1/r)
-          = (1/r d/dr)^n g0(r) * x^nx * y^ny * z^nz"""
-    n = nx + ny + nz
-
-    ni = np.array([nx, ny, nz], dtype=np.int64)
-    isort = np.argsort(ni)[::-1]
-    nsort = np.array([nx, ny, nz])[isort]
-    xpow = x[...,0]**nx * x[...,1]**ny * x[...,2]**nz
-
-    # This function checks the signature of nx,ny,nz
-    def sig(val, nx, ny=-1, nz=-1):
-        if ny == -1: # only compare nx
-            cond = (nsort[0] == nx)
-        elif nz == -1:
-            cond = (nsort[0] == nx) & (nsort[1] == ny)
-        else:
-            cond = (nsort[0] == nx) & (nsort[1] == ny) * (nsort[2] == nz)
-        return val if cond else 0
-
-    if n == 0:
-        return g[0]
-    elif n == 1:
-        return g[1]*x[...,isort[0]]
-    elif n == 2:
-        return sig(g[1], 2) + g[2]*xpow
-    elif n == 3:
-        return g[2]*(sig(3*x[...,isort[0]], 3) + sig(x[...,isort[1]], 2,1)) + g[3]*xpow
-    elif n == 4:
-        return (g[2]*(sig(3.,4) + sig(1.,2,2)) 
-                + g[3]*(sig(6.*x[...,isort[0]]**2,4) + sig(3.*x[...,isort[0]]*x[...,isort[1]],3,1) 
-                        + sig((x[...,isort[0]]**2 + x[...,isort[1]]**2),2,2) 
-                        + sig(x[...,isort[1]]*x[...,isort[2]],2,1,1))
-                + g[4]*xpow)
-    elif n == 5:
-        return (g[3]*(sig(15.*x[...,isort[0]],5) + sig(3.*x[...,isort[1]],4,1) + sig(3.*x[...,isort[0]],3,2) + sig(x[...,isort[2]], 2,2,1))
-                + g[4]*(sig(10.*x[...,isort[0]]**3, 5) + sig(6.*x[...,isort[0]]**2*x[...,isort[1]],4,1) + sig((3*x[...,isort[0]]*x[...,isort[1]]**2 +  x[...,isort[0]]**3),3,2)
-                        + sig(x[...,isort[2]]*(x[...,isort[0]]**2 + x[...,isort[1]]**2),2,2,1) + sig(3.*x[...,isort[0]]*x[...,isort[1]]*x[...,isort[2]],3,1,1))
-                + g[5]*xpow)
-    else:
-        raise ValueError("n must be between 0 and 5")
-
-def get_all_Dn_new(x, p=0, eps=0.):
+def get_Dn(x, p=0, eps=0.):
     """Get the all the derivatives of a Green's function g
     Using the recurrence relation from Tausch (2003)
     http://dx.doi.org/10.1090/conm/329/05866 (See Section 3)
@@ -255,7 +189,7 @@ def get_all_Dn_new(x, p=0, eps=0.):
         imaxs[i] = imax
 
     def get_Dn(x):
-        gs = _get_gs_v2(x, p+1, eps=eps)
+        gs = get_gs(x, p+1, eps=eps)
         w1s = x[imaxs]
 
         Dn = gs[p][None]
@@ -269,7 +203,7 @@ def get_all_Dn_new(x, p=0, eps=0.):
 
         return jnp.stack(Dn)
     return jax.vmap(get_Dn, in_axes=(0,), out_axes=0)(x)
-get_all_Dn_new.jit = jax.jit(get_all_Dn_new, static_argnames=("p", "eps"))
+get_Dn.jit = jax.jit(get_Dn, static_argnames=("p", "eps"))
 
 def potential_direct_sum(x, m=1., n2lim=1e8, eps=1e-5):
     N = x.shape[0]
@@ -298,7 +232,7 @@ potential_direct_sum.jit = jax.jit(potential_direct_sum, static_argnames=("n2lim
 def single_multipole_to_local(mp, dx, p=2, eps=0.):
     """Returns the expansion coefficients for the interaction between two nodes"""
     combs, index_of_mp = define_index_maps(p)
-    D = get_all_Dn_new(-dx, p=p, eps=eps)
+    D = get_Dn(-dx, p=p, eps=eps)
 
     nks = len(combs)
 
@@ -320,35 +254,6 @@ def single_multipole_to_local(mp, dx, p=2, eps=0.):
 
     return Lk
 
-def single_multipole_to_point(mp, dx, p=2, eps=0.):
-    """The potential of a multipole expanded at 0 evaluated at dx"""
-    combs, index_of_mp = define_index_maps(p)
-    gs = _get_gs(dx, nmax=p, eps=eps)
-
-    pot = 0.
-    for i,c in enumerate(combs):
-        # Number of ways of choosing (c0, c1, c2) given c0+c1+c2 = n, divided by n! (from Taylor expansion):
-        fac =  1./(fact[c[0]] * fact[c[1]] * fact[c[2]])
-        
-        D = _get_Dn(-dx, gs, nx=c[0], ny=c[1], nz=c[2])
-        pot = pot - fac.astype(dx.dtype) * D * mp[...,index_of_mp[c[0], c[1], c[2]]]
-    
-    return pot
-
-def single_monopole_to_local(mass, dx, p=2, eps=0.):
-    """The expansion of a pointmass evaluated at xloc_minus_xmp
-    """
-    combs = multipole_powers(p)
-    gs = _get_gs(dx, nmax=p, eps=eps)
-    L = []
-    
-    for i,ks in enumerate(combs):
-        k = np.sum(ks)
-
-        val = mass * _get_Dn(-dx, gs, nx=ks[0], ny=ks[1], nz=ks[2])
-        L.append(- (-1.)**k / (fact[ks[0]] * fact[ks[1]] * fact[ks[2]])  * val)
-    
-    return jnp.stack(L, axis=-1)
 
 # ==================== Functions for evaluating interaction lists in loops ======================= #
 
