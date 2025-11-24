@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 
 from fmdj.config import Config, FMMConfig
-from fmdj.new_tree import dense_interaction_list
+from fmdj.data import dense_interaction_list, TreePlane, Multipoles, PosMass, InteractionList
 from fmdj.multipoles import shift_local_to_local
 
 import fmdj_cuda.ffi_multipoles as ffi_multipoles
@@ -18,10 +18,6 @@ jax.ffi.register_ffi_target("CoarsenMultipoles", ffi_multipoles.CoarsenMultipole
 jax.ffi.register_ffi_target("CountInteractionsAndM2L", ffi_fmm.CountInteractionsAndM2L(), platform="CUDA")
 jax.ffi.register_ffi_target("InsertInteractions", ffi_fmm.InsertInteractions(), platform="CUDA")
 jax.ffi.register_ffi_target("GroupedForceAndPot", ffi_forces.GroupedForceAndPot(), platform="CUDA")
-
-# Note: This import may break things if imported in the wrong order... Have to fix this later!
-from fmdj.new_tree import TreePlane, Multipoles, PosMass, InteractionList
-
 
 def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
     cfg_tree: FMMConfig = cfg.fmm

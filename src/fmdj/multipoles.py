@@ -1,7 +1,9 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
-from . import config
+from .config import Config
+from .data import Multipoles, TreePlane, PosMass
+from .variants import vm, make_dispatcher, V
 
 # ============================= Some fixed Combinatorical Computations =========================== #
 
@@ -47,6 +49,16 @@ def multipole_powers(p : int):
 
 def define_index_maps(p):
     return combinations[:p_to_ncomb[p]], index_map[:p + 1, :p + 1, :p + 1]
+
+def iterate_multi_indices(p, istart=0):
+    i = 0
+    for n in range(p+1):
+        for nz in range(n+1):
+            for ny in range(n - nz +1):
+                nx = n - ny - nz
+                if i >= istart:
+                    yield i, (nx, ny, nz)
+                i += 1
 
 # =============================== Multipole to Multipole  Operators ============================== #
 
@@ -95,6 +107,76 @@ def shift_multipoles(m, x0, p=2):
 
 def x_moment(x, c):
     return x[...,0]**c[0] * x[...,1]**c[1] * x[...,2]**c[2]
+
+def coarsen_multipoles_jax(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipoles:
+    """Determines the multipoles at the next coarser tree plane"""
+    parent = tp.icoarse_of_fine()
+    kwargs = dict(
+        segment_ids=parent,
+        num_segments=tp.size(),
+        indices_are_sorted=True
+    )
+
+    # Compute the center of mass
+    mnode = jax.ops.segment_sum(mp.get(0), **kwargs)
+
+    dx = mp.center() - tp.geom_center()[parent]
+    mxnode = [jax.ops.segment_sum(dx[...,d]*mp.get(0), **kwargs) for d in range(3)]
+    
+    if mp.around_com:
+        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_center()
+    else:
+        xcent = tp.geom_center()
+    
+    dx = xcent[parent] - mp.center()
+    
+    mpshift = shift_multipoles(mp.values, dx, p=mp.p)
+
+    mp_coarse = [jax.ops.segment_sum(mpshift[...,k], **kwargs) for k in range(mpshift.shape[-1])]
+
+    return Multipoles(
+        xcent=xcent,
+        values=jnp.stack(mp_coarse, axis=-1),
+        p=mp.p,
+        around_com=mp.around_com
+    )
+
+def multipoles_from_particles_jax(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
+    dtype = part.mass.dtype
+
+    parent = tp.icoarse_of_fine()
+    kwargs = dict(
+        segment_ids=parent,
+        num_segments=tp.size(),
+        indices_are_sorted=True
+    )
+
+    # Compute the center of mass
+    mnode = jax.ops.segment_sum(part.mass, **kwargs)
+
+    dx = part.pos - tp.geom_center()[parent]
+    mxnode = [jax.ops.segment_sum(dx[...,d]*part.mass, **kwargs) for d in range(3)]
+
+    mp = [mnode]
+    
+    if cfg.fmm.multipoles_around_com:
+        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_center()
+        mp.extend([jnp.zeros_like(mnode, dtype=dtype)]*3)
+    else:
+        xcent = tp.geom_center()
+        mp.extend(mxnode)
+    dx = part.pos - xcent[parent]
+
+    # Compute multipole moments
+    for i, nvec in iterate_multi_indices(cfg.fmm.p, istart=4):
+        mp.append(jax.ops.segment_sum(x_moment(dx, nvec) * part.mass, **kwargs))
+
+    return Multipoles(
+        xcent=xcent,
+        values=jnp.stack(mp, axis=-1),
+        p=cfg.fmm.p,
+        around_com=cfg.fmm.multipoles_around_com
+    )
 
 # =================================== Local to Local  Operators ================================== #
 def shift_local_to_local(L, dx):
@@ -280,7 +362,7 @@ def _reduce_fsum_chunked(f, y0, x, istart, iend, chunk_size):
 
     return jax.lax.fori_loop(0, num_chunks, body, y0)
 
-def ilist_node_to_node(xnodes, multipoles, interactions, irange, cfg : config.Config):
+def ilist_node_to_node(xnodes, multipoles, interactions, irange, cfg : Config):
     p = cfg.fmm.p
 
     chunk_size = int((cfg.old.ilist_max_mb * 1024**2) // (2 * xnodes.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)**2))

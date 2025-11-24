@@ -7,11 +7,13 @@ from .config import Config, FMMConfig
 from fmdj.tools import conditional_callback
 from typing import Tuple, List
 import fmdj
-from .data import Multipoles, TreePlane, PosMass, SegmentedNDArray
+from .data import Multipoles, TreePlane, PosMass, SegmentedNDArray, InteractionList, dense_interaction_list
 from .tools import offset_sum, masked_prefix_sum, inverse_of_splits, cumsum_starting_with_zero
 
 from .variants import vm, make_dispatcher, V, VariantConfig
 
+# from .multipoles import coarsen_multipoles
+from fmdj_ffi.cj_new_tree import coarsen_multipoles, multipoles_from_particles
 
 def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
     """Gets the next coarser tree plane from a finer one"""
@@ -54,139 +56,9 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
 build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg'])
 
 # ------------------------------------------------------------------------------------------------ #
-#                                            Multipoles                                            #
-# ------------------------------------------------------------------------------------------------ #
-
-def multi_to_flat(kx, ky, kz):
-    k = kx + ky + kz
-    npoff = ((k+2)*(k+1)*k // 6)
-    npoff += kz*(2*k + 3 - kz)//2 + ky
-
-    return npoff
-
-def iterate_multi_indices(p, istart=0):
-    i = 0
-    for n in range(p+1):
-        for nz in range(n+1):
-            for ny in range(n - nz +1):
-                nx = n - ny - nz
-                if i >= istart:
-                    yield i, (nx, ny, nz)
-                i += 1
-
-def _multipoles_from_particles_base(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
-    cfg_tree: FMMConfig = cfg.fmm
-
-    dtype = part.mass.dtype
-
-    parent = tp.icoarse_of_fine()
-    kwargs = dict(
-        segment_ids=parent,
-        num_segments=tp.size(),
-        indices_are_sorted=True
-    )
-
-    # Compute the center of mass
-    mnode = jax.ops.segment_sum(part.mass, **kwargs)
-
-    dx = part.pos - tp.geom_center()[parent]
-    mxnode = [jax.ops.segment_sum(dx[...,d]*part.mass, **kwargs) for d in range(3)]
-
-    mp = [mnode]
-    
-    if cfg_tree.multipoles_around_com:
-        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_center()
-        mp.extend([jnp.zeros_like(mnode, dtype=dtype)]*3)
-    else:
-        xcent = tp.geom_center()
-        mp.extend(mxnode)
-    dx = part.pos - xcent[parent]
-
-    # Compute multipole moments
-    for i, nvec in iterate_multi_indices(cfg_tree.p, istart=4):
-        mp.append(jax.ops.segment_sum(x_moment(dx, nvec) * part.mass, **kwargs))
-
-    return Multipoles(
-        xcent=xcent,
-        values=jnp.stack(mp, axis=-1),
-        p=cfg_tree.p,
-        around_com=cfg_tree.multipoles_around_com
-    )
-
-def _coarsen_multipoles_base(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipoles:
-    """Determines the multipoles at the next coarser tree plane"""
-    parent = tp.icoarse_of_fine()
-    kwargs = dict(
-        segment_ids=parent,
-        num_segments=tp.size(),
-        indices_are_sorted=True
-    )
-
-    # Compute the center of mass
-    mnode = jax.ops.segment_sum(mp.get(0), **kwargs)
-
-    dx = mp.center() - tp.geom_center()[parent]
-    mxnode = [jax.ops.segment_sum(dx[...,d]*mp.get(0), **kwargs) for d in range(3)]
-    
-    if mp.around_com:
-        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_center()
-    else:
-        xcent = tp.geom_center()
-    
-    dx = xcent[parent] - mp.center()
-    
-    mpshift = shift_multipoles(mp.values, dx, p=mp.p)
-
-    mp_coarse = [jax.ops.segment_sum(mpshift[...,k], **kwargs) for k in range(mpshift.shape[-1])]
-
-    return Multipoles(
-        xcent=xcent,
-        values=jnp.stack(mp_coarse, axis=-1),
-        p=mp.p,
-        around_com=mp.around_com
-    )
-
-# ------------------------------------------------------------------------------------------------ #
 #                                         Interaction Lists                                        #
 # ------------------------------------------------------------------------------------------------ #
 
-
-@jax.tree_util.register_dataclass
-@dataclass
-class InteractionList:
-    """Node i0 will interact with all indices iother[ispl[i0]:ispl[i0+1]]"""
-    ispl: jnp.ndarray
-    iother: jnp.ndarray
-
-    nfilled : jnp.ndarray  # Total number of filled interactions
-
-    def get_interactions(self, get_valid=False):
-        """Returns (i0, i1, valid) indicating two interaction nodes and validity"""
-        iint = jnp.arange(self.size(), dtype=self.dtype())
-        i0 = inverse_of_splits(self.ispl, self.size())
-        i1 = self.iother#[iint]
-        if get_valid:
-            valid = iint < self.nfilled
-            return i0, i1, valid
-        else:
-            return i0, i1
-    
-    def filter(self, mask: jnp.ndarray, size: int | None = None) -> 'InteractionList':
-        """Returns a filtered interaction list according to the boolean mask"""
-        if size is None:
-            size = mask.size
-        ioff, nfilled = offset_sum(mask)
-        iupdate = jnp.where(mask, ioff, size)
-        iother_new = jnp.zeros(size, dtype=self.iother.dtype).at[iupdate].set(self.iother)
-        ispl_new = ioff[self.ispl]
-
-        return InteractionList(ispl=ispl_new, iother=iother_new, nfilled=nfilled)
-    
-    def size(self):
-        return self.iother.size
-    
-    def dtype(self):
-        return self.iother.dtype
 
 def expand_interactions(
         ilist: InteractionList, 
@@ -232,31 +104,7 @@ def expand_interactions(
 expand_interactions.jit = jax.jit(expand_interactions, static_argnames=['size_children', 'size_new_ilist'])
 
 
-def dense_interaction_list(size: int, nnodes: jnp.ndarray = None) -> InteractionList:
-    """A dense interaction list where all nodes interact with all other nodes.
 
-    size: size of the node array that will use the interaction list. (Required at compile time)
-    nnodes: actual number of filled nodes (Can be dynamic, used to invalidating unused nodes)
-    """
-
-    if nnodes is None: # size = nnodes will only work outside of jit
-        nnodes = jnp.array(size, dtype=jnp.int32)  
-    dtype = nnodes.dtype
-
-    # We need to work around JAX's lack of dynamic array sizes
-    i1, i2 = jnp.indices((size, size), dtype=dtype)
-    
-    valid = (i1 < nnodes) & (i2 < nnodes)
-
-    ioff, nfilled = masked_prefix_sum(valid.flatten())
-
-    ilist = jnp.zeros(i1.size, dtype=i1.dtype).at[ioff].set(i2.flatten())
-
-    ispl = jnp.arange(0, size+1, dtype=i1.dtype) * nnodes
-    ispl = jnp.where(ispl < nfilled, ispl, nfilled)
-    
-    return InteractionList(ispl=ispl, iother=ilist, nfilled=nfilled)
-dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size'])
 
 # ------------------------------------------------------------------------------------------------ #
 #                                             Tree Walk                                            #
@@ -332,8 +180,6 @@ evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, sta
 #                                       Register Dispatchers                                       #
 # ------------------------------------------------------------------------------------------------ #
 
-multipoles_from_particles = make_dispatcher(vm[V.multipoles_from_particles], _multipoles_from_particles_base, add_jit=True)
-coarsen_multipoles = make_dispatcher(vm[V.coarsen_multipoles], _coarsen_multipoles_base, add_jit=True)
 evaluate_plane_interactions = make_dispatcher(vm[V.evaluate_plane_interactions], _evaluate_plane_interactions_base, add_jit=True)
 
 # ------------------------------------------------------------------------------------------------ #

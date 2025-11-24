@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from dataclasses import dataclass, field
 from typing import List
-from .tools import cumsum_starting_with_zero, inverse_of_splits
+from .tools import cumsum_starting_with_zero, inverse_of_splits, offset_sum, masked_prefix_sum
 
 def static_field(*args, **kwargs):
     return field(*args, metadata=dict(static=True), **kwargs)
@@ -145,3 +145,66 @@ class SegmentedNDArray():
         """Segmentation that is given by replicating each element n[i] times"""
         ispl_new = cumsum_starting_with_zero(n)
         return SegmentedNDArray(ispl=[*self.ispl, ispl_new])
+
+@jax.tree_util.register_dataclass
+@dataclass
+class InteractionList:
+    """Node i0 will interact with all indices iother[ispl[i0]:ispl[i0+1]]"""
+    ispl: jnp.ndarray
+    iother: jnp.ndarray
+
+    nfilled : jnp.ndarray  # Total number of filled interactions
+
+    def get_interactions(self, get_valid=False):
+        """Returns (i0, i1, valid) indicating two interaction nodes and validity"""
+        iint = jnp.arange(self.size(), dtype=self.dtype())
+        i0 = inverse_of_splits(self.ispl, self.size())
+        i1 = self.iother#[iint]
+        if get_valid:
+            valid = iint < self.nfilled
+            return i0, i1, valid
+        else:
+            return i0, i1
+    
+    def filter(self, mask: jnp.ndarray, size: int | None = None) -> 'InteractionList':
+        """Returns a filtered interaction list according to the boolean mask"""
+        if size is None:
+            size = mask.size
+        ioff, nfilled = offset_sum(mask)
+        iupdate = jnp.where(mask, ioff, size)
+        iother_new = jnp.zeros(size, dtype=self.iother.dtype).at[iupdate].set(self.iother)
+        ispl_new = ioff[self.ispl]
+
+        return InteractionList(ispl=ispl_new, iother=iother_new, nfilled=nfilled)
+    
+    def size(self):
+        return self.iother.size
+    
+    def dtype(self):
+        return self.iother.dtype
+
+def dense_interaction_list(size: int, nnodes: jnp.ndarray = None) -> InteractionList:
+    """A dense interaction list where all nodes interact with all other nodes.
+
+    size: size of the node array that will use the interaction list. (Required at compile time)
+    nnodes: actual number of filled nodes (Can be dynamic, used to invalidating unused nodes)
+    """
+
+    if nnodes is None: # size = nnodes will only work outside of jit
+        nnodes = jnp.array(size, dtype=jnp.int32)  
+    dtype = nnodes.dtype
+
+    # We need to work around JAX's lack of dynamic array sizes
+    i1, i2 = jnp.indices((size, size), dtype=dtype)
+    
+    valid = (i1 < nnodes) & (i2 < nnodes)
+
+    ioff, nfilled = masked_prefix_sum(valid.flatten())
+
+    ilist = jnp.zeros(i1.size, dtype=i1.dtype).at[ioff].set(i2.flatten())
+
+    ispl = jnp.arange(0, size+1, dtype=i1.dtype) * nnodes
+    ispl = jnp.where(ispl < nfilled, ispl, nfilled)
+    
+    return InteractionList(ispl=ispl, iother=ilist, nfilled=nfilled)
+dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size'])

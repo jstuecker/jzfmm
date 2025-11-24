@@ -11,8 +11,6 @@ import fmdj_ffi.cj_new_tree as cnt
 
 def register():
     if has_gpu():
-        variants[V.multipoles_from_particles][TAG] = Variant(cnt.multipoles_from_particles)
-        variants[V.coarsen_multipoles][TAG] = Variant(cnt.coarsen_multipoles)
         variants[V.evaluate_plane_interactions][TAG] = Variant(cnt.cj_evaluate_tree_plane)
 
         vm.register_variants(variants)
