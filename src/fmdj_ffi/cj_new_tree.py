@@ -137,13 +137,6 @@ def cj_evaluate_tree_plane(
     return loc, new_ilist
 cj_evaluate_tree_plane.jit = jax.jit(cj_evaluate_tree_plane, static_argnames=['cfg'])
 
-def simple_arange(n: int) -> jnp.ndarray:
-    out_type = jax.ShapeDtypeStruct((n,), jnp.int32)
-    arr = jax.ffi.ffi_call("SimpleArange", (out_type,))(
-        block_size=np.uint64(64)
-    )[0]
-    return arr
-
 def cj_new_force_and_pot(particles: Particles, 
                          plane: TreePlane, 
                          ilist: InteractionList,
