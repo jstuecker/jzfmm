@@ -4,14 +4,6 @@ from dataclasses import dataclass
 from .variants import VariantConfig
 
 @dataclass(unsafe_hash=True)
-class OpeningBarnesAndHut:
-    opening_angle : float = 0.8
-
-@dataclass(unsafe_hash=True)
-class OpeningRelative:
-    relative_accuracy : float = 0.01
-
-@dataclass(unsafe_hash=True)
 class PotentialField:
     def potential(self, x, t=0., cfg=None):
         """External potential field"""
