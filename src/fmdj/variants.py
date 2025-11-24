@@ -41,9 +41,6 @@ class Variant:
 # ============================= Define Variants that can be overriden ==============================
 
 class V(Enum):
-    ilist_node_to_node : int = auto()
-    test_function : int = auto()
-
     multipoles_from_particles : int = auto()
     coarsen_multipoles : int = auto()
     evaluate_plane_interactions : int = auto()
@@ -171,10 +168,3 @@ def make_dispatcher(var : VariantLine, base_func: T, add_jit=True) -> T:
 vm = VariantManager()
 
 TAG_BASE = "base"
-
-
-def _test_function(x, cfg : VariantConfig = None):
-    print("Tracing Test function, returns 0")
-    return x*0.
-
-test_function = make_dispatcher(vm[V.test_function], _test_function, add_jit=True)
