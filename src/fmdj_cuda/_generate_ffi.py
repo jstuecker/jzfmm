@@ -133,7 +133,7 @@ gen.generate_ffi_module_file(
 
 functions = parse.get_functions_from_file(
     str(HERE / "tree.cuh"),
-    names=["PosZorderSort", "BuildZTree", "SummarizeLeaves", "SearchSortedZ"],
+    names=["PosZorderSort", "SummarizeLeaves", "SearchSortedZ"],
     only_kernels=False
 )
 
@@ -141,8 +141,6 @@ print(list(functions.keys()))
 
 functions["PosZorderSort"].par["size"].expression = "pos_in.element_count()/3"
 functions["PosZorderSort"].par["tmp_bytes"].expression = "tmp_buffer->size_bytes()"
-
-functions["BuildZTree"].par["size"].expression = "pos_in.element_count()/3"
 
 functions["SummarizeLeaves"].par["n_leaves"].expression = "xnleaf.element_count()/4"
 functions["SummarizeLeaves"].grid_size_expression = "div_ceil(n_leaves+1, block_size)"

@@ -6,7 +6,6 @@ from fmdj_cuda import ffi_tree
 from fmdj.tools import conditional_callback
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
-jax.ffi.register_ffi_target("BuildZTree", ffi_tree.BuildZTree(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
 jax.ffi.register_ffi_target("SearchSortedZ", ffi_tree.SearchSortedZ(), platform="CUDA")
 
@@ -37,25 +36,6 @@ def pos_zorder_sort(x, block_size=64):
 
     return pos, ids
 pos_zorder_sort.jit = jax.jit(pos_zorder_sort, static_argnames=("block_size",))
-
-def build_ztree(x, block_size=64):
-    """Builds a z-tree assume z-sorted positions
-    
-    returns (level, lbound, rbound, lchild, rchild)
-    """
-    assert x.dtype == jnp.float32
-    assert x.shape[-1] == 3
-
-    out_type = jax.ShapeDtypeStruct((5, x.shape[0]+1), jnp.int32)
-    ztree = jax.ffi.ffi_call("BuildZTree", (out_type,))(x, block_size=np.uint64(block_size))[0]
- 
-    root_node = jnp.argmax(ztree[0][1:-1]).astype(jnp.int32) + 1 # Root node is the one with highest level
-    # Marke it as a child of the first and last nodes
-    ztree = ztree.at[4,0].set(root_node) # first right child
-    ztree = ztree.at[3,-1].set(root_node) # last left child
-
-    return ztree
-build_ztree.jit = jax.jit(build_ztree, static_argnames=("block_size",))
 
 def div_ceil(a, b):
     return (a + b - 1) // b
