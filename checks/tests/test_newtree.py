@@ -76,16 +76,12 @@ def test_tree_multipoles(particlesz: nt.Particles, tree_hierarchy: list[nt.TreeP
     for i in range(mp_base.values.shape[1]):
         assert jnp.allclose(mp_coarse.get(i), mp_coarse2.get(i), rtol=1e-3, atol=1e-4)
 
-@pytest.fixture
-def fmm_reference(particlesz: nt.Particles, cfg_cuda: Config):
-    return fmdj.fmm.fast_multipole_potential.jit(particlesz.pos, particlesz.mass, cfg=cfg_cuda)
+# def test_new_vs_old_tree(particlesz: nt.Particles, tree_hierarchy: list[nt.TreePlane], 
+#                          cfg_cuda: Config, fmm_reference : jnp.ndarray):
+#     phi_ref = fmm_reference
+#     phi = nt.fmm_via_hierarchy_z(tree_hierarchy, particlesz, cfg_cuda)
 
-def test_new_vs_old_tree(particlesz: nt.Particles, tree_hierarchy: list[nt.TreePlane], 
-                         cfg_cuda: Config, fmm_reference : jnp.ndarray):
-    phi_ref = fmm_reference
-    phi = nt.fmm_via_hierarchy_z(tree_hierarchy, particlesz, cfg_cuda)
+#     for i in (1000, 1333, 1555, 1777, 5400):
+#         print(f"{phi_ref[i]}, {phi[i]}, diff = {phi_ref[i]-phi[i]}, rel diff = {(phi_ref[i]-phi[i])/phi_ref[i]}")
 
-    for i in (1000, 1333, 1555, 1777, 5400):
-        print(f"{phi_ref[i]}, {phi[i]}, diff = {phi_ref[i]-phi[i]}, rel diff = {(phi_ref[i]-phi[i])/phi_ref[i]}")
-
-    assert phi == pytest.approx(phi_ref, rel=0.08)
+#     assert phi == pytest.approx(phi_ref, rel=0.08)

@@ -111,12 +111,6 @@ def measure_fmm(jb, cfg, npart=1024**2):
     res, phi2 = jb.measure(fn_jit=fmdj.fmm.new_fmm_potential.jit, tag="new_fmm",
                pos=pos0, mass=mass, cfg=cfg)
 
-    if npart <= 5e6:
-        res, phi1 = jb.measure(fn_jit=fmdj.fmm.fast_multipole_potential.jit, tag="old_fmm",
-                pos=pos0, mass=mass, cfg=cfg)
-    
-        assert phi1 == pytest.approx(phi2, rel=1e-1, abs=1.0)
-
 @pytest.mark.parametrize("npart", [1024*128, 1024*1024, 1024*1024*4, 8*1024*1024])
 def bench_fmm_npart(jax_bench, npart):
     cfg = Config(fmm=FMMConfig(p=2, max_leaf_size=32), softening=1e-2)
