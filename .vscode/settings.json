@@ -9,8 +9,7 @@
 
     "comment-divider.length": 100,
 
-
-    "C_Cpp.default.compileCommands": "${workspaceFolder}/external/custom-jax/build/compile_commands.json",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
     "files.associations": {
         "cctype": "cpp",
         "clocale": "cpp",
@@ -73,6 +72,5 @@
         "variant": "cpp",
         "list": "cpp",
         "unordered_set": "cpp"
-    },
-    "cmake.sourceDirectory": "/home/jens/repos/FM-DJ/external/custom-jax"
+    }
 }

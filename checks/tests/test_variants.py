@@ -17,15 +17,15 @@ def test_hashes():
 
     vline = VariantLine()
     h0 = hash(vline)
-    vline[V.direct_summation_force] = v1
+    vline[V.test_function] = v1
     h1 = hash(vline)
-    vline[V.direct_summation_force] = v2
+    vline[V.test_function] = v2
     h2 = hash(vline)
-    vline[V.direct_summation_force] = v1
+    vline[V.test_function] = v1
     h1b = hash(vline)
 
     vline2 = VariantLine()
-    vline2[V.direct_summation_force] = v1
+    vline2[V.test_function] = v1
     h1c = hash(vline2)
 
     assert h0 != h1

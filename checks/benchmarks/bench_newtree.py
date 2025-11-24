@@ -86,23 +86,10 @@ def bench_leaf_leaf(jax_bench, leaf_leaf_ilist):
 
     jb = jax_bench(jit_rounds=20, jit_warmup=3)
 
-    irange = jnp.array([0, ilist.nfilled], dtype=jnp.int32)
-    i0 = nt.inverse_of_splits(ilist.ispl, ilist.size())
-    il = jnp.stack([i0, ilist.iother], axis=1)
-
-    res, phi = jb.measure(
-        xpart=particlesz.pos, mpart=particlesz.mass, leaf_bounds=plane.ispl, interactions=il, 
-        irange=irange, cfg=cfg,
-        fn_jit=fmdj.multipoles.ilist_leaf_to_leaf.jit,
-        tag="cu_leaf2leaf"
-    )
-
     res, fphi = jb.measure(particles=particlesz, plane=plane, ilist=ilist, cfg=cfg,
         fn_jit=cnt.cj_new_force_and_pot.jit,
         tag="new_leaf2leaf"
     )
-
-    assert fphi[:,3] == pytest.approx(phi, rel=1e-2, abs=20.)
 
 def measure_fmm(jb, cfg, npart=1024**2):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
