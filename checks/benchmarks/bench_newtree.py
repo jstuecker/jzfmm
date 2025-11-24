@@ -13,7 +13,7 @@ def particlesz(request):
     npart = request.param if hasattr(request, "param") else 1024*1024
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
     posz, isort = cj.tree.pos_zorder_sort(pos0)
-    return nt.Particles(posz, jnp.ones(posz.shape[0]))
+    return nt.PosMass(posz, jnp.ones(posz.shape[0]))
 
 @pytest.mark.parametrize("particlesz", [1024*128,1024*1024, 1024*1024*8], indirect=True)
 def bench_tree_hierarchy(jax_bench, particlesz):

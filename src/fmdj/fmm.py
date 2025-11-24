@@ -17,7 +17,7 @@ def new_fmm_fphi(pos, mass, cfg : config.Config, return_sorted=False):
         mass = jnp.broadcast_to(mass, pos.shape[:-1])
 
     posz, isortz = cj.tree.pos_zorder_sort(pos)
-    particlesz = nt.Particles(pos=posz, mass=mass[isortz])
+    particlesz = nt.PosMass(pos=posz, mass=mass[isortz])
 
     th = nt.build_tree_hierarchy(particlesz, cfg)
     loc, ilist = nt.evaluate_interaction_hierarchy(th, cfg=cfg)

@@ -56,3 +56,25 @@ def log(txt,
             txt = f"[{_callsite()}] {txt}"
 
     jax.debug.print(txt, *args, ordered=ordered, partitioned=partitioned, **kwargs)
+
+
+# ------------------------------------------------------------------------------------------------ #
+#                               Some frequently used helper functions                              #
+# ------------------------------------------------------------------------------------------------ #
+
+def cumsum_starting_with_zero(x):
+    return jnp.pad(jnp.cumsum(x), (1, 0))
+
+def offset_sum(num):
+    cs = jnp.cumsum(num, axis=0)
+    return cs - num, cs[-1]
+
+def masked_prefix_sum(mask):
+    off, n = offset_sum(mask)
+    off_masked = jnp.where(mask, off, len(mask))
+    return off_masked, n
+
+def inverse_of_splits(ispl, size):
+    """given [0, 4, 7] returns [0,0,0,0,1,1,1] for size=7"""
+    mask = jnp.zeros(size, dtype=jnp.int32).at[ispl].add(1)
+    return jnp.cumsum(mask) - 1

@@ -20,10 +20,10 @@ jax.ffi.register_ffi_target("InsertInteractions", ffi_fmm.InsertInteractions(), 
 jax.ffi.register_ffi_target("GroupedForceAndPot", ffi_forces.GroupedForceAndPot(), platform="CUDA")
 
 # Note: This import may break things if imported in the wrong order... Have to fix this later!
-from fmdj.new_tree import TreePlane, Multipoles, Particles, InteractionList
+from fmdj.new_tree import TreePlane, Multipoles, PosMass, InteractionList
 
 
-def multipoles_from_particles(tp: TreePlane, part: Particles, *, cfg: Config) -> Multipoles:
+def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
     cfg_tree: FMMConfig = cfg.fmm
 
     assert cfg_tree.multipoles_around_com
@@ -137,7 +137,7 @@ def cj_evaluate_tree_plane(
     return loc, new_ilist
 cj_evaluate_tree_plane.jit = jax.jit(cj_evaluate_tree_plane, static_argnames=['cfg'])
 
-def cj_new_force_and_pot(particles: Particles, 
+def cj_new_force_and_pot(particles: PosMass, 
                          plane: TreePlane, 
                          ilist: InteractionList,
                          cfg: Config) -> jnp.ndarray:

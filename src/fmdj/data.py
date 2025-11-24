@@ -1,0 +1,147 @@
+import jax
+import jax.numpy as jnp
+from dataclasses import dataclass, field
+from typing import List
+from .tools import cumsum_starting_with_zero, inverse_of_splits
+
+def static_field(*args, **kwargs):
+    return field(*args, metadata=dict(static=True), **kwargs)
+
+@jax.tree_util.register_dataclass
+@dataclass
+class PosMass:
+    pos: jnp.ndarray  # (Nparticles, 3)
+    mass: jnp.ndarray  # (Nparticles,)
+
+    def posm(self):
+        return jnp.concatenate([self.pos, self.mass[:, None]], axis=-1)
+
+@jax.tree_util.register_dataclass
+@dataclass
+class Multipoles:
+    xcent : jnp.ndarray # (3,) center of expansion
+    values: jnp.ndarray # Multipoles in (M, Nnodes) layout
+
+    p: int = static_field(default=2)
+
+    around_com : bool = static_field(default=True)
+
+    def center(self):
+        return self.xcent
+    def get(self, i):
+        return self.values[:, i]
+
+@jax.tree_util.register_dataclass
+@dataclass
+class TreePlane():
+    # Defined per node:
+    ispl: jnp.ndarray # relation to children
+
+    npart: jnp.ndarray
+    lvl: jnp.ndarray
+    cent: jnp.ndarray
+
+    # Scalars (data dependent)
+    nnodes: jnp.ndarray
+
+    # metadata (data independent)
+    max_node_size: int = static_field()
+    tot_npart: int = static_field()
+
+    size_children : int = static_field()
+
+    # Optional data:
+    mp: Multipoles = None
+
+    def icoarse_of_fine(self) -> jnp.ndarray:
+        return inverse_of_splits(self.ispl, self.size_children)
+    def geom_center(self) -> jnp.ndarray:
+        return self.cent
+    def size(self) -> int:
+        return self.lvl.shape[0]
+    def node_extent(self, diag2=False) -> jnp.ndarray:
+        # return jnp.ldexp(1., self.lvl)
+        olvl, omod = self.lvl//3, self.lvl % 3
+
+        dx = jnp.ldexp(1., olvl)
+        dy = jnp.ldexp(1., olvl + (omod >= 2).astype(jnp.int32))
+        dz = jnp.ldexp(1., olvl + (omod >= 1).astype(jnp.int32))
+
+        if diag2:
+            return dx*dx + dy*dy + dz*dz
+        else:
+            return jnp.stack((dx, dy, dz), axis=-1)
+
+def find_group(ispl, index):
+    return jnp.searchsorted(ispl, index, side='right') - 1
+
+@jax.tree_util.register_dataclass
+@dataclass
+class SegmentedNDArray():
+    """This class provides index mapping strategies to define ndarrays with locally varying shapes
+    
+    We define splitting points so that the elements that have first index i0 are located
+    between spl[i0] and spl[i0+1] on the next finer level.
+
+    For example, consdier an ndarray x with shape (4,3), we could represent it through splits
+    spl[0] = [0, 3, 6, 9, 12]. E.g. to get x[a,b] you could use x.flat[multi_to_flat(a,b)] to 
+    index it. However, here we can also create adaptively shaped arrays.
+
+    To also support higher dimensions than 2, it is possible to define a hierarchy of splits. For
+    example a (4, 3, 2) array would be represented through
+    spl[0] = [0, 3, 6, 9, 12]
+    spl[1] = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24]
+
+    For nd-arrays the shape of each split corresponds to the product of lower levels shapes + 1
+    and the largest element in the split is the product of the lower levels + the new one
+    """
+
+    ispl: List[jnp.ndarray]
+
+    def global_ispl(self, axis=0):
+        if axis == len(self.ispl) - 1:
+            return self.ispl[axis]
+        else:
+            ispl = self.global_ispl(axis=axis+1)
+            return ispl[self.ispl[axis]]
+
+    def n(self, idx=None, axis=0):
+        if idx is None:
+            return self.ispl[axis][1:] - self.ispl[axis][:-1]
+        else:
+            # Note: if idx is out ouf bounds this will return 0
+            return self.ispl[axis][idx+1] - self.ispl[axis][idx]
+    
+    def multi_indices(self, size, get_valid=False):
+        return self.flat_to_multi(jnp.arange(size, dtype=self.ispl[0].dtype), get_valid=get_valid)
+
+    def flat_to_multi(self, iflat, get_valid=False):
+        imult = []
+        valid = True
+        for ispl in self.ispl[::-1]:
+            valid = valid & (iflat < ispl[-1])
+            igroup = inverse_of_splits(ispl, iflat.shape[0])[iflat]
+            imult.append(iflat - ispl[igroup])
+            iflat = igroup
+        imult.append(iflat)
+        if get_valid:
+            return imult[::-1], valid
+        else:
+            return imult[::-1]
+    
+    def multi_to_flat(self, imult, get_valid=False):
+        assert len(imult) == len(self.ispl) + 1
+        valid = jnp.ones_like(imult[0], dtype=bool)
+        iflat = jnp.zeros_like(imult[0])
+        for i, ispl in enumerate(self.ispl):
+            iflat = ispl[iflat + imult[i]]
+            valid = valid & (iflat < ispl[-1])
+        if get_valid:
+            return iflat + imult[-1], valid
+        else:
+            return iflat + imult[-1]
+    
+    def expand(self, n):
+        """Segmentation that is given by replicating each element n[i] times"""
+        ispl_new = cumsum_starting_with_zero(n)
+        return SegmentedNDArray(ispl=[*self.ispl, ispl_new])
