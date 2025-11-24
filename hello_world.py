@@ -12,7 +12,7 @@ import matplotlib
 matplotlib.use("TkAgg")
 
 from matplotlib.animation import FuncAnimation
-import fmdj.plots
+import fmdj_utils.plots
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--show", action="store_true", help="Visualize on the fly")
@@ -34,10 +34,10 @@ cfg.external_potential = fmdj.external_potential.NFWPotential(host.rs, host.rhoc
 p0.cpos = jnp.array((150.,0.,0.))
 p0.cvel = jnp.array((0.,host.vcirc(150.)*0.9,0.))
 
-fig, ax, axins, s1, s2, title = fmdj.plots.plot_particles_inset(0., p0, skip=10)
+fig, ax, axins, s1, s2, title = fmdj_utils.plots.plot_particles_inset(0., p0, skip=10)
 
 def update(t_and_p):
-    fmdj.plots.plot_particles_inset(*t_and_p, previous=(fig, ax, axins, s1, s2, title), skip=10)
+    fmdj_utils.plots.plot_particles_inset(*t_and_p, previous=(fig, ax, axins, s1, s2, title), skip=10)
     return [s1,s2,title]
 
 sim_iter = fmdj.time_integration.simulate_with_outputs(
