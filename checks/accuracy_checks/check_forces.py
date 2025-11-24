@@ -21,19 +21,18 @@ t0 = time.time()
 fphi = cj.forces.force_and_potential.jit(xm, softening=eps, kahan=True)
 
 for p in (1,2,3,4,5):
-    config = fmdj.Config(tags=("base",), softening=eps, verbose=2)
-    config_cj = fmdj.Config(tags=("cuda", "base"), softening=eps, verbose=2)
-    config_cj.fmm.p = p
-    config_cj.fmm.kahan_summation = True
+    cfg = fmdj.Config(softening=eps)
+    cfg.fmm.p = p
+    cfg.fmm.kahan_summation = True
 
-    fphi_new = fmdj.fmm.new_fmm_fphi.jit(pos0, mass0, config_cj)
+    fphi_new = fmdj.fmm.new_fmm_fphi.jit(pos0, mass0, cfg)
 
     rel_err = jnp.linalg.norm(fphi_new[:,:3] - fphi[:,:3], axis=-1)/jnp.linalg.norm(fphi[:,:3], axis=-1)
 
     plt.hist(np.log10(rel_err), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5,
              color="C%d"%(p-1), edgecolor='black')
 
-    print(time.time() - t0)
+    print(f"p={p} done, {time.time() - t0:.2f}s")
 
 plt.xlim(-7, -1)
 plt.legend()
