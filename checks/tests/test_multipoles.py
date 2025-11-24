@@ -4,17 +4,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-def setup_particles(N=5555, duplicate=False):
-    pos0 = jax.random.uniform(jax.random.PRNGKey(0), (N,3), dtype=jnp.float32, minval=-0.5, maxval=0.5)
-    if duplicate:
-        pos0 = jnp.concatenate((pos0, pos0, pos0, pos0))
-
-    morton, pos, isort = fmdj.octree.organize_particles(pos0)
-
-    mass = jnp.ones(len(pos), dtype=jnp.float32)
-    
-    return morton, pos, mass
-
 def test_shift_mp_to_mp_circuit():
     mp0 = np.random.uniform(-0.1, 0.1, (20))
 

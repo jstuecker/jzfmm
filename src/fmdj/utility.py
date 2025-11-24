@@ -1,6 +1,5 @@
 import time
 import jax
-from .octree import BinaryTree, Octree
 import numpy as np
 
 class Tee(object):
@@ -53,19 +52,7 @@ class Timer():
             name = func.__name__
 
         def call_func():
-            val = func_jit(*args, **kwargs)
-            res = val
-            while isinstance(val, tuple):
-                val = val[1]
-            if isinstance(val, BinaryTree):
-                val.lchild.block_until_ready()
-            elif isinstance(val, Octree):
-                val.lchild.block_until_ready()
-            elif isinstance(val, jax.Array):
-                val.block_until_ready()
-            else:
-                jax.tree_util.default_registry.flatten(val)[0][0].block_until_ready()
-            return res
+            return jax.block_until_ready(func_jit(*args, **kwargs))
 
         t0 = time.time()
         func_jit.lower(*args, **kwargs).compile()

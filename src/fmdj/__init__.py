@@ -1,5 +1,4 @@
 from .config import Config
-from . import octree
 from . import multipoles
 from . import fmm
 from . import time_integration

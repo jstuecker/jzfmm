@@ -1,6 +1,5 @@
 import jax
 import jax.numpy as jnp
-from .octree import Octree
 import numpy as np
 from . import config
 from .variants import vm, make_dispatcher, V
@@ -28,8 +27,6 @@ def generate_combinations(p):
             k = p - i - j
             combos.append((k, j, i))
     return combos
-
-
 
 fact = np.array([1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880], dtype=np.int32)
 binomial = np.zeros((8, 8), dtype=np.int32)
@@ -62,34 +59,6 @@ def define_index_maps(p):
 
 def save_divide(a, b):
     return jnp.where(b != 0, a / b, 0.)
-
-def com_via_height(octree : Octree, pos, mass):
-    """Computes the mass and the center of mass of each node in the octree"""
-    max_nodes = len(octree.lchild)
-
-    # First add particles into their parent nodes
-    m = jnp.zeros(max_nodes, dtype=pos.dtype
-                  ).at[octree.node_of_particle].add(mass)
-    mx = jnp.zeros((max_nodes, 3), dtype=pos.dtype
-                   ).at[octree.node_of_particle].add(pos * mass[:,None])
-
-    # Next propagate information up the tree
-    height_parent = octree.height[octree.parent]
-    def handle_height_level(hlvl, carry):
-        m, mx = carry
-
-        sel = (height_parent == hlvl) & octree.is_valid
-        ipar = jnp.where(sel, octree.parent, max_nodes)
-        
-        m = m.at[ipar].add(m)
-        mx = mx.at[ipar].add(mx)
-
-        return m, mx
-    
-    m, mx = jax.lax.fori_loop(2, octree.maxheight+1, handle_height_level, (m, mx))
-
-    return m, save_divide(mx, m[:,None])
-com_via_height.jit = jax.jit(com_via_height)
 
 def shift_multipoles(m, x0, p=2):
     """m[...,i] corresponds to the expectation value of x**c[0] * y**c[1] * z**c[2]
@@ -134,43 +103,6 @@ def shift_multipoles(m, x0, p=2):
 def x_moment(x, c):
     return x[...,0]**c[0] * x[...,1]**c[1] * x[...,2]**c[2]
 
-def multipoles_via_height(octree : Octree, pos, mass, p=2, xcom=None):
-    x0 = xcom if xcom is not None else jnp.zeros((octree.max_nodes, 3), dtype=pos.dtype)
-
-    max_nodes = len(octree.lchild)
-    comb = multipole_powers(p)
-    parent_of_part = octree.node_of_particle
-    
-    # We make an array for each multipole moment, this way we can avoid copying the others on each individual update
-    mp = []
-
-    # First, we add each particle to its parent node
-    for i,c in enumerate(comb):
-        mppart = x_moment(pos - x0[parent_of_part], c) * mass
-
-        mp.append(jax.ops.segment_sum(mppart, parent_of_part, num_segments=max_nodes, indices_are_sorted=True))
-
-    mp = jnp.stack(mp, axis=-1)
-
-    # Next we need to propagate multipoles up the tree
-    height_parent = octree.height[octree.parent]
-    dxparent = x0[octree.parent] - x0
-    def handle_height_level(hlvl, mp):
-        sel = (octree.height[octree.parent] == hlvl) & octree.is_valid
-        ipar = jnp.where(sel, octree.parent, max_nodes)
-
-        if xcom is not None:
-            mpnew = shift_multipoles(mp, dxparent, p=p)
-        else:
-            mpnew = mp
-        
-        return mp.at[ipar].add(mpnew)
-    
-    mp = jax.lax.fori_loop(2, octree.maxheight+1, handle_height_level, mp)
-
-    return mp
-multipoles_via_height.jit = jax.jit(multipoles_via_height, static_argnames=("p",))
-
 # =================================== Local to Local  Operators ================================== #
 def shift_local_to_local(L, dx):
     """To shift from expansion-coefficients around x0 to expansion around x1 put dx = x1-x0"""
@@ -187,23 +119,6 @@ def shift_local_to_local(L, dx):
         Lout.append(Lnew)
 
     return jnp.stack(Lout, axis=-1)
-
-def local_to_local_via_height(octree : Octree, Lk):
-    """Shifts local expansion coefficents down the tree"""
-    height_parent = octree.height[octree.parent]
-    dxparent = octree.xnode - octree.xnode[octree.parent]
-
-    # Next we need to propagate multipoles up the tree
-    def handle_height_level(i, Lk):
-        hlvl = -i
-        sel = (height_parent == hlvl) & octree.is_valid
-
-        Lknew = shift_local_to_local(Lk[octree.parent], dxparent)
-        
-        return jnp.where(sel[:,None], Lk + Lknew, Lk)
-
-    return jax.lax.fori_loop(-octree.maxheight, 0, handle_height_level, Lk)
-local_to_local_via_height.jit = jax.jit(local_to_local_via_height)
 
 def evaluate_local_potential(L, x):
     """Evaluates the function value of the expansion at x"""
@@ -239,17 +154,6 @@ def evaluate_local_fphi(L, x):
 
     return fphi
 evaluate_local_potential.jit = jax.jit(evaluate_local_potential)
-
-# ============================= Tree build convenience functions ================================= #
-
-def calculate_multipoles_for_tree(octree : Octree, pos, mass, p=2) -> Octree:
-    """Calculates octree.mp and octree.xnode"""
-    
-    octree.p = p
-    m, octree.xnode = com_via_height(octree, pos, mass)
-    octree.mp = multipoles_via_height(octree, pos, mass, p=p, xcom=octree.xnode)
-    
-    return octree
 
 # ================================ Potential Helper Functions ==================================== #
 
@@ -366,8 +270,6 @@ def get_all_Dn_new(x, p=0, eps=0.):
         return jnp.stack(Dn)
     return jax.vmap(get_Dn, in_axes=(0,), out_axes=0)(x)
 get_all_Dn_new.jit = jax.jit(get_all_Dn_new, static_argnames=("p", "eps"))
-
-
 
 def potential_direct_sum(x, m=1., n2lim=1e8, eps=1e-5):
     N = x.shape[0]
