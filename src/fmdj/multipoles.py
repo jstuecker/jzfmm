@@ -375,8 +375,7 @@ def _reduce_fsum_chunked(f, y0, x, istart, iend, chunk_size):
 
     return jax.lax.fori_loop(0, num_chunks, body, y0)
 
-
-def _ilist_node_to_node_base(xnodes, multipoles, interactions, irange, cfg : config.Config):
+def ilist_node_to_node(xnodes, multipoles, interactions, irange, cfg : config.Config):
     p = cfg.fmm.p
 
     chunk_size = int((cfg.old.ilist_max_mb * 1024**2) // (2 * xnodes.dtype.itemsize * ((p+3) * (p+2) * (p+1) / 6)**2))
@@ -391,12 +390,3 @@ def _ilist_node_to_node_base(xnodes, multipoles, interactions, irange, cfg : con
     loc = _reduce_fsum_chunked(eval_node_node, loc, interactions, irange[0], irange[1], chunk_size=chunk_size)
 
     return loc
-
-# ================================== Dispatcher Functions ======================================== #
-# Below we define the default behaviour of these function
-# However, they can be replaced by custom variants through the pattern
-# vm.ilist_leaf_to_leaf["mytag"] = Variant(myfunction)
-# If the config sets priority to "mytag" the new version will be prefered, e.g.:
-# myconfig = config.Config(tags=("mytag", "base"))
-
-ilist_node_to_node = make_dispatcher(vm[V.ilist_node_to_node], _ilist_node_to_node_base, add_jit=True)
