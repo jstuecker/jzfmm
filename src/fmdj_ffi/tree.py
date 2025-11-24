@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 
 from fmdj_cuda import ffi_tree
-from .common import conditional_callback
+from fmdj.tools import conditional_callback
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("BuildZTree", ffi_tree.BuildZTree(), platform="CUDA")
