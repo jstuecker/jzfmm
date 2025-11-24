@@ -1,7 +1,6 @@
 import jax
 import jax.numpy as jnp
 from dataclasses import dataclass
-from .variants import VariantConfig
 
 @dataclass(unsafe_hash=True)
 class PotentialField:
@@ -49,7 +48,7 @@ class LoggingConfig():
     show_loc : bool = True
 
 @dataclass(unsafe_hash=True)
-class Config(VariantConfig):
+class Config():
     # Sub config objects
     fmm : FMMConfig | None = FMMConfig()
     logging : LoggingConfig = LoggingConfig()

@@ -3,7 +3,6 @@ import jax.numpy as jnp
 import numpy as np
 from .config import Config
 from .data import Multipoles, TreePlane, PosMass
-from .variants import vm, make_dispatcher, V
 
 # ============================= Some fixed Combinatorical Computations =========================== #
 
