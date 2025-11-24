@@ -1,6 +1,4 @@
 import fmdj
-import matplotlib.pyplot as plt
-import numpy as np
 import jax.numpy as jnp
 import jax
 import fmdj_ffi as cj

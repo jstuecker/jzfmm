@@ -62,6 +62,9 @@ def log(txt,
 #                               Some frequently used helper functions                              #
 # ------------------------------------------------------------------------------------------------ #
 
+def div_ceil(a, b):
+    return (a + b - 1) // b
+
 def cumsum_starting_with_zero(x):
     return jnp.pad(jnp.cumsum(x), (1, 0))
 
@@ -78,3 +81,37 @@ def inverse_of_splits(ispl, size):
     """given [0, 4, 7] returns [0,0,0,0,1,1,1] for size=7"""
     mask = jnp.zeros(size, dtype=jnp.int32).at[ispl].add(1)
     return jnp.cumsum(mask) - 1
+
+# ------------------------------------------------------------------------------------------------ #
+#                                    Some useful jax constructs                                    #
+# ------------------------------------------------------------------------------------------------ #
+
+def fori_dynamic_over_static(lower, upper, body_fun, init_val, *, unroll=None, nstatic=None):
+    """Does a loop with a dynamical boundary over a loop with static boundaries
+
+    This function can have two advantages over a standard jax.lax.fori_loop with dynamic
+    boundaries: (1) it allows you to unroll the (inner) static loop partially. (E.g. try unroll=4)
+    (2) Static loops seem to be a lot faster in jax. Honestly, I don't know why!
+
+    The usage is the same as jax.fori_loop, with the important difference that the loop
+    may also be executed a few extra times if (upwer-lower) is not divisible by nstatic.
+    So be sure to discard invalid iterations in your function!
+
+    Example:
+    def f(iter, x):
+        return jnp.where(iter < 10, x + 1, x)
+
+    print(fori_dynamic_over_static(0, 10, f, 0., nstatic=7))
+    """
+
+    if nstatic is None:
+        return jax.lax.fori_loop(lower, upper, body_fun, init_val, unroll=unroll)
+    
+    
+    def outer_body(iouter, state):
+        def inner_body(iinner, state):
+            return body_fun(lower + iouter*nstatic + iinner, state)
+        return jax.lax.fori_loop(0, nstatic, inner_body, state, unroll=unroll)
+
+    ndynamic = div_ceil(upper - lower, nstatic)
+    return jax.lax.fori_loop(0, ndynamic, outer_body, init_val)

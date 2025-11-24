@@ -41,7 +41,7 @@ class Variant:
 # ============================= Define Variants that can be overriden ==============================
 
 class V(Enum):
-    evaluate_plane_interactions : int = auto()
+    pass
 
 # ============================== Helper classes for managing Variants ==============================
 

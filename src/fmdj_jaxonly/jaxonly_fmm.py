@@ -1,59 +1,11 @@
-import fmdj_ffi as cj
+from typing import Tuple
 import jax
 import jax.numpy as jnp
-from fmdj.multipoles import x_moment, shift_multipoles, shift_local_to_local, ilist_node_to_node
-from dataclasses import dataclass, field
-from .config import Config, FMMConfig
-from fmdj.tools import conditional_callback
-from typing import Tuple, List
 import fmdj
-from .data import Multipoles, TreePlane, PosMass, SegmentedNDArray, InteractionList, dense_interaction_list
-from .tools import offset_sum, masked_prefix_sum, inverse_of_splits, cumsum_starting_with_zero
-
-from .variants import vm, make_dispatcher, V, VariantConfig
-
-# from .multipoles import coarsen_multipoles
-from fmdj_ffi.cj_new_tree import coarsen_multipoles, multipoles_from_particles
-
-def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
-    """Gets the next coarser tree plane from a finer one"""
-    cfg_tree: FMMConfig = cfg.fmm
-
-    max_size = int(fine.max_node_size * cfg_tree.coarse_fac)
-    
-    res = cj.tree.summarize_leaves(
-        fine.cent, fine.npart, max_size=max_size, num_part=fine.tot_npart,
-        ref_fac=cfg_tree.coarse_fac, alloc_fac_nodes=cfg_tree.alloc_fac_nodes
-    )
-
-    coarse = TreePlane(*res, max_node_size = max_size, tot_npart = fine.tot_npart, size_children = fine.size())
-
-    if fine.mp is not None:
-        coarse.mp = coarsen_multipoles(fine.mp, coarse, cfg=cfg)
-
-    return coarse
-coarsen_plane.jit = jax.jit(coarsen_plane, static_argnames=['cfg'])
-
-def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
-    cfg_tree: FMMConfig = cfg.fmm
-    with_multipoles = cfg_tree.p > 0
-
-    res = cj.tree.summarize_leaves(
-        part.pos, max_size=cfg_tree.max_leaf_size, num_part=part.pos.shape[0],
-        alloc_fac_nodes=cfg_tree.alloc_fac_nodes
-    )
-    leaves = TreePlane(*res, max_node_size=cfg_tree.max_leaf_size, tot_npart=part.pos.shape[0], size_children=len(part.pos))
-    if with_multipoles:
-        leaves.mp = multipoles_from_particles(leaves, part, cfg=cfg)
-
-    tree_levels : list[TreePlane] = [leaves]
-
-    new_level = leaves
-    while len(new_level.lvl) > cfg_tree.stop_coarsen:
-        new_level = coarsen_plane.jit(tree_levels[-1], cfg)
-        tree_levels.append(new_level)
-    return tree_levels
-build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg'])
+from fmdj.config import Config
+from fmdj.data import TreePlane, InteractionList, SegmentedNDArray, PosMass, dense_interaction_list
+from fmdj.tools import conditional_callback, cumsum_starting_with_zero, fori_dynamic_over_static, inverse_of_splits
+from fmdj.multipoles import shift_local_to_local, ilist_node_to_node
 
 # ------------------------------------------------------------------------------------------------ #
 #                                         Interaction Lists                                        #
@@ -104,8 +56,6 @@ def expand_interactions(
 expand_interactions.jit = jax.jit(expand_interactions, static_argnames=['size_children', 'size_new_ilist'])
 
 
-
-
 # ------------------------------------------------------------------------------------------------ #
 #                                             Tree Walk                                            #
 # ------------------------------------------------------------------------------------------------ #
@@ -128,7 +78,7 @@ def opening_criterion_bnh(plane: TreePlane, i0: jnp.ndarray, i1: jnp.ndarray, cf
 
     return need_open
 
-def _evaluate_plane_interactions_base(plane: TreePlane, 
+def jaxonly_evaluate_plane_interactions(plane: TreePlane, 
                                 plane_lr: TreePlane | None = None,
                                 ilist_lr: InteractionList | None = None,
                                 loc_lr: jnp.ndarray | None = None,
@@ -166,73 +116,12 @@ def _evaluate_plane_interactions_base(plane: TreePlane,
              ilist.nfilled / ilist.size(), level=2, cfg=cfg)
     
     return loc, ilist_open
-_evaluate_plane_interactions_base.jit = jax.jit(_evaluate_plane_interactions_base, static_argnames=['cfg'])
+jaxonly_evaluate_plane_interactions.jit = jax.jit(jaxonly_evaluate_plane_interactions, static_argnames=['cfg'])
 
-def evaluate_interaction_hierarchy(th, cfg):
-    ilist, loc, last_plane = None, None, None
-    for i in reversed(range(0, len(th))):
-        loc, ilist = evaluate_plane_interactions(th[i], last_plane, ilist, loc, cfg=cfg)
-        last_plane = th[i]
-    return loc, ilist
-evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, static_argnames=['cfg'])
 
 # ------------------------------------------------------------------------------------------------ #
-#                                       Register Dispatchers                                       #
+#                   Alternate implementation of evaluation (Not very good though)                  #
 # ------------------------------------------------------------------------------------------------ #
-
-evaluate_plane_interactions = make_dispatcher(vm[V.evaluate_plane_interactions], _evaluate_plane_interactions_base, add_jit=True)
-
-# ------------------------------------------------------------------------------------------------ #
-#                                             New walk                                             #
-# ------------------------------------------------------------------------------------------------ #
-
-def invert_splits(ispl, size, weights=1):
-    iarr = jnp.arange(size)
-    mask = jnp.zeros_like(iarr).at[ispl[1:]].add(weights)
-    return jnp.cumsum(mask)
-
-def get_double_index(ispl, size, absolute=False):
-    i0 = invert_splits(ispl, size)
-    if absolute:
-        return i0, jnp.arange(size, dtype=ispl.dtype)
-    else:
-        ioff = invert_splits(ispl, size, weights=(ispl[1:] - ispl[:-1]))
-        return i0, jnp.arange(size, dtype=ispl.dtype) - ioff
-
-
-def div_ceil(a, b):
-    return (a + b - 1) // b
-
-def fori_dynamic_over_static(lower, upper, body_fun, init_val, *, unroll=None, nstatic=None):
-    """Does a loop with a dynamical boundary over a loop with static boundaries
-
-    This function can have two advantages over a standard jax.lax.fori_loop with dynamic
-    boundaries: (1) it allows you to unroll the (inner) static loop partially. (E.g. try unroll=4)
-    (2) Static loops seem to be a lot faster in jax. Honestly, I don't know why!
-
-    The usage is the same as jax.fori_loop, with the important difference that the loop
-    may also be executed a few extra times if (upwer-lower) is not divisible by nstatic.
-    So be sure to discard invalid iterations in your function!
-
-    Example:
-    def f(iter, x):
-        return jnp.where(iter < 10, x + 1, x)
-
-    print(fori_dynamic_over_static(0, 10, f, 0., nstatic=7))
-    """
-
-    if nstatic is None:
-        return jax.lax.fori_loop(lower, upper, body_fun, init_val, unroll=unroll)
-    
-    
-    def outer_body(iouter, state):
-        def inner_body(iinner, state):
-            return body_fun(lower + iouter*nstatic + iinner, state)
-        return jax.lax.fori_loop(0, nstatic, inner_body, state, unroll=unroll)
-
-    ndynamic = div_ceil(upper - lower, nstatic)
-    return jax.lax.fori_loop(0, ndynamic, outer_body, init_val)
-
 
 def new_eval(
         plane: TreePlane, 
@@ -252,7 +141,7 @@ def new_eval(
 
     # Pre-calculate some variables
     i0 = jnp.arange(plane.size(), dtype=jnp.int32)
-    iparent = invert_splits(spl_nodes, plane.size())
+    iparent = inverse_of_splits(spl_nodes, plane.size())
     irange = jnp.stack((jnp.array(0), plane.nnodes))
 
     # Calculate loop boundaries

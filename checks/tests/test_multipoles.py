@@ -1,6 +1,5 @@
 import pytest
 import fmdj
-import jax
 import jax.numpy as jnp
 import numpy as np
 

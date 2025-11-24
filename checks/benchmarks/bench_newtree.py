@@ -4,7 +4,7 @@ from fmdj.config import Config, FMMConfig, LoggingConfig
 import jax
 import fmdj_ffi as cj
 import jax.numpy as jnp
-import fmdj.new_tree as nt
+import fmdj.fmm as nt
 import fmdj_ffi.cj_new_tree as cnt
 
 
@@ -52,7 +52,7 @@ def bench_cuda(jax_bench, particlesz):
 
     bdata, (lnew, inew) = jb.measure(
         plane=th[-5], plane_lr=th[-4], ilist_lr=ilist4, loc_lr=loc4*0., cfg=cfg,
-        fn_jit=cnt.cj_evaluate_tree_plane.jit,
+        fn_jit=cnt.evaluate_plane_interactions.jit,
     )
 
     nnodes = th[-5].nnodes

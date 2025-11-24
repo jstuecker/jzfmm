@@ -1,11 +1,7 @@
 import fmdj
 import pytest
-from fmdj.config import Config, FMMConfig, LoggingConfig
 import jax
-import fmdj_ffi as cj
 import jax.numpy as jnp
-import fmdj.new_tree as nt
-import fmdj_ffi.cj_new_tree as cnt
 import aegis
 
 @pytest.fixture

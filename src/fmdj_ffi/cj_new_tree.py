@@ -61,7 +61,7 @@ def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipo
     return Multipoles(xcent=xcent, values=mpnew, p=mp.p, around_com=mp.around_com)
 coarsen_multipoles.jit = jax.jit(coarsen_multipoles, static_argnames=['cfg'])
 
-def cj_evaluate_tree_plane(
+def evaluate_plane_interactions(
         plane: TreePlane, 
         plane_lr: TreePlane | None = None,
         ilist_lr: InteractionList | None = None,
@@ -131,7 +131,7 @@ def cj_evaluate_tree_plane(
         loc = loc + shift_local_to_local(loc_lr[ipar], plane.mp.center() - plane_lr.mp.center()[ipar])
     
     return loc, new_ilist
-cj_evaluate_tree_plane.jit = jax.jit(cj_evaluate_tree_plane, static_argnames=['cfg'])
+evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
 
 def cj_new_force_and_pot(particles: PosMass, 
                          plane: TreePlane, 
