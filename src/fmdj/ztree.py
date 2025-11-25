@@ -3,10 +3,20 @@ import jax
 import jax.numpy as jnp
 
 from fmdj_cuda import ffi_tree
-from fmdj.tools import conditional_callback
+from fmdj.tools import conditional_callback, div_ceil
+from .data import TreePlane, PosMass
+from fmdj.config import Config
+import fmdj
+
+
+from fmdj.multipoles import coarsen_multipoles, multipoles_from_particles
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
+
+# ------------------------------------------------------------------------------------------------ #
+#                                         Helper Functions                                         #
+# ------------------------------------------------------------------------------------------------ #
 
 def lvl_to_ext(level_binary):
     olvl, omod = level_binary//3, level_binary % 3
@@ -17,6 +27,10 @@ def get_node_box(x, level_binary):
     node_size = lvl_to_ext(level_binary)
     node_cent = x + jnp.sign(x)*(0.5 * node_size - jnp.mod(jnp.abs(x), node_size))
     return node_cent, node_size
+
+# ------------------------------------------------------------------------------------------------ #
+#                                             FFI Calls                                            #
+# ------------------------------------------------------------------------------------------------ #
 
 def pos_zorder_sort(x, block_size=64):
     assert x.dtype == jnp.float32
@@ -35,9 +49,6 @@ def pos_zorder_sort(x, block_size=64):
 
     return pos, ids
 pos_zorder_sort.jit = jax.jit(pos_zorder_sort, static_argnames=("block_size",))
-
-def div_ceil(a, b):
-    return (a + b - 1) // b
 
 def summarize_leaves(xleaf, nleaf=None, max_size=64, num_part=None, ref_fac=None, alloc_fac_nodes=1., alloc_min=128):
     """Summarizes leaf nodes into parent nodes
@@ -111,3 +122,44 @@ def summarize_leaves(xleaf, nleaf=None, max_size=64, num_part=None, ref_fac=None
     return splits, new_nleaf, new_leaf_lvl, new_leaf_cent, numleaves
 
 summarize_leaves.jit = jax.jit(summarize_leaves, static_argnames=("max_size", "num_part", "ref_fac"))
+
+# ------------------------------------------------------------------------------------------------ #
+#                                      Tree Building Functions                                     #
+# ------------------------------------------------------------------------------------------------ #
+
+def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
+    """Gets the next coarser tree plane from a finer one"""
+    max_size = int(fine.max_node_size * cfg.fmm.coarse_fac)
+    
+    res = summarize_leaves(
+        fine.cent, fine.npart, max_size=max_size, num_part=fine.tot_npart,
+        ref_fac=cfg.fmm.coarse_fac, alloc_fac_nodes=cfg.fmm.alloc_fac_nodes
+    )
+
+    coarse = TreePlane(*res, max_node_size = max_size, tot_npart = fine.tot_npart, size_children = fine.size())
+
+    if fine.mp is not None:
+        coarse.mp = coarsen_multipoles(fine.mp, coarse, cfg=cfg)
+
+    return coarse
+coarsen_plane.jit = jax.jit(coarsen_plane, static_argnames=['cfg'])
+
+def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
+    with_multipoles = cfg.fmm.p > 0
+
+    res = summarize_leaves(
+        part.pos, max_size=cfg.fmm.max_leaf_size, num_part=part.pos.shape[0],
+        alloc_fac_nodes=cfg.fmm.alloc_fac_nodes
+    )
+    leaves = TreePlane(*res, max_node_size=cfg.fmm.max_leaf_size, tot_npart=part.pos.shape[0], size_children=len(part.pos))
+    if with_multipoles:
+        leaves.mp = multipoles_from_particles(leaves, part, cfg=cfg)
+
+    tree_levels : list[TreePlane] = [leaves]
+
+    new_level = leaves
+    while len(new_level.lvl) > cfg.fmm.stop_coarsen:
+        new_level = coarsen_plane.jit(tree_levels[-1], cfg)
+        tree_levels.append(new_level)
+    return tree_levels
+build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg'])
