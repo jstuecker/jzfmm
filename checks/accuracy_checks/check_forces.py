@@ -1,9 +1,7 @@
-import os
 import jax
 import jax.numpy as jnp
 import fmdj
 import numpy as np
-import fmdj_ffi as cj
 import matplotlib.pyplot as plt
 
 jax.config.update("jax_compilation_cache_dir", "logs/cache")
@@ -18,7 +16,7 @@ xm = jnp.concatenate([pos0, mass0[:,None]], axis=-1)
 import time
 t0 = time.time()
 
-fphi = cj.forces.force_and_potential.jit(xm, softening=eps, kahan=True)
+fphi = fmdj.fmm.direct_force_and_potential.jit(xm, softening=eps, kahan=True)
 
 for p in (1,2,3,4,5):
     cfg = fmdj.Config(softening=eps)

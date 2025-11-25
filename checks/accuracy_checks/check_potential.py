@@ -25,7 +25,7 @@ xm = jnp.concatenate([pos0, mass0[:,None]], axis=-1)
 import time
 t0 = time.time()
 
-phi0 = cj.forces.force_and_potential.jit(xm, softening=eps, kahan=True)[:,3]
+phi0 = fmdj.fmm.direct_force_and_potential.jit(xm, softening=eps, kahan=True)[:,3]
 
 # for p in (1,2,3,4,5):
 for p in (1,2,3,4,5):
