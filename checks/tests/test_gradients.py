@@ -9,7 +9,7 @@ def test_direct_sum_gradient():
     xm = jnp.concatenate([pos, mass[:, None]], axis=1)
 
     fphi = fmdj.fmm.direct_force_and_potential.jit(xm, softening=1e-2, kahan=True)
-    fphi_jax = fmdj.fmm.direct_force_and_potential_pure_jax.jit(pos, mass, softening=1e-2)
+    fphi_jax = fmdj.fmm.direct_force_and_potential_jax.jit(pos, mass, softening=1e-2)
 
     assert fphi == pytest.approx(fphi_jax, rel=1e-4, abs=1e-5)
 
@@ -19,7 +19,7 @@ def test_direct_sum_gradient():
         return jnp.sum(fphi)
 
     def loss_jax(xm):
-        return jnp.sum(fmdj.fmm.direct_force_and_potential_pure_jax.jit(xm[:,0:3], xm[:,3], softening=1e-2))
+        return jnp.sum(fmdj.fmm.direct_force_and_potential_jax.jit(xm[:,0:3], xm[:,3], softening=1e-2))
 
     gx1 = jax.grad(loss)(xm)
     gx2 = jax.grad(loss_jax)(xm)

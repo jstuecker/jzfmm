@@ -148,27 +148,49 @@ def direct_force_and_potential(xm, block_size=64, softening=1e-2, kahan=False):
 direct_force_and_potential.defvjp(direct_force_and_potential_fwd, force_and_potential_bwd)
 direct_force_and_potential.jit = jax.jit(direct_force_and_potential, static_argnames=("block_size", "softening", "kahan"))
 
-def direct_potential_pure_jax(x, m=1., softening=1e-2):
+def direct_potential_jax(x, m=1., softening=1e-2):
     rij2 = jnp.sum((x[:, None, :] - x[None, :, :]) ** 2, axis=-1)
     rinv = jnp.where(rij2 > 0, 1. / jnp.sqrt(rij2 + softening**2), 0.)
     
     return -jnp.sum(rinv * jnp.broadcast_to(m, x.shape[:-1])[None,:], axis=1)
-direct_potential_pure_jax.jit = jax.jit(direct_potential_pure_jax)
+direct_potential_jax.jit = jax.jit(direct_potential_jax)
 
-def direct_force_pure_jax(x, m=1., softening=1e-2):
+def direct_force_jax(x, m=1., softening=1e-2):
     dx = x[:, None] - x[None, :]
     rij2 = jnp.sum(dx ** 2, axis=-1, keepdims=True)
     rinv = jnp.where(rij2 > 0, 1. / jnp.sqrt(rij2 + softening**2), 0.)
     
     return -jnp.sum(dx * rinv**3 * jnp.broadcast_to(m, x.shape[:-1])[None,:,None], axis=1)
-direct_force_pure_jax.jit = jax.jit(direct_force_pure_jax)
+direct_force_jax.jit = jax.jit(direct_force_jax)
 
-def direct_force_and_potential_pure_jax(x, m=1., softening=1e-2):
-    phi = direct_potential_pure_jax(x, m, softening)
-    f = direct_force_pure_jax(x, m, softening)
+def direct_force_and_potential_jax(x, m=1., softening=1e-2):
+    phi = direct_potential_jax(x, m, softening)
+    f = direct_force_jax(x, m, softening)
     
     return jnp.concatenate([f, phi[:,None]], axis=-1)
-direct_force_and_potential_pure_jax.jit = jax.jit(direct_force_and_potential_pure_jax)
+direct_force_and_potential_jax.jit = jax.jit(direct_force_and_potential_jax)
+
+def direct_potential_scan_jax(x, m=1., n2lim=1e8, eps=1e-5):
+    N = x.shape[0]
+
+    nmax = int(np.ceil(n2lim / len(x)))
+    nev = int(np.ceil(x.shape[0] / nmax))
+
+    def potential_over_range(i1, i2):
+        xi = x[jnp.arange(nmax, dtype=jnp.int32) + i1]
+        # Compute vector distances to all other particles
+        r_ij2 = jnp.sum((x - xi[:,None])**2, axis=-1)
+        distinv = jnp.where(r_ij2 < 1e-30, 0., 1./jnp.sqrt(r_ij2 + eps**2)) # avoid self-interaction
+
+        return - jnp.sum(m * distinv, axis=1)
+
+    def handle_interval(_, i):
+        return None, potential_over_range(nmax * i, nmax * (i + 1))
+
+    _, phis = jax.lax.scan(handle_interval, None, jnp.arange(nev, dtype=jnp.int32))
+
+    return jnp.concatenate(phis)[0:N]
+direct_potential_scan_jax.jit = jax.jit(direct_potential_scan_jax, static_argnames=("n2lim",))
 
 # ------------------------------------------------------------------------------------------------ #
 #                                         Master Functions                                         #
