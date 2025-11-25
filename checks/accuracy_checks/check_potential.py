@@ -32,7 +32,7 @@ for p in (1,2,3,4,5):
     cfg.fmm.kahan_summation = True
     cfg.fmm.p = p
 
-    phi_new = fmdj.fmm.new_fmm_fphi.jit(pos0, mass0, cfg)[:,3]
+    phi_new = fmdj.fmm.fmm_force_and_potential.jit(pos0, mass0, cfg)[:,3]
 
     plt.hist(np.log10(np.abs((phi_new - phi0)/phi0)), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5,
              color="C%d"%(p-1), edgecolor='black')

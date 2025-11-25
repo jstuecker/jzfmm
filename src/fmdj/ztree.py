@@ -3,13 +3,10 @@ import jax
 import jax.numpy as jnp
 
 from fmdj_cuda import ffi_tree
-from fmdj.tools import conditional_callback, div_ceil
+from .tools import conditional_callback, div_ceil
 from .data import TreePlane, PosMass
-from fmdj.config import Config
-import fmdj
-
-
-from fmdj.multipoles import coarsen_multipoles, multipoles_from_particles
+from .config import Config
+from .multipoles import coarsen_multipoles, multipoles_from_particles
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")

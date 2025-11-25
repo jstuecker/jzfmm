@@ -23,7 +23,7 @@ for p in (1,2,3,4,5):
     cfg.fmm.p = p
     cfg.fmm.kahan_summation = True
 
-    fphi_new = fmdj.fmm.new_fmm_fphi.jit(pos0, mass0, cfg)
+    fphi_new = fmdj.fmm.fmm_force_and_potential.jit(pos0, mass0, cfg)
 
     rel_err = jnp.linalg.norm(fphi_new[:,:3] - fphi[:,:3], axis=-1)/jnp.linalg.norm(fphi[:,:3], axis=-1)
 

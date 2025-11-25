@@ -2,8 +2,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import fmdj_cuda.ffi_multipoles as ffi_multipoles
-from fmdj.data import TreePlane, Multipoles, PosMass
-from fmdj.config import Config, FMMConfig
+from .data import TreePlane, Multipoles, PosMass
+from .config import Config
 
 # ------------------------------------------------------------------------------------------------ #
 #                                             FFI Calls                                            #

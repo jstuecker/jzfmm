@@ -1,7 +1,8 @@
 import jax.numpy as jnp
 import jax
-import fmdj
-from fmdj import Config
+from .config import Config
+from .fmm import force_and_potential
+from .tools import log
 from dataclasses import dataclass, replace
 from typing import Generator
 import time
@@ -80,14 +81,14 @@ def timestep(p : Particles, dt, cfg : Config, t=0., mask=None):
     p = replace(p)  # Make a copy to avoid modifying the input
 
     if p.acc is None:
-        p.acc, p.pot = fmdj.fmm.get_force_and_potential.jit(p.pos, p.mass, cfg=cfg, separately=True)
+        p.acc, p.pot = force_and_potential.jit(p.pos, p.mass, cfg=cfg, separately=True)
 
     vh = kick(p.vel, p.acc + ext_acc(p, t, cfg), 0.5*dt, mask=mask)
     p.pos = drift(p.pos, vh, dt, mask=mask)
     if p.cpos is not None:
         p.cpos = p.cpos + p.cvel * dt
 
-    p.acc, p.pot = fmdj.fmm.get_force_and_potential.jit(p.pos, p.mass, cfg=cfg, separately=True)
+    p.acc, p.pot = force_and_potential.jit(p.pos, p.mass, cfg=cfg, separately=True)
     p.vel = kick(vh, p.acc + ext_acc(p, t + dt, cfg), 0.5*dt, mask=mask)
 
     if cfg.centered:
@@ -98,11 +99,11 @@ timestep.jit = jax.jit(timestep, static_argnames=("cfg",))
 
 def simulate(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float = 0.) -> Particles:
     # Make an initial dt=0 step to get the correct initial acceleration
-    p = fmdj.time_integration.timestep(p, dt=0., cfg=cfg, t=tstart)
+    p = timestep(p, dt=0., cfg=cfg, t=tstart)
     dt = (tend - tstart) / nsteps
     def step(i, carry):
         p, t = carry
-        return fmdj.time_integration.timestep.jit(p, dt=dt, cfg=cfg, t=t), t + dt
+        return timestep.jit(p, dt=dt, cfg=cfg, t=t), t + dt
 
     p, t = jax.lax.fori_loop(0, nsteps, step, (p, tstart))
     return p
@@ -111,13 +112,13 @@ simulate.vjp = jax.custom_vjp(simulate, nondiff_argnames=("tend", "nsteps", "cfg
 
 def simulate_fwd(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float = 0.) -> Particles:
     pcom = jnp.mean(p.apos(), axis=0)
-    fmdj.log("Starting forward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
+    log("Starting forward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
              pcom[0], pcom[1], pcom[2], level=1, cfg=cfg)
 
     p = simulate(p, tend, nsteps, cfg, tstart)
 
     pcom = jnp.mean(p.apos(), axis=0)
-    fmdj.log("Finished forward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
+    log("Finished forward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
              pcom[0], pcom[1], pcom[2], level=1, cfg=cfg)
 
     return p, p
@@ -128,16 +129,16 @@ def simulate_bwd(tend: float, nsteps: int, cfg: Config, tstart: float, p: Partic
     def step(i, carry):
         p, t, gp = carry
 
-        p = fmdj.time_integration.timestep.jit(p, dt=-dt, cfg=cfg, t=t)
-        _, vjp_fun = jax.vjp(lambda p: fmdj.time_integration.timestep.jit(p, dt=dt, cfg=cfg, t=t), p)
+        p = timestep.jit(p, dt=-dt, cfg=cfg, t=t)
+        _, vjp_fun = jax.vjp(lambda p: timestep.jit(p, dt=dt, cfg=cfg, t=t), p)
         gxp, = vjp_fun(gp)
         return p, t + dt, gxp
 
     p_prev, t_prev, gp_prev = jax.lax.fori_loop(0, nsteps, step, (p, tend, gp))
 
     pcom = jnp.mean(p_prev.apos(), axis=0)
-    fmdj.log("Finished backward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
-             pcom[0], pcom[1], pcom[2], level=1, cfg=cfg)
+    log("Finished backward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
+        pcom[0], pcom[1], pcom[2], level=1, cfg=cfg)
     
     return (gp_prev,)
 
@@ -168,9 +169,9 @@ def simulate_with_outputs(
     p = clean_particles(p) # This helps avoiding double jit-compilations
 
     tp0 = time.perf_counter()
-    fmdj.log("Compiling jitted simulation...", level=1, cfg=cfg)
+    log("Compiling jitted simulation...", level=1, cfg=cfg)
     simulate.jit.lower(p, tend=jnp.float32(0.1), nsteps=steps_per_output, cfg=cfg, tstart=jnp.float32(0.1)).compile()
-    fmdj.log("Compilation done after {:.2f}s", time.perf_counter()-tp0, level=1, cfg=cfg)
+    log("Compilation done after {:.2f}s", time.perf_counter()-tp0, level=1, cfg=cfg)
 
     yield tstart, p
 
@@ -179,9 +180,9 @@ def simulate_with_outputs(
         t1 = jnp.float32(tstart + (isnap+1) * (tend/nout))
         tpa = time.perf_counter()
         p = simulate.jit(p, tend=t1, nsteps=steps_per_output, cfg=cfg, tstart=t0)
-        fmdj.log("Reached output {} ({:.2f}s for {} steps)", 
-                 isnap+1, time.perf_counter()-tpa, steps_per_output, level=1, cfg=cfg)
+        log("Reached output {} ({:.2f}s for {} steps)",
+            isnap+1, time.perf_counter()-tpa, steps_per_output, level=1, cfg=cfg)
         yield t1, p
     
-    fmdj.log("Total simulation time: {:.2f}s for {} steps", 
-             time.perf_counter()-tp0, nout*steps_per_output, level=1, cfg=cfg)
+    log("Total simulation time: {:.2f}s for {} steps",
+        time.perf_counter()-tp0, nout*steps_per_output, level=1, cfg=cfg)
