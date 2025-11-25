@@ -4,8 +4,7 @@ from fmdj.config import Config, FMMConfig, LoggingConfig
 import jax
 import fmdj_ffi as cj
 import jax.numpy as jnp
-import fmdj.fmm as nt
-import fmdj_ffi.cj_new_tree as cnt
+import fmdj.fmm
 
 
 @pytest.fixture
@@ -52,7 +51,7 @@ def bench_cuda(jax_bench, particlesz):
 
     bdata, (lnew, inew) = jb.measure(
         plane=th[-5], plane_lr=th[-4], ilist_lr=ilist4, loc_lr=loc4*0., cfg=cfg,
-        fn_jit=cnt.evaluate_plane_interactions.jit,
+        fn_jit=fmdj.fmm.evaluate_plane_interactions.jit,
     )
 
     nnodes = th[-5].nnodes
@@ -87,7 +86,7 @@ def bench_leaf_leaf(jax_bench, leaf_leaf_ilist):
     jb = jax_bench(jit_rounds=20, jit_warmup=3)
 
     res, fphi = jb.measure(particles=particlesz, plane=plane, ilist=ilist, cfg=cfg,
-        fn_jit=cnt.grouped_force_and_pot.jit,
+        fn_jit=fmdj.fmm.grouped_force_and_pot.jit,
         tag="new_leaf2leaf"
     )
 
