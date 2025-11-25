@@ -8,7 +8,8 @@ import fmdj_ffi.cj_new_tree as cnt
 from .config import Config
 from .data import TreePlane, PosMass, InteractionList
 
-from fmdj_ffi.cj_new_tree import coarsen_multipoles, multipoles_from_particles, evaluate_plane_interactions
+from fmdj_ffi.cj_new_tree import evaluate_plane_interactions
+from fmdj.multipoles import coarsen_multipoles, multipoles_from_particles
 
 
 # ------------------------------------------------------------------------------------------------ #

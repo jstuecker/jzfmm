@@ -61,7 +61,7 @@ def test_tree_hierarchy(tree_hierarchy : list[TreePlane]):
 
 def test_tree_multipoles(particlesz: PosMass, tree_hierarchy: list[TreePlane], cfg: Config):
     mp_base = jmp.multipoles_from_particles_jax.jit(tree_hierarchy[0], particlesz, cfg=cfg)
-    mp_cuda = fmdj.fmm.multipoles_from_particles.jit(tree_hierarchy[0], particlesz, cfg=cfg)
+    mp_cuda = fmdj.multipoles.multipoles_from_particles.jit(tree_hierarchy[0], particlesz, cfg=cfg)
     assert jnp.allclose(tree_hierarchy[0].npart, mp_base.get(0))
     
     for i in range(mp_base.values.shape[1]):
@@ -69,7 +69,7 @@ def test_tree_multipoles(particlesz: PosMass, tree_hierarchy: list[TreePlane], c
     assert jnp.allclose(mp_base.center(), mp_cuda.center(), rtol=1e-6, equal_nan=True)
 
     mp_coarse = jmp.coarsen_multipoles_jax.jit(mp_base, tree_hierarchy[1], cfg=cfg)
-    mp_coarse2 = fmdj.fmm.coarsen_multipoles.jit(mp_cuda, tree_hierarchy[1], cfg=cfg)
+    mp_coarse2 = fmdj.multipoles.coarsen_multipoles.jit(mp_cuda, tree_hierarchy[1], cfg=cfg)
     assert jnp.allclose(tree_hierarchy[1].npart, mp_coarse.get(0))
     for i in range(mp_base.values.shape[1]):
         assert jnp.allclose(mp_coarse.get(i), mp_coarse2.get(i), rtol=1e-3, atol=1e-4)

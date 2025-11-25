@@ -4,62 +4,17 @@ import jax
 import jax.numpy as jnp
 
 from fmdj.config import Config, FMMConfig
-from fmdj.data import dense_interaction_list, TreePlane, Multipoles, PosMass, InteractionList
+from fmdj.data import dense_interaction_list, TreePlane, PosMass, InteractionList
 from fmdj.multipoles import shift_local_to_local
 
-import fmdj_cuda.ffi_multipoles as ffi_multipoles
 import fmdj_cuda.ffi_fmm as ffi_fmm
 import fmdj_cuda.ffi_forces as ffi_forces
 
 from typing import Tuple
 
-jax.ffi.register_ffi_target("MultipolesFromParticles", ffi_multipoles.MultipolesFromParticles(), platform="CUDA")
-jax.ffi.register_ffi_target("CoarsenMultipoles", ffi_multipoles.CoarsenMultipoles(), platform="CUDA")
 jax.ffi.register_ffi_target("CountInteractionsAndM2L", ffi_fmm.CountInteractionsAndM2L(), platform="CUDA")
 jax.ffi.register_ffi_target("InsertInteractions", ffi_fmm.InsertInteractions(), platform="CUDA")
 jax.ffi.register_ffi_target("GroupedForceAndPot", ffi_forces.GroupedForceAndPot(), platform="CUDA")
-
-def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
-    cfg_tree: FMMConfig = cfg.fmm
-
-    assert cfg_tree.multipoles_around_com
-
-    posm = part.posm()
-
-    assert posm.dtype == jnp.float32
-    assert tp.ispl.dtype == jnp.int32
-
-    ncomb = np.array([1, 4, 10, 20, 35, 56, 84, 120, 165])
-    
-    out_mp = jax.ShapeDtypeStruct((tp.size(), ncomb[cfg_tree.p]), posm.dtype)
-    out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), posm.dtype)
-
-    mp, xcent = jax.ffi.ffi_call("MultipolesFromParticles", (out_mp, out_xcent))(
-        tp.ispl, posm, p=np.int32(cfg_tree.p), block_size=np.uint64(32)
-    )
-    
-    return Multipoles(xcent=xcent, values=mp, p=cfg_tree.p, around_com=True)
-multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnames=['cfg'])
-
-def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipoles:
-    """Determines the multipoles at the next coarser tree plane"""
-    assert mp.around_com
-
-    dtype = mp.values.dtype
-
-    assert mp.values.dtype == jnp.float32
-    assert tp.ispl.dtype == jnp.int32
-
-    ncomb = np.array([1, 4, 10, 20, 35, 56, 84, 120, 165])
-
-    out_mp = jax.ShapeDtypeStruct((tp.size(), ncomb[mp.p]), dtype)
-    out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), dtype)
-
-    mpnew, xcent = jax.ffi.ffi_call("CoarsenMultipoles", (out_mp, out_xcent))(
-        tp.ispl, mp.values, mp.center(), p=np.int32(mp.p), block_size=np.uint64(32)
-    )
-    return Multipoles(xcent=xcent, values=mpnew, p=mp.p, around_com=mp.around_com)
-coarsen_multipoles.jit = jax.jit(coarsen_multipoles, static_argnames=['cfg'])
 
 def evaluate_plane_interactions(
         plane: TreePlane, 

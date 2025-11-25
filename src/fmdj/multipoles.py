@@ -1,8 +1,60 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
+import fmdj_cuda.ffi_multipoles as ffi_multipoles
+from fmdj.data import TreePlane, Multipoles, PosMass
+from fmdj.config import Config, FMMConfig
 
-# ============================= Some fixed Combinatorical Computations =========================== #
+# ------------------------------------------------------------------------------------------------ #
+#                                             FFI Calls                                            #
+# ------------------------------------------------------------------------------------------------ #
+
+jax.ffi.register_ffi_target("MultipolesFromParticles", ffi_multipoles.MultipolesFromParticles(), platform="CUDA")
+jax.ffi.register_ffi_target("CoarsenMultipoles", ffi_multipoles.CoarsenMultipoles(), platform="CUDA")
+
+def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
+    assert cfg.fmm.multipoles_around_com
+
+    posm = part.posm()
+
+    assert posm.dtype == jnp.float32
+    assert tp.ispl.dtype == jnp.int32
+
+    ncomb = np.array([1, 4, 10, 20, 35, 56, 84, 120, 165])
+    
+    out_mp = jax.ShapeDtypeStruct((tp.size(), ncomb[cfg.fmm.p]), posm.dtype)
+    out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), posm.dtype)
+
+    mp, xcent = jax.ffi.ffi_call("MultipolesFromParticles", (out_mp, out_xcent))(
+        tp.ispl, posm, p=np.int32(cfg.fmm.p), block_size=np.uint64(32)
+    )
+    
+    return Multipoles(xcent=xcent, values=mp, p=cfg.fmm.p, around_com=True)
+multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnames=['cfg'])
+
+def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipoles:
+    """Determines the multipoles at the next coarser tree plane"""
+    assert mp.around_com
+
+    dtype = mp.values.dtype
+
+    assert mp.values.dtype == jnp.float32
+    assert tp.ispl.dtype == jnp.int32
+
+    ncomb = np.array([1, 4, 10, 20, 35, 56, 84, 120, 165])
+
+    out_mp = jax.ShapeDtypeStruct((tp.size(), ncomb[mp.p]), dtype)
+    out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), dtype)
+
+    mpnew, xcent = jax.ffi.ffi_call("CoarsenMultipoles", (out_mp, out_xcent))(
+        tp.ispl, mp.values, mp.center(), p=np.int32(mp.p), block_size=np.uint64(32)
+    )
+    return Multipoles(xcent=xcent, values=mpnew, p=mp.p, around_com=mp.around_com)
+coarsen_multipoles.jit = jax.jit(coarsen_multipoles, static_argnames=['cfg'])
+
+# ------------------------------------------------------------------------------------------------ #
+#                                        Some Combinatorics                                        #
+# ------------------------------------------------------------------------------------------------ #
 
 def num_multi(p):
     return (p + 1) * (p + 2) * (p + 3) // 6
@@ -36,7 +88,11 @@ def fact(n):
 def binom(n, k):
     return fact(n) // (fact(k) * fact(n - k))
 
-# =================================== Local to Local  Operators ================================== #
+
+# ------------------------------------------------------------------------------------------------ #
+#                                      Local 2 Local operators                                     #
+# ------------------------------------------------------------------------------------------------ #
+
 def shift_local_to_local(L, dx):
     """To shift from expansion-coefficients around x0 to expansion around x1 put dx = x1-x0"""
     p = p_of_num_multi(L.shape[-1])
