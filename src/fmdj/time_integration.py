@@ -1,12 +1,11 @@
+from dataclasses import dataclass, replace
+from typing import Generator
+import time
 import jax.numpy as jnp
 import jax
 from .config import Config
 from .fmm import force_and_potential
 from .tools import log
-from dataclasses import dataclass, replace
-from typing import Generator
-import time
-from functools import partial
 
 @jax.tree_util.register_dataclass
 @dataclass

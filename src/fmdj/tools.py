@@ -1,9 +1,9 @@
+import inspect
+import os
 import jax
 from jax.experimental import io_callback
 import jax.numpy as jnp
 from .config import Config
-import inspect
-import os
 
 def conditional_callback(flag, f, *args, **kwargs):
     """Calls a device function f, only if the flag is True. Useful for raising exceptions that 
