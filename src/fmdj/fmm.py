@@ -5,7 +5,6 @@ import jax
 import jax.numpy as jnp
 from . import multipoles
 from . import config
-import fmdj_ffi as cj
 import fmdj.ztree
 
 from .config import Config

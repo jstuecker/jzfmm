@@ -3,7 +3,6 @@ import jax
 import jax.numpy as jnp
 import fmdj
 import numpy as np
-import fmdj_ffi as cj
 import matplotlib.pyplot as plt
 
 # jax.config.update("jax_enable_x64", True)
@@ -29,14 +28,11 @@ phi0 = fmdj.fmm.direct_force_and_potential.jit(xm, softening=eps, kahan=True)[:,
 
 # for p in (1,2,3,4,5):
 for p in (1,2,3,4,5):
-    config = fmdj.Config(tags=("base",), softening=eps, verbose=2)
-    config_cj = fmdj.Config(tags=("cuda", "base"), softening=eps, verbose=2)
-    config.fmm.p = p
-    config_cj.fmm.kahan_summation = True
-    # config_cj.tree.ilist_alloc_fac = 2056
-    # config_cj.opening.opening_angle = 0.6
+    cfg = fmdj.Config(softening=eps, verbose=2)
+    cfg.fmm.kahan_summation = True
+    cfg.fmm.p = p
 
-    phi_new = fmdj.fmm.new_fmm_fphi.jit(pos0, mass0, config_cj)[:,3]
+    phi_new = fmdj.fmm.new_fmm_fphi.jit(pos0, mass0, cfg)[:,3]
 
     plt.hist(np.log10(np.abs((phi_new - phi0)/phi0)), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5,
              color="C%d"%(p-1), edgecolor='black')

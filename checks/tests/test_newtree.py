@@ -1,7 +1,6 @@
 import fmdj_jaxonly.jaxonly_fmm
 import jax
 import jax.numpy as jnp
-import fmdj_ffi as cj
 import pytest
 from fmdj.config import Config, FMMConfig
 import fmdj
@@ -47,7 +46,6 @@ def tree_hierarchy(particlesz, cfg):
 
 @pytest.fixture
 def cfg():
-    # return Config(tags=("cuda", "base"))
     tcfg = FMMConfig(alloc_fac_nodes=1.2, coarse_fac=2.0, p=2, stop_coarsen=512, ilist_alloc_fac=1024)
     cfg = Config(fmm=tcfg)
     cfg.fmm.opening_angle = 0.85

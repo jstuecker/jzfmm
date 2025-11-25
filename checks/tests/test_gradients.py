@@ -1,8 +1,6 @@
 import fmdj
 import jax.numpy as jnp
 import jax
-import fmdj_ffi as cj
-
 import pytest
 
 def test_direct_sum_gradient():
