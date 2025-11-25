@@ -4,4 +4,5 @@ from . import fmm
 from . import time_integration
 from . import external_potential
 from . import tools
+from . import ztree
 from .tools import log

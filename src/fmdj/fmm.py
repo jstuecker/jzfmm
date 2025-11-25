@@ -4,6 +4,7 @@ from . import multipoles
 from . import config
 import fmdj_ffi as cj
 import fmdj_ffi.cj_new_tree as cnt
+import fmdj.ztree
 
 from .config import Config
 from .data import TreePlane, PosMass, InteractionList
@@ -22,7 +23,7 @@ def new_fmm_fphi(pos, mass, cfg : config.Config, return_sorted=False):
     elif jnp.shape(mass) != jnp.shape(pos)[:-1]:
         mass = jnp.broadcast_to(mass, pos.shape[:-1])
 
-    posz, isortz = cj.tree.pos_zorder_sort(pos)
+    posz, isortz = fmdj.ztree.pos_zorder_sort(pos)
     particlesz = PosMass(pos=posz, mass=mass[isortz])
 
     th = build_tree_hierarchy(particlesz, cfg)
@@ -31,7 +32,7 @@ def new_fmm_fphi(pos, mass, cfg : config.Config, return_sorted=False):
     parent = th[0].icoarse_of_fine()
     fphi_loc = multipoles.evaluate_local_fphi(loc[parent], particlesz.pos - th[0].mp.center()[parent])
 
-    fphi = cnt.cj_new_force_and_pot(particlesz, th[0], ilist, cfg=cfg) + fphi_loc
+    fphi = cnt.grouped_force_and_pot(particlesz, th[0], ilist, cfg=cfg) + fphi_loc
 
     if return_sorted:
         return particlesz.pos, particlesz.mass, isortz, fphi
@@ -61,7 +62,7 @@ def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
     """Gets the next coarser tree plane from a finer one"""
     max_size = int(fine.max_node_size * cfg.fmm.coarse_fac)
     
-    res = cj.tree.summarize_leaves(
+    res = fmdj.ztree.summarize_leaves(
         fine.cent, fine.npart, max_size=max_size, num_part=fine.tot_npart,
         ref_fac=cfg.fmm.coarse_fac, alloc_fac_nodes=cfg.fmm.alloc_fac_nodes
     )
@@ -77,7 +78,7 @@ coarsen_plane.jit = jax.jit(coarsen_plane, static_argnames=['cfg'])
 def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
     with_multipoles = cfg.fmm.p > 0
 
-    res = cj.tree.summarize_leaves(
+    res = fmdj.ztree.summarize_leaves(
         part.pos, max_size=cfg.fmm.max_leaf_size, num_part=part.pos.shape[0],
         alloc_fac_nodes=cfg.fmm.alloc_fac_nodes
     )

@@ -88,7 +88,7 @@ def evaluate_plane_interactions(
     return loc, new_ilist
 evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
 
-def cj_new_force_and_pot(particles: PosMass, 
+def grouped_force_and_pot(particles: PosMass, 
                          plane: TreePlane, 
                          ilist: InteractionList,
                          cfg: Config) -> jnp.ndarray:
@@ -105,4 +105,4 @@ def cj_new_force_and_pot(particles: PosMass,
     fphi = fphi.at[...,3].add(particles.mass/cfg.softening) # Remove self-interaction from potential
 
     return fphi
-cj_new_force_and_pot.jit = jax.jit(cj_new_force_and_pot, static_argnames=['cfg'])
+grouped_force_and_pot.jit = jax.jit(grouped_force_and_pot, static_argnames=['cfg'])

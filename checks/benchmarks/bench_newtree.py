@@ -12,7 +12,7 @@ import fmdj_ffi.cj_new_tree as cnt
 def particlesz(request):
     npart = request.param if hasattr(request, "param") else 1024*1024
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
-    posz, isort = cj.tree.pos_zorder_sort(pos0)
+    posz, isort = fmdj.ztree.pos_zorder_sort(pos0)
     return nt.PosMass(posz, jnp.ones(posz.shape[0]))
 
 @pytest.mark.parametrize("particlesz", [1024*128,1024*1024, 1024*1024*8], indirect=True)
@@ -87,7 +87,7 @@ def bench_leaf_leaf(jax_bench, leaf_leaf_ilist):
     jb = jax_bench(jit_rounds=20, jit_warmup=3)
 
     res, fphi = jb.measure(particles=particlesz, plane=plane, ilist=ilist, cfg=cfg,
-        fn_jit=cnt.cj_new_force_and_pot.jit,
+        fn_jit=cnt.grouped_force_and_pot.jit,
         tag="new_leaf2leaf"
     )
 

@@ -33,7 +33,7 @@ def test_expand_interactions():
 @pytest.fixture
 def posz():
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (1024**2,3))
-    posz, isort = cj.tree.pos_zorder_sort(pos0)
+    posz, isort = fmdj.ztree.pos_zorder_sort(pos0)
     return posz
 
 @pytest.fixture
