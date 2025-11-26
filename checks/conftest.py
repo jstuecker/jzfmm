@@ -24,6 +24,11 @@ def npart(request):
     return getattr(request, "param", 1024*1024)
 
 @pytest.fixture
+def pos_mass(npart):
+    pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
+    return fmdj.data.PosMass(pos0, mass=jnp.ones(pos0.shape[0]))
+
+@pytest.fixture
 def pos_mass_z(npart):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
     posz, isort = fmdj.ztree.pos_zorder_sort(pos0)

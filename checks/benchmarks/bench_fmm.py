@@ -43,8 +43,25 @@ def bench_fmm_npart(jax_bench, pos_mass_z, cfg):
 
 @pytest.mark.parametrize("p", [1,2,3,4,5])
 def bench_fmm_p(jax_bench, p, pos_mass_z):
-    cfg = Config(fmm=FMMConfig(p=p, max_leaf_size=32, opening_angle=1.0), softening=1e-2)
+    cfg = Config(fmm=FMMConfig(p=p))
 
     jb = jax_bench(jit_rounds=20, jit_warmup=2)
     jb.measure(fn_jit=fmdj.fmm.fmm_force_and_potential.jit,
                pos=pos_mass_z.pos, mass=pos_mass_z.mass, cfg=cfg)
+
+@pytest.mark.parametrize("p", [3,4,5])
+def bench_fmm_steps(jax_bench, p, pos_mass):
+    cfg = Config(fmm=FMMConfig(p=p))
+
+    jb = jax_bench(jit_rounds=40, jit_warmup=10)
+
+    posz, isortz = jb.measure(fn_jit=fmdj.ztree.pos_zorder_sort.jit, x=pos_mass.pos, tag="zsort")[1]
+    pos_mass_z = fmdj.data.PosMass(pos=posz, mass=pos_mass.mass[isortz])
+
+    th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build")[1]
+    loc, ilist = jb.measure(fn_jit=fmdj.fmm.evaluate_interaction_hierarchy.jit, th=th, cfg=cfg, tag="node2node")[1]
+    parent = th[0].icoarse_of_fine()
+    fphi_loc = jb.measure(fn_jit=fmdj.fmm.evaluate_local_fphi.jit, L=loc[th[0].icoarse_of_fine()],
+                          x=pos_mass_z.pos - th[0].mp.center()[parent], tag="loc2loc")[1]
+    fphi = jb.measure(fn_jit=fmdj.fmm.grouped_force_and_pot.jit,
+                      particles=pos_mass_z, plane=th[0], ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]
