@@ -5,7 +5,6 @@ import aegis
 import pytest
 
 def test_nfw_acc():
-    prof = aegis.profiles.NFWProfile(conc=10., r200c=10.)
     cfg = fmdj.config.Config()
 
     host = aegis.profiles.NFWProfile(conc=6., m200c=1e12)

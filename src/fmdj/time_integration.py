@@ -6,23 +6,7 @@ import jax
 from .config import Config
 from .fmm import force_and_potential
 from .tools import log
-
-@jax.tree_util.register_dataclass
-@dataclass
-class Particles():
-    pos : jnp.ndarray
-    vel : jnp.ndarray
-    mass : jnp.ndarray
-    acc : jnp.ndarray | None = None
-    pot : jnp.ndarray | None = None
-
-    cpos : jnp.ndarray | None = None
-    cvel : jnp.ndarray | None = None
-
-    def apos(self):
-        return self.pos if self.cpos is None else self.pos + self.cpos
-    def avel(self):
-        return self.vel if self.cvel is None else self.vel + self.cvel
+from fmdj.data import Particles
 
 def kick(vel, acc, dt, mask=None):
     if mask is not None:

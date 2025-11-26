@@ -10,8 +10,36 @@ def get_particles(N = 1024*1024):
     
     return jax.block_until_ready((pos0, mass))
 
+# ------------------------------------------------------------------------------------------------ #
+#                                             Fixtures                                             #
+# ------------------------------------------------------------------------------------------------ #
+
 @pytest.fixture
-def particles(request):
-    Npart = getattr(request, "param", 1024*1024)
-    
-    return get_particles(Npart)
+def cfg():
+    tcfg = fmdj.config.FMMConfig(alloc_fac_nodes=1.2, coarse_fac=2.0, p=2, stop_coarsen=512, ilist_alloc_fac=1024)
+    cfg = fmdj.Config(fmm=tcfg)
+    cfg.fmm.opening_angle = 0.85
+    return cfg
+
+@pytest.fixture
+def npart(request):    
+    return getattr(request, "param", 1024*1024)
+
+@pytest.fixture
+def pos_mass_z(npart):
+    pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
+    posz, isort = fmdj.ztree.pos_zorder_sort(pos0)
+    return fmdj.data.PosMass(posz, jnp.ones(posz.shape[0]))
+
+@pytest.fixture
+def tree_hierarchy(pos_mass_z, cfg):
+    ths : list[fmdj.data.TreePlane] = jax.block_until_ready(fmdj.fmm.build_tree_hierarchy.jit(pos_mass_z, cfg=cfg))
+    return ths
+
+@pytest.fixture
+def particles_blob(npart):
+    x = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
+    m = jnp.ones_like(x[:,0]) * 1.
+    vel = jnp.zeros_like(x)
+
+    return fmdj.data.Particles(x, vel, m, cpos=jnp.array([0.,0.,0.]), cvel=jnp.array([0.,0.,0.0]))

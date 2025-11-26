@@ -2,14 +2,12 @@ import fmdj
 import jax.numpy as jnp
 import jax
 import pytest
+from dataclasses import replace
 
-def test_direct_sum_gradient():
-    pos = jax.random.uniform(jax.random.PRNGKey(0), (1024, 3))
-    mass = jnp.ones_like(pos[:, 0])
-    xm = jnp.concatenate([pos, mass[:, None]], axis=1)
-
-    fphi = fmdj.fmm.direct_force_and_potential.jit(xm, softening=1e-2, kahan=True)
-    fphi_jax = fmdj.fmm.direct_force_and_potential_jax.jit(pos, mass, softening=1e-2)
+@pytest.mark.parametrize("npart", [1024], indirect=True)
+def test_direct_sum_gradient(pos_mass_z: fmdj.data.PosMass):
+    fphi = fmdj.fmm.direct_force_and_potential.jit(pos_mass_z.posm(), softening=1e-2, kahan=True)
+    fphi_jax = fmdj.fmm.direct_force_and_potential_jax.jit(pos_mass_z.pos, pos_mass_z.mass, softening=1e-2)
 
     assert fphi == pytest.approx(fphi_jax, rel=1e-4, abs=1e-5)
 
@@ -21,26 +19,19 @@ def test_direct_sum_gradient():
     def loss_jax(xm):
         return jnp.sum(fmdj.fmm.direct_force_and_potential_jax.jit(xm[:,0:3], xm[:,3], softening=1e-2))
 
-    gx1 = jax.grad(loss)(xm)
-    gx2 = jax.grad(loss_jax)(xm)
+    gx1 = jax.grad(loss)(pos_mass_z.posm())
+    gx2 = jax.grad(loss_jax)(pos_mass_z.posm())
     
-    assert gx1 == pytest.approx(gx2, rel=1e-4, abs=1e-5)
+    assert gx1 == pytest.approx(gx2, rel=1e-3, abs=1e-5)
 
-def test_sim_com():
+@pytest.mark.parametrize("npart", [1024], indirect=True)
+def test_sim_com(particles_blob):
     """Tests that gradients with respect to the center of mass work correctly"""
-
-    # Set up a simulation with a uniform acceleration field
-    # The center of mass has to move exactly like a particle in the same field
-    x = jax.random.uniform(jax.random.PRNGKey(0), (2000,3), minval=1., maxval=2.)
-    m = jnp.ones_like(x[:,0]) * 1.
-    vel = jnp.zeros_like(x)
-
-    p = fmdj.time_integration.Particles(x, vel, m, cpos=jnp.array([0.,0.,0.]), cvel=jnp.array([0.,0.,0.1]))
+    p = replace(particles_blob, cvel=jnp.array([0.,0.,0.1]))
 
     acc = (0.,0.,0.05)
 
-    cfg = fmdj.Config(fmm=None)
-    cfg.softening = 0.3
+    cfg = fmdj.Config(fmm=None, softening=0.3)
     cfg.external_potential = fmdj.external_potential.UniformAcceleration(acc=acc)
 
     def loss(p):

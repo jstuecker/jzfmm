@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from fmdj.time_integration import Particles
+from fmdj.data import Particles
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import jax.numpy as jnp
 

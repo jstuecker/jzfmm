@@ -11,7 +11,7 @@ def nfw_particles(request):
     prof = aegis.profiles.NFWProfile(conc=10., r200c=10.)
     pos0, vel0, m = prof.sample_particles(npart, result="pos_vel_m", rpmin=1e-3, ramax=10.)
 
-    part = fmdj.time_integration.Particles(jnp.array(pos0), jnp.array(vel0), jnp.array(m))
+    part = fmdj.data.Particles(jnp.array(pos0), jnp.array(vel0), jnp.array(m))
     part.cpos = jnp.array((150.,0.,0.))
     part.cvel = jnp.array((0.,prof.vcirc(150.),0.))
 
