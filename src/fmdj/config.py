@@ -14,12 +14,12 @@ class PotentialField:
 @dataclass(unsafe_hash=True)
 class FMMConfig():
     # Multipole order:
-    p : int = 2
+    p : int = 3
 
     # important
     max_leaf_size : int = 32
     coarse_fac : float = 4.0
-    opening_angle : float = 0.8
+    opening_angle : float = 0.85
 
     # Memory
     ilist_alloc_fac : int = 512

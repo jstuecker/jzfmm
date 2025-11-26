@@ -17,10 +17,7 @@ def get_particles(N = 1024*1024):
 
 @pytest.fixture
 def cfg():
-    tcfg = fmdj.config.FMMConfig(alloc_fac_nodes=1.2, coarse_fac=2.0, p=2, stop_coarsen=512, ilist_alloc_fac=1024)
-    cfg = fmdj.Config(fmm=tcfg)
-    cfg.fmm.opening_angle = 0.85
-    return cfg
+    return fmdj.Config()
 
 @pytest.fixture
 def npart(request):    

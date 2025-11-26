@@ -1,29 +1,25 @@
 import fmdj
 import pytest
-from fmdj.config import Config, FMMConfig, LoggingConfig
+from fmdj.config import Config, FMMConfig
 import jax
 import jax.numpy as jnp
 import fmdj.fmm
 from fmdj.config import Config, FMMConfig
+from dataclasses import replace
 
 from fmdj.ztree import build_tree_hierarchy
 from fmdj.fmm import evaluate_plane_interactions, evaluate_interaction_hierarchy
 
 @pytest.mark.parametrize("npart", [1024*128,1024*1024, 1024*1024*8], indirect=True)
-def bench_tree_hierarchy(jax_bench, pos_mass_z):
+def bench_tree_hierarchy(jax_bench, pos_mass_z, cfg):
     jb = jax_bench(jit_rounds=50, jit_warmup=5, eager_rounds=3, eager_warmup=1)
-    
-    cfg = Config(fmm=FMMConfig(coarse_fac=8.0))
 
     jb.measure(
         fn=fmdj.ztree.build_tree_hierarchy, fn_jit=fmdj.ztree.build_tree_hierarchy.jit, 
         part=pos_mass_z,
         cfg=cfg)
 
-def bench_cuda(jax_bench, pos_mass_z):
-    cfg = Config(fmm=FMMConfig(alloc_fac_nodes=1.2, coarse_fac=4.0, p=2, stop_coarsen=512, ilist_alloc_fac=2048),
-                logging=LoggingConfig(level=0))
-
+def bench_cuda(jax_bench, pos_mass_z, cfg):
     th = build_tree_hierarchy(pos_mass_z, cfg)
     loc, ilist = evaluate_plane_interactions(th[-1], cfg=cfg)
     th = build_tree_hierarchy(pos_mass_z, cfg)
@@ -57,18 +53,19 @@ def bench_cuda(jax_bench, pos_mass_z):
     assert lnew[:nnodes][mask] == pytest.approx(loc5[:nnodes][mask], rel=1e-3, abs=1e-1)
 
 @pytest.fixture
-def leaf_leaf_ilist(pos_mass_z, request):
-    cfg = Config(fmm=FMMConfig(alloc_fac_nodes=1.2, coarse_fac=4.0, p=2),
-                logging=LoggingConfig(level=0))
-    cfg.fmm.opening_angle = 1.0
-    cfg.fmm.max_leaf_size = request.param if hasattr(request, "param") else 32
-    cfg.softening = 0.1
+def max_leaf_size(request):
+    return getattr(request, "param", 32)
+
+@pytest.fixture
+def leaf_leaf_ilist(pos_mass_z, max_leaf_size, cfg):
+    fmm = replace(cfg.fmm, max_leaf_size=max_leaf_size)
+    cfg = replace(cfg, fmm=fmm, softening=0.1)
 
     th = build_tree_hierarchy.jit(pos_mass_z, cfg)
     loc, ilist = evaluate_interaction_hierarchy.jit(th, cfg=cfg)
     return pos_mass_z, th[0], ilist, cfg
 
-@pytest.mark.parametrize("leaf_leaf_ilist", [12,16,24,32], indirect=True)
+@pytest.mark.parametrize("max_leaf_size", [12,16,24,32], indirect=True)
 def bench_leaf_leaf(jax_bench, leaf_leaf_ilist):
     particlesz, plane, ilist, cfg = leaf_leaf_ilist
 
@@ -80,20 +77,16 @@ def bench_leaf_leaf(jax_bench, leaf_leaf_ilist):
     )
 
 @pytest.mark.parametrize("npart", [1024*128, 1024*1024, 1024*1024*4, 8*1024*1024])
-def bench_fmm_npart(jax_bench, pos_mass_z):
-    cfg = Config(fmm=FMMConfig(p=2, max_leaf_size=32), softening=1e-2)
-    cfg.fmm.opening_angle = 1.0
-
+def bench_fmm_npart(jax_bench, pos_mass_z, cfg):
     jb = jax_bench(jit_rounds=20, jit_warmup=2)
 
-    jb.measure(fn_jit=fmdj.fmm.fmm_force_and_potential.jit, tag="new_fmm",
+    jb.measure(fn_jit=fmdj.fmm.fmm_force_and_potential.jit,
                pos=pos_mass_z.pos, mass=pos_mass_z.mass, cfg=cfg)
 
 @pytest.mark.parametrize("p", [1,2,3,4,5])
 def bench_fmm_p(jax_bench, p, pos_mass_z):
-    cfg = Config(fmm=FMMConfig(p=p, max_leaf_size=32), softening=1e-2)
-    cfg.fmm.opening_angle = 1.0
+    cfg = Config(fmm=FMMConfig(p=p, max_leaf_size=32, opening_angle=1.0), softening=1e-2)
 
     jb = jax_bench(jit_rounds=20, jit_warmup=2)
-    jb.measure(fn_jit=fmdj.fmm.fmm_force_and_potential.jit, tag="new_fmm",
+    jb.measure(fn_jit=fmdj.fmm.fmm_force_and_potential.jit,
                pos=pos_mass_z.pos, mass=pos_mass_z.mass, cfg=cfg)
