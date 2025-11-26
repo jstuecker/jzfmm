@@ -24,9 +24,7 @@ def shift_multipoles(m, x0, p=2):
     for a, b, c in iter_multi(p):
         mnew = 0.
         for i in range(a+1):
-            idx_src = index_of_mp[i, b, c]
-            coeff = binom(a, i)
-            mnew = mnew + coeff * x0[..., 0]**(a - i) * m[idx_src]
+            mnew = mnew + binom(a, i) * x0[..., 0]**(a - i) * m[index_of_mp[i, b, c]]
         mx.append(mnew)
 
     # Stage 2: shift in y
@@ -34,9 +32,7 @@ def shift_multipoles(m, x0, p=2):
     for a, b, c in iter_multi(p):
         mnew = 0.
         for j in range(b+1):
-            idx_src = index_of_mp[a, j, c]
-            coeff = binom(b, j)
-            mnew = mnew + coeff * x0[..., 1]**(b - j) * mx[idx_src]
+            mnew = mnew + binom(b, j) * x0[..., 1]**(b - j) * mx[index_of_mp[a, j, c]]
         mxy.append(mnew)
 
     # Stage 3: shift in z
@@ -44,9 +40,7 @@ def shift_multipoles(m, x0, p=2):
     for a, b, c in iter_multi(p):
         mnew = 0.
         for k in range(c+1):
-            idx_src = index_of_mp[a, b, k]
-            coeff = binom(c, k)
-            mnew = mnew + coeff * x0[..., 2]**(c - k) * mxy[idx_src]
+            mnew = mnew + binom(c, k) * x0[..., 2]**(c - k) * mxy[index_of_mp[a, b, k]]
         mxyz.append(mnew)
 
     return jnp.stack(mxyz, axis=-1)

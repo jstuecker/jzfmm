@@ -93,21 +93,36 @@ def binom(n, k):
 #                                      Local 2 Local operators                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def shift_local_to_local(L, dx):
-    """To shift from expansion-coefficients around x0 to expansion around x1 put dx = x1-x0"""
-    p = p_of_num_multi(L.shape[-1])
+def shift_local_to_local(L, x0):
+    L = L.T
+    p = p_of_num_multi(L.shape[0])
     index_of_mp = get_index_map(p)
-    Lout = []
-    for c in iter_multi(p):
+    
+    # Stage 1: shift in x
+    Lx = []
+    for a, b, c in iter_multi(p):
         Lnew = 0.
-        for i in range(c[0], p+1):
-            for j in range(c[1], p+1-i):
-                for k in range(c[2], p+1-i-j):
-                    bfac = binom(i, c[0]) * binom(j, c[1]) * binom(k, c[2])
-                    Lnew = Lnew + bfac * L[...,index_of_mp[i,j,k]] * dx[...,0]**(i-c[0]) * dx[...,1]**(j-c[1]) * dx[...,2]**(k-c[2])
-        Lout.append(Lnew)
+        for i in range(a, p+1-b-c):
+            Lnew = Lnew + binom(i, a) * x0[..., 0]**(i - a) * L[index_of_mp[(i, b, c)]]
+        Lx.append(Lnew)
 
-    return jnp.stack(Lout, axis=-1)
+    # Stage 2: shift in y
+    Lxy = []
+    for a, b, c in iter_multi(p):
+        Lnew = 0.
+        for j in range(b, p+1-a-c):
+            Lnew = Lnew + binom(j, b) * x0[..., 1]**(j - b) * Lx[index_of_mp[(a, j, c)]]
+        Lxy.append(Lnew)
+
+    # Stage 3: shift in z
+    Lxyz = []
+    for a, b, c in iter_multi(p):
+        Lnew = 0.
+        for k in range(c, p+1-a-b):
+            Lnew = Lnew + binom(k, c) * x0[..., 2]**(k - c) * Lxy[index_of_mp[(a, b, k)]]
+        Lxyz.append(Lnew)
+
+    return jnp.stack(Lxyz, axis=-1)
 
 def evaluate_local_fphi(L, x):
     """Evaluates the function value of the expansion at x"""
