@@ -18,7 +18,7 @@ class FMMConfig():
 
     # important
     max_leaf_size : int = 32
-    coarse_fac : float = 4.0
+    coarse_fac : float = 6.0
     opening_angle : float = 0.85
 
     # Memory
@@ -30,7 +30,7 @@ class FMMConfig():
     # less relevant
     alloc_fac_nodes : float = 1.5
     alloc_min : int = 1024
-    stop_coarsen : int = 512
+    stop_coarsen : int = 1024
 
     # untested:
     multipoles_around_com : bool = True
