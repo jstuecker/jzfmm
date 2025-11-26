@@ -3,19 +3,8 @@ import pytest
 import jax
 import jax.numpy as jnp
 import aegis
+from dataclasses import replace
 
-@pytest.fixture
-def nfw_particles(request):
-    npart = request.param if hasattr(request, "param") else 1024*128
-
-    prof = aegis.profiles.NFWProfile(conc=10., r200c=10.)
-    pos0, vel0, m = prof.sample_particles(npart, result="pos_vel_m", rpmin=1e-3, ramax=10.)
-
-    part = fmdj.data.Particles(jnp.array(pos0), jnp.array(vel0), jnp.array(m))
-    part.cpos = jnp.array((150.,0.,0.))
-    part.cvel = jnp.array((0.,prof.vcirc(150.),0.))
-
-    return part
 
 @pytest.fixture
 def stripping_cfg():
@@ -28,26 +17,26 @@ def stripping_cfg():
 
     return cfg, host
 
-@pytest.mark.parametrize("nfw_particles", [1024*16, 1024*128, 1024*1024], indirect=True)
-def bench_simulate(jax_bench, nfw_particles, stripping_cfg):
+@pytest.mark.parametrize("npart", [1024*16, 1024*128, 1024*1024], indirect=True)
+def bench_simulate(jax_bench, particles_nfw: fmdj.data.Particles, stripping_cfg):
     jb = jax_bench(jit_rounds=1, jit_warmup=0, eager_rounds=0, eager_warmup=0)
     cfg, host = stripping_cfg
-
-    p = jb.measure(
-        fn=fmdj.time_integration.simulate, fn_jit=fmdj.time_integration.simulate.jit, 
-        p=nfw_particles, tend=host.tcirc(150.)*1., nsteps=1000, cfg=cfg
-    )[1]
-
-@pytest.mark.parametrize("nfw_particles", [1024*8], indirect=True)
-def bench_sim_direct_sum(jax_bench, nfw_particles, stripping_cfg):
-    jb = jax_bench(jit_rounds=1, jit_warmup=0, eager_rounds=0, eager_warmup=0)
-    
-    cfg, host = stripping_cfg
-    cfg.fmm = None
 
     jb.measure(
         fn=fmdj.time_integration.simulate, fn_jit=fmdj.time_integration.simulate.jit, 
-        p=nfw_particles, tend=host.tcirc(150.)*1., nsteps=1000, cfg=cfg, tag="sim"
+        p=particles_nfw, tend=host.tcirc(150.)*1., nsteps=200, cfg=cfg
+    )
+
+@pytest.mark.parametrize("npart", [1024*8], indirect=True)
+def bench_sim_direct_sum(jax_bench, particles_nfw, stripping_cfg):
+    jb = jax_bench(jit_rounds=1, jit_warmup=0, eager_rounds=0, eager_warmup=0)
+    
+    cfg, host = stripping_cfg
+    cfg = replace(cfg, fmm=None)
+
+    jb.measure(
+        fn=fmdj.time_integration.simulate, fn_jit=fmdj.time_integration.simulate.jit, 
+        p=particles_nfw, tend=host.tcirc(150.)*1., nsteps=1000, cfg=cfg, tag="sim"
     )
 
     def loss(p):
@@ -60,5 +49,5 @@ def bench_sim_direct_sum(jax_bench, nfw_particles, stripping_cfg):
 
     jb.measure(
         fn_jit=lossgrad,
-        p=nfw_particles, tag="grad"
+        p=particles_nfw, tag="grad"
     )
