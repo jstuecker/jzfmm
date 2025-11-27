@@ -11,19 +11,19 @@ N = int(1024*1024)
 
 pos0 = jax.random.normal(jax.random.PRNGKey(0), (N,3), dtype=jnp.float32) * 1.0
 mass0 = jnp.ones(len(pos0), dtype=pos0.dtype)
-xm = jnp.concatenate([pos0, mass0[:,None]], axis=-1)
+part = fmdj.data.PosMass(pos0, mass0)
 
 import time
 t0 = time.time()
 
-fphi = fmdj.fmm.direct_force_and_potential.jit(xm, softening=eps, kahan=True)
+fphi = fmdj.fmm.direct_force_and_potential.jit(part.posm(), softening=eps, kahan=True)
 
 for p in (1,2,3,4,5):
     cfg = fmdj.Config(softening=eps)
     cfg.fmm.p = p
     cfg.fmm.kahan_summation = True
 
-    fphi_new = fmdj.fmm.fmm_force_and_potential.jit(pos0, mass0, cfg)
+    fphi_new = fmdj.fmm.fmm_force_and_potential.jit(part, cfg)
 
     rel_err = jnp.linalg.norm(fphi_new[:,:3] - fphi[:,:3], axis=-1)/jnp.linalg.norm(fphi[:,:3], axis=-1)
 

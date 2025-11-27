@@ -28,6 +28,8 @@ class Particles():
     cpos : jnp.ndarray | None = None
     cvel : jnp.ndarray | None = None
 
+    def pos_mass(self):
+        return PosMass(pos=self.pos, mass=self.mass)
     def apos(self):
         return self.pos if self.cpos is None else self.pos + self.cpos
     def avel(self):

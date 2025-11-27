@@ -200,14 +200,9 @@ direct_potential_scan_jax.jit = jax.jit(direct_potential_scan_jax, static_argnam
 #                                         Master Functions                                         #
 # ------------------------------------------------------------------------------------------------ #
 
-def fmm_force_and_potential(pos, mass, cfg : Config):
-    if mass is None:
-        mass = jnp.ones((pos.shape[0],), dtype=pos.dtype)
-    elif jnp.shape(mass) != jnp.shape(pos)[:-1]:
-        mass = jnp.broadcast_to(mass, pos.shape[:-1])
-
-    posz, isortz = pos_zorder_sort(pos)
-    particlesz = PosMass(pos=posz, mass=mass[isortz])
+def fmm_force_and_potential(part: PosMass, cfg : Config):
+    posz, isortz = pos_zorder_sort(part.pos)
+    particlesz = PosMass(pos=posz, mass=part.mass[isortz])
 
     th = build_tree_hierarchy(particlesz, cfg)
     loc, ilist = evaluate_interaction_hierarchy(th, cfg=cfg)
@@ -219,14 +214,13 @@ def fmm_force_and_potential(pos, mass, cfg : Config):
 
     fphi_unsorted = jnp.zeros_like(fphi).at[isortz].set(fphi)
     return fphi_unsorted
-fmm_force_and_potential.jit = jax.jit(fmm_force_and_potential, static_argnames=("cfg", "return_sorted"))
+fmm_force_and_potential.jit = jax.jit(fmm_force_and_potential, static_argnames=("cfg",))
 
-def force_and_potential(pos, mass, cfg : Config, separately=False):
+def force_and_potential(p: PosMass, cfg : Config, separately=False):
     if cfg.fmm is None: # Use direct summation
-        xm = jnp.concatenate([pos, mass[:,None]], axis=-1)
-        fphi = direct_force_and_potential(xm, softening=cfg.softening, kahan=True) * cfg.G()
+        fphi = direct_force_and_potential(p.posm(), softening=cfg.softening, kahan=True) * cfg.G()
     else:
-        fphi = fmm_force_and_potential(pos, mass, cfg=cfg) * cfg.G()
+        fphi = fmm_force_and_potential(p, cfg=cfg) * cfg.G()
 
     if separately:
         return fphi[:,0:3], fphi[:,3]

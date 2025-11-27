@@ -39,7 +39,7 @@ def bench_fmm_npart(jax_bench, pos_mass_z, cfg):
     jb = jax_bench(jit_rounds=20, jit_warmup=2)
 
     jb.measure(fn_jit=fmdj.fmm.fmm_force_and_potential.jit,
-               pos=pos_mass_z.pos, mass=pos_mass_z.mass, cfg=cfg)
+               part=pos_mass_z, cfg=cfg)
 
 @pytest.mark.parametrize("p", [1,2,3,4,5])
 def bench_fmm_p(jax_bench, p, pos_mass_z):
@@ -47,7 +47,7 @@ def bench_fmm_p(jax_bench, p, pos_mass_z):
 
     jb = jax_bench(jit_rounds=20, jit_warmup=2)
     jb.measure(fn_jit=fmdj.fmm.fmm_force_and_potential.jit,
-               pos=pos_mass_z.pos, mass=pos_mass_z.mass, cfg=cfg)
+               part=pos_mass_z, cfg=cfg)
 
 @pytest.mark.parametrize("p", [3,4,5])
 def bench_fmm_steps(jax_bench, p, pos_mass):
