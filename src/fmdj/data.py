@@ -9,6 +9,22 @@ def static_field(*args, **kwargs):
 
 @jax.tree_util.register_dataclass
 @dataclass
+class LocalExpansion:
+    values: jnp.ndarray
+
+    def fphi(self):
+        return jnp.concatenate([self.force(), self.potential()[...,None]], axis=-1)
+    def potential(self):
+        return self.values[:, 0]
+    def force(self):
+        assert self.values.shape[1] >= 4, "Force components not available"
+        return -self.values[:, 1:4]
+    def tide(self):
+        assert self.values.shape[1] >= 10, "Tidal components not available"
+        return -self.values[:, 4:10]
+
+@jax.tree_util.register_dataclass
+@dataclass
 class PosMass:
     pos: jnp.ndarray  # (Nparticles, 3)
     mass: jnp.ndarray  # (Nparticles,)
@@ -20,8 +36,7 @@ class PosMass:
 @dataclass
 class Particles(PosMass):
     vel : jnp.ndarray
-    acc : jnp.ndarray | None = None
-    pot : jnp.ndarray | None = None
+    loc : LocalExpansion | None = None
 
     cpos : jnp.ndarray | None = None
     cvel : jnp.ndarray | None = None
@@ -45,22 +60,6 @@ class Multipoles:
         return self.xcent
     def get(self, i):
         return self.values[:, i]
-
-@jax.tree_util.register_dataclass
-@dataclass
-class LocalExpansion:
-    values: jnp.ndarray
-
-    def fphi(self):
-        return jnp.concatenate([self.force(), self.potential()[...,None]], axis=-1)
-    def potential(self):
-        return self.values[:, 0]
-    def force(self):
-        assert self.values.shape[1] >= 4, "Force components not available"
-        return -self.values[:, 1:4]
-    def tide(self):
-        assert self.values.shape[1] >= 10, "Tidal components not available"
-        return -self.values[:, 4:10]
 
 @jax.tree_util.register_dataclass
 @dataclass

@@ -1,4 +1,4 @@
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import Generator
 import time
 import jax.numpy as jnp
@@ -6,7 +6,7 @@ import jax
 from .config import Config
 from .fmm import force_and_potential
 from .tools import log
-from fmdj.data import Particles
+from fmdj.data import Particles, LocalExpansion
 
 def kick(vel, acc, dt, mask=None):
     if mask is not None:
@@ -21,7 +21,7 @@ def drift(pos, vel, dt, mask=None):
         return pos + vel * dt
 
 def find_center(p : Particles, cfg : Config = None):
-    ebind = p.pot + 0.5 * jnp.sum(p.vel**2, axis=-1)
+    ebind = p.loc.potential() + 0.5 * jnp.sum(p.vel**2, axis=-1)
     if cfg.centered > 1:
         # sort by most boundedness
         i = jnp.argsort(ebind)
@@ -63,16 +63,16 @@ def ext_acc(p : Particles, t, cfg : Config):
 def timestep(p : Particles, dt, cfg : Config, t=0., mask=None):
     p = replace(p)  # Make a copy to avoid modifying the input
 
-    if p.acc is None:
-        p.acc, p.pot = force_and_potential.jit(p, cfg=cfg, separately=True)
+    if p.loc is None:
+        p.loc = force_and_potential(p, cfg=cfg)
 
-    vh = kick(p.vel, p.acc + ext_acc(p, t, cfg), 0.5*dt, mask=mask)
+    vh = kick(p.vel, p.loc.force() + ext_acc(p, t, cfg), 0.5*dt, mask=mask)
     p.pos = drift(p.pos, vh, dt, mask=mask)
     if p.cpos is not None:
         p.cpos = p.cpos + p.cvel * dt
 
-    p.acc, p.pot = force_and_potential.jit(p, cfg=cfg, separately=True)
-    p.vel = kick(vh, p.acc + ext_acc(p, t + dt, cfg), 0.5*dt, mask=mask)
+    p.loc = force_and_potential.jit(p, cfg=cfg)
+    p.vel = kick(vh, p.loc.force() + ext_acc(p, t + dt, cfg), 0.5*dt, mask=mask)
 
     if cfg.centered:
         p = shift_reference_center(p, cfg=cfg)
@@ -134,10 +134,9 @@ def clean_particles(p: Particles) -> Particles:
     p.vel = jnp.asarray(p.vel)
     p.mass = jnp.asarray(p.mass)
 
-    if p.pot is None:
-        p.pot = jnp.zeros_like(p.mass)
-    if p.acc is None:
-        p.acc = jnp.zeros_like(p.pos)
+    if p.loc is None:
+        p.loc = LocalExpansion(jnp.zeros((p.pos.shape[0], 4), dtype=p.pos.dtype))
+    
     return p
 
 def simulate_with_outputs(

@@ -220,14 +220,10 @@ def fast_multipole_method(part: PosMass, cfg: Config, pout: int = 1) -> LocalExp
     return LocalExpansion(loc[inv_sort] * cfg.G())
 fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg", "pout"))
 
-def force_and_potential(p: PosMass, cfg : Config, separately=False):
-    if cfg.fmm is None: # Use direct summation
+def force_and_potential(p: PosMass, cfg : Config) -> LocalExpansion:
+    if cfg.fmm is None:
         fphi = direct_force_and_potential(p.posm(), softening=cfg.softening, kahan=True) * cfg.G()
+        return LocalExpansion(jnp.concatenate([fphi[:,3:4], -fphi[:,0:3]], axis=-1))
     else:
-        fphi = fast_multipole_method(p, cfg=cfg).fphi()
-
-    if separately:
-        return fphi[:,0:3], fphi[:,3]
-    else:
-        return fphi
-force_and_potential.jit = jax.jit(force_and_potential, static_argnames=("cfg", "separately"))
+        return fast_multipole_method(p, cfg=cfg, pout=1)
+force_and_potential.jit = jax.jit(force_and_potential, static_argnames=("cfg",))
