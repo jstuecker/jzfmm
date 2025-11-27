@@ -200,27 +200,31 @@ direct_potential_scan_jax.jit = jax.jit(direct_potential_scan_jax, static_argnam
 #                                         Master Functions                                         #
 # ------------------------------------------------------------------------------------------------ #
 
-def fmm_force_and_potential(part: PosMass, cfg : Config):
+def fast_multipole_method(part: PosMass, cfg: Config, pout: int = 1) -> LocalExpansion:
+    assert pout == 1, "Only pout=1 (potential only) is supported currently."
+
     posz, isortz = pos_zorder_sort(part.pos)
     particlesz = PosMass(pos=posz, mass=part.mass[isortz])
 
     th = build_tree_hierarchy(particlesz, cfg)
     loc, ilist = evaluate_interaction_hierarchy(th, cfg=cfg)
 
-    phif_loc = shift_local_to_children(th[0].ispl, loc, th[0].mp.center(), particlesz.pos, pout=1)
-    lexp = LocalExpansion(values=phif_loc)
+    node_node_loc = shift_local_to_children(th[0].ispl, loc, th[0].mp.center(), particlesz.pos, pout=pout)
 
-    fphi = grouped_force_and_pot(particlesz, th[0], ilist, cfg=cfg) + lexp.fphi()
+    leaf_leaf_fphi = grouped_force_and_pot(particlesz, th[0], ilist, cfg=cfg)
+    leaf_leaf_loc = jnp.concatenate([leaf_leaf_fphi[:,3:4], -leaf_leaf_fphi[:,0:3]], axis=-1)
+    loc = leaf_leaf_loc + node_node_loc
 
-    fphi_unsorted = jnp.zeros_like(fphi).at[isortz].set(fphi)
-    return fphi_unsorted
-fmm_force_and_potential.jit = jax.jit(fmm_force_and_potential, static_argnames=("cfg",))
+    inv_sort = jnp.zeros_like(isortz).at[isortz].set(jnp.arange(len(isortz), dtype=isortz.dtype))
+
+    return LocalExpansion(loc[inv_sort] * cfg.G())
+fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg", "pout"))
 
 def force_and_potential(p: PosMass, cfg : Config, separately=False):
     if cfg.fmm is None: # Use direct summation
         fphi = direct_force_and_potential(p.posm(), softening=cfg.softening, kahan=True) * cfg.G()
     else:
-        fphi = fmm_force_and_potential(p, cfg=cfg) * cfg.G()
+        fphi = fast_multipole_method(p, cfg=cfg).fphi()
 
     if separately:
         return fphi[:,0:3], fphi[:,3]

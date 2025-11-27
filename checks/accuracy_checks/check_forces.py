@@ -16,14 +16,15 @@ part = fmdj.data.PosMass(pos0, mass0)
 import time
 t0 = time.time()
 
-fphi = fmdj.fmm.direct_force_and_potential.jit(part.posm(), softening=eps, kahan=True)
+cfg = fmdj.Config(softening=eps)
+cfg.fmm.kahan_summation = True
+
+fphi = fmdj.fmm.direct_force_and_potential.jit(part.posm(), softening=eps, kahan=True) * cfg.G()
 
 for p in (1,2,3,4,5):
-    cfg = fmdj.Config(softening=eps)
     cfg.fmm.p = p
-    cfg.fmm.kahan_summation = True
 
-    fphi_new = fmdj.fmm.fmm_force_and_potential.jit(part, cfg)
+    fphi_new = fmdj.fmm.fast_multipole_method.jit(part, cfg).force()
 
     rel_err = jnp.linalg.norm(fphi_new[:,:3] - fphi[:,:3], axis=-1)/jnp.linalg.norm(fphi[:,:3], axis=-1)
 

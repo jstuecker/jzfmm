@@ -38,7 +38,7 @@ def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
 def bench_fmm_npart(jax_bench, pos_mass_z, cfg):
     jb = jax_bench(jit_rounds=20, jit_warmup=2)
 
-    jb.measure(fn_jit=fmdj.fmm.fmm_force_and_potential.jit,
+    jb.measure(fn_jit=fmdj.fmm.fast_multipole_method.jit,
                part=pos_mass_z, cfg=cfg)
 
 @pytest.mark.parametrize("p", [1,2,3,4,5])
@@ -46,7 +46,7 @@ def bench_fmm_p(jax_bench, p, pos_mass_z):
     cfg = Config(fmm=FMMConfig(p=p))
 
     jb = jax_bench(jit_rounds=20, jit_warmup=2)
-    jb.measure(fn_jit=fmdj.fmm.fmm_force_and_potential.jit,
+    jb.measure(fn_jit=fmdj.fmm.fast_multipole_method.jit,
                part=pos_mass_z, cfg=cfg)
 
 @pytest.mark.parametrize("p", [3,4,5])
