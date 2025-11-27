@@ -64,14 +64,14 @@ def timestep(p : Particles, dt, cfg : Config, t=0., mask=None):
     p = replace(p)  # Make a copy to avoid modifying the input
 
     if p.acc is None:
-        p.acc, p.pot = force_and_potential.jit(p.pos_mass(), cfg=cfg, separately=True)
+        p.acc, p.pot = force_and_potential.jit(p, cfg=cfg, separately=True)
 
     vh = kick(p.vel, p.acc + ext_acc(p, t, cfg), 0.5*dt, mask=mask)
     p.pos = drift(p.pos, vh, dt, mask=mask)
     if p.cpos is not None:
         p.cpos = p.cpos + p.cvel * dt
 
-    p.acc, p.pot = force_and_potential.jit(p.pos_mass(), cfg=cfg, separately=True)
+    p.acc, p.pot = force_and_potential.jit(p, cfg=cfg, separately=True)
     p.vel = kick(vh, p.acc + ext_acc(p, t + dt, cfg), 0.5*dt, mask=mask)
 
     if cfg.centered:

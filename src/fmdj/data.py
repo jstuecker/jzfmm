@@ -18,18 +18,14 @@ class PosMass:
 
 @jax.tree_util.register_dataclass
 @dataclass
-class Particles():
-    pos : jnp.ndarray
+class Particles(PosMass):
     vel : jnp.ndarray
-    mass : jnp.ndarray
     acc : jnp.ndarray | None = None
     pot : jnp.ndarray | None = None
 
     cpos : jnp.ndarray | None = None
     cvel : jnp.ndarray | None = None
 
-    def pos_mass(self):
-        return PosMass(pos=self.pos, mass=self.mass)
     def apos(self):
         return self.pos if self.cpos is None else self.pos + self.cpos
     def avel(self):

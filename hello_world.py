@@ -21,7 +21,7 @@ print(args.show)
 prof = aegis.profiles.NFWProfile(conc=10., r200c=10.)
 pos0, vel0, m = prof.sample_particles(1024*128, result="pos_vel_m", rpmin=1e-3, ramax=10.)
 
-p0 = fmdj.data.Particles(jnp.array(pos0), jnp.array(vel0), jnp.array(m))
+p0 = fmdj.data.Particles(jnp.array(pos0), jnp.array(m), jnp.array(vel0))
 cfg = fmdj.config.Config()
 cfg.fmm.alloc_fac_nodes = 3.0
 cfg.softening = 1e-2
