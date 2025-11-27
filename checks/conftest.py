@@ -45,7 +45,9 @@ def particles_blob(npart):
     m = jnp.ones_like(x[:,0]) * 1.
     vel = jnp.zeros_like(x)
 
-    return fmdj.data.Particles(x, m, vel, cpos=jnp.array([0.,0.,0.]), cvel=jnp.array([0.,0.,0.0]))
+    loc = fmdj.data.LocalExpansion(jnp.zeros((npart,4), dtype=jnp.float32))
+
+    return fmdj.data.Particles(x, m, vel, cpos=jnp.array([0.,0.,0.]), cvel=jnp.array([0.,0.,0.0]), loc=loc)
 
 @pytest.fixture
 def particles_nfw(npart):
@@ -55,5 +57,6 @@ def particles_nfw(npart):
     part = fmdj.data.Particles(jnp.array(pos0), jnp.array(m), jnp.array(vel0))
     part.cpos = jnp.array((150.,0.,0.))
     part.cvel = jnp.array((0.,prof.vcirc(150.),0.))
+    part.loc = fmdj.data.LocalExpansion(jnp.zeros((npart,4), dtype=jnp.float32))
 
     return part

@@ -5,8 +5,7 @@ import fmdj
 from fmdj.config import Config
 from fmdj.data import TreePlane, InteractionList, SegmentedNDArray, PosMass, dense_interaction_list
 from fmdj.tools import conditional_callback, cumsum_starting_with_zero, fori_dynamic_over_static, inverse_of_splits
-from fmdj.multipoles import shift_local_to_local_jax
-from .jaxonly_multipoles import ilist_node_to_node
+from .jaxonly_multipoles import ilist_node_to_node, shift_local_to_local_jax
 
 # ------------------------------------------------------------------------------------------------ #
 #                                         Interaction Lists                                        #
