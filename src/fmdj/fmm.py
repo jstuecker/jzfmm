@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from .config import Config
 from .data import TreePlane, PosMass, InteractionList, dense_interaction_list
 from .ztree import pos_zorder_sort, build_tree_hierarchy
-from .multipoles import shift_local_to_local, evaluate_local_fphi
+from .multipoles import shift_local_to_local_jax, evaluate_local_fphi
 
 import fmdj_cuda.ffi_fmm as ffi_fmm
 import fmdj_cuda.ffi_forces as ffi_forces
@@ -87,7 +87,7 @@ def evaluate_plane_interactions(
     # Evaluate L2L part
     if loc_lr is not None:
         ipar = plane_lr.icoarse_of_fine()
-        loc = loc + shift_local_to_local(loc_lr[ipar], plane.mp.center() - plane_lr.mp.center()[ipar])
+        loc = loc + shift_local_to_local_jax(loc_lr[ipar], plane.mp.center() - plane_lr.mp.center()[ipar])
     
     return loc, new_ilist
 evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])

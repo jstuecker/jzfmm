@@ -5,7 +5,7 @@ import fmdj
 from fmdj.config import Config
 from fmdj.data import TreePlane, InteractionList, SegmentedNDArray, PosMass, dense_interaction_list
 from fmdj.tools import conditional_callback, cumsum_starting_with_zero, fori_dynamic_over_static, inverse_of_splits
-from fmdj.multipoles import shift_local_to_local
+from fmdj.multipoles import shift_local_to_local_jax
 from .jaxonly_multipoles import ilist_node_to_node
 
 # ------------------------------------------------------------------------------------------------ #
@@ -108,7 +108,7 @@ def jaxonly_evaluate_plane_interactions(plane: TreePlane,
     loc = ilist_node_to_node(plane.mp.center(), plane.mp.values, interactions, irange, cfg=cfg)
     if loc_lr is not None:
         ipar = plane_lr.icoarse_of_fine()
-        loc = loc + shift_local_to_local(loc_lr[ipar], plane.mp.center() - plane_lr.mp.center()[ipar])
+        loc = loc + shift_local_to_local_jax(loc_lr[ipar], plane.mp.center() - plane_lr.mp.center()[ipar])
 
     # Some logging
     open_frac = ilist_open.nfilled / ilist.nfilled
@@ -216,7 +216,7 @@ def new_eval(
     new_ilist = InteractionList(offsets, iother = new_ilist, nfilled = offsets[-1])
 
     if loc_lr is not None:
-        Loc = Loc + shift_local_to_local(loc_lr[iparent], plane.mp.center() - plane_lr.mp.center()[iparent])
+        Loc = Loc + shift_local_to_local_jax(loc_lr[iparent], plane.mp.center() - plane_lr.mp.center()[iparent])
 
     # Some logging
     nfilled, ntot = offsets[-1], jnp.sum(nint*node_size[iparent])

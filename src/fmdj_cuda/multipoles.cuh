@@ -347,6 +347,136 @@ __global__ void CoarsenMultipoles(
 }
 
 /* ---------------------------------------------------------------------------------------------- */
+/*                                         L2L Translation                                        */
+/* ---------------------------------------------------------------------------------------------- */
+
+template<int p>
+__device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out, float3 dpos) {
+
+    // Shift in x
+    int iflat = 0;
+    #pragma unroll
+    for(int ksum = 0; ksum <= p; ksum++) {
+        #pragma unroll
+        for(int kz = 0; kz <= ksum; kz++) {
+            #pragma unroll
+            for(int ky = 0; ky <= ksum - kz; ky++) {
+                const int kx = ksum - ky - kz;
+
+                float lnew = 0.f;
+                #pragma unroll
+                for(int i = kx; i <= p - ky - kz; i++) {
+                    float coeff = binomial(i, kx);
+                    lnew += coeff * powi_upto6(dpos.x, i - kx) * loc[multi_to_flat(i, ky, kz)];
+                }
+
+                loc_out[iflat] = lnew;
+                iflat += 1;
+            }
+        }
+    }
+        
+    // Shift in y
+    iflat = 0;
+    #pragma unroll
+    for(int ksum = 0; ksum <= p; ksum++) {
+        #pragma unroll
+        for(int kz = 0; kz <= ksum; kz++) {
+            #pragma unroll
+            for(int ky = 0; ky <= ksum - kz; ky++) {
+                const int kx = ksum - ky - kz;
+
+                float lnew = 0.f;
+                #pragma unroll
+                for(int j = ky; j <= p - kx - kz; j++) {
+                    float coeff = binomial(j, ky);
+                    lnew += coeff * powi_upto6(dpos.y, j - ky) * loc_out[multi_to_flat(kx, j, kz)];
+                }
+
+                loc[iflat] = lnew;
+                iflat += 1;
+            }
+        }
+    }
+
+    // Shift in z
+    iflat = 0;
+    #pragma unroll
+    for(int ksum = 0; ksum <= p; ksum++) {
+        #pragma unroll
+        for(int kz = 0; kz <= ksum; kz++) {
+            #pragma unroll
+            for(int ky = 0; ky <= ksum - kz; ky++) {
+                const int kx = ksum - ky - kz;
+                float lnew = 0.f;
+                #pragma unroll
+                for(int l = kz; l <= p - kx - ky; l++) {
+                    float coeff = binomial(l, kz);
+                    lnew += coeff * powi_upto6(dpos.z, l - kz) * loc[multi_to_flat(kx, ky, l)];
+                }
+
+                loc_out[iflat] = lnew;
+                iflat += 1;
+            }
+        }
+    }
+}
+
+template<int p>
+__global__ void TranslateLocalToLocal(
+    const int* __restrict__ isplit,
+    const float* __restrict__ loc_node,
+    const float3* __restrict__ xnode,
+    const float3* __restrict__ xchild,
+    float* __restrict__ loc_child,
+    const int nnodes,
+    const int pout
+) {
+    constexpr int ncomb = NCOMB(p);
+    
+    int inode = blockIdx.x * blockDim.x + threadIdx.x;
+    if (inode >= nnodes)
+        return;
+    
+    int istart = isplit[inode], iend = isplit[inode + 1];
+    if (istart >= iend)
+        return;
+    
+    float3 xn = xnode[inode];
+    float loc_in[ncomb];
+    #pragma unroll
+    for (int iM = 0; iM < ncomb; iM++) {
+        loc_in[iM] = loc_node[inode * ncomb + iM];
+    }
+    
+    for(int ichild = istart; ichild < iend; ichild++) {
+        float3 dpos = xchild[ichild] - xn;
+
+        float loc_out[ncomb];
+
+        float loc_src[ncomb];
+        #pragma unroll
+        for (int i = 0; i < ncomb; i++) {
+            loc_src[i] = loc_in[i];
+        }
+
+        shift_local_to_local<p>(loc_src, loc_out, dpos);
+
+        // write output local expansion
+        // we allow to write only a subset of the components
+        // for example:
+        // p=0 will output only the potential
+        // p=1 potential and force and
+        // p=2 potential, force and hessian
+        #pragma unroll
+        for (int iM = 0; iM < min(ncomb, NCOMB(pout)); iM++) {
+            loc_child[ichild * NCOMB(pout) + iM] = loc_out[iM];
+        }
+    }
+}
+
+
+/* ---------------------------------------------------------------------------------------------- */
 /*                                         M2L Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 

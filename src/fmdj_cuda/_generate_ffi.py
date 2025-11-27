@@ -71,13 +71,14 @@ kernels = parse.get_functions_from_file(
     only_kernels=True
 )
 
-print(list(kernels.keys()))
 for kernel in kernels.values():
     kernel.template_par["p"].instances = p_instance_values
     kernel.init_outputs_zero = True
 
 kernels["MultipolesFromParticles"].grid_size_expression = "isplit.element_count() - 1"
 kernels["CoarsenMultipoles"].grid_size_expression = "isplit.element_count() - 1"
+kernels["TranslateLocalToLocal"].grid_size_expression = "div_ceil(isplit.element_count() - 1, block_size)"
+kernels["TranslateLocalToLocal"].par["nnodes"].expression = "isplit.element_count() - 1"
 
 gen.generate_ffi_module_file(
     output_file = str(HERE / "generated/ffi_multipoles.cu"), 
@@ -95,8 +96,6 @@ functions = parse.get_functions_from_file(
     names=["PosZorderSort", "SummarizeLeaves"],
     only_kernels=False
 )
-
-print(list(functions.keys()))
 
 functions["PosZorderSort"].par["size"].expression = "pos_in.element_count()/3"
 functions["PosZorderSort"].par["tmp_bytes"].expression = "tmp_buffer->size_bytes()"

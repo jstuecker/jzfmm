@@ -11,6 +11,7 @@ from .config import Config
 
 jax.ffi.register_ffi_target("MultipolesFromParticles", ffi_multipoles.MultipolesFromParticles(), platform="CUDA")
 jax.ffi.register_ffi_target("CoarsenMultipoles", ffi_multipoles.CoarsenMultipoles(), platform="CUDA")
+jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLocalToLocal(), platform="CUDA")
 
 def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
     assert cfg.fmm.multipoles_around_com
@@ -19,10 +20,8 @@ def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> M
 
     assert posm.dtype == jnp.float32
     assert tp.ispl.dtype == jnp.int32
-
-    ncomb = np.array([1, 4, 10, 20, 35, 56, 84, 120, 165])
     
-    out_mp = jax.ShapeDtypeStruct((tp.size(), ncomb[cfg.fmm.p]), posm.dtype)
+    out_mp = jax.ShapeDtypeStruct((tp.size(), num_multi(cfg.fmm.p)), posm.dtype)
     out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), posm.dtype)
 
     mp, xcent = jax.ffi.ffi_call("MultipolesFromParticles", (out_mp, out_xcent))(
@@ -41,9 +40,7 @@ def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipo
     assert mp.values.dtype == jnp.float32
     assert tp.ispl.dtype == jnp.int32
 
-    ncomb = np.array([1, 4, 10, 20, 35, 56, 84, 120, 165])
-
-    out_mp = jax.ShapeDtypeStruct((tp.size(), ncomb[mp.p]), dtype)
+    out_mp = jax.ShapeDtypeStruct((tp.size(), num_multi(mp.p)), dtype)
     out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), dtype)
 
     mpnew, xcent = jax.ffi.ffi_call("CoarsenMultipoles", (out_mp, out_xcent))(
@@ -51,6 +48,36 @@ def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipo
     )
     return Multipoles(xcent=xcent, values=mpnew, p=mp.p, around_com=mp.around_com)
 coarsen_multipoles.jit = jax.jit(coarsen_multipoles, static_argnames=['cfg'])
+
+def shift_local_to_children(
+        # tp: TreePlane, 
+        ispl: jnp.array,
+        xnode: jnp.array,
+        loc: jnp.array, 
+        xchild: jnp.array, 
+        *, cfg: Config, 
+        pout=None,
+        block_size=32
+    ) -> jnp.array:
+    """Shifts local expansions to child nodes"""
+    dtype = loc.dtype
+
+    assert loc.dtype == jnp.float32
+    # assert tp.ispl.dtype == jnp.int32
+
+    if pout is None:
+        pout = cfg.fmm.p
+
+    assert pout <= cfg.fmm.p
+
+    out_loc = jax.ShapeDtypeStruct((xchild.shape[0], num_multi(pout)), dtype)
+
+    locnew = jax.ffi.ffi_call("TranslateLocalToLocal", (out_loc,))(
+        ispl, loc, xnode, xchild,
+        p=np.int32(cfg.fmm.p), pout=np.int32(pout), block_size=np.uint64(block_size)
+    )[0]
+    return locnew
+
 
 # ------------------------------------------------------------------------------------------------ #
 #                                        Some Combinatorics                                        #
@@ -93,7 +120,7 @@ def binom(n, k):
 #                                      Local 2 Local operators                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def shift_local_to_local(L, x0):
+def shift_local_to_local_jax(L, dx):
     L = L.T
     p = p_of_num_multi(L.shape[0])
     index_of_mp = get_index_map(p)
@@ -103,7 +130,7 @@ def shift_local_to_local(L, x0):
     for a, b, c in iter_multi(p):
         Lnew = 0.
         for i in range(a, p+1-b-c):
-            Lnew = Lnew + binom(i, a) * x0[..., 0]**(i - a) * L[index_of_mp[(i, b, c)]]
+            Lnew = Lnew + binom(i, a) * dx[..., 0]**(i - a) * L[index_of_mp[(i, b, c)]]
         Lx.append(Lnew)
 
     # Stage 2: shift in y
@@ -111,7 +138,7 @@ def shift_local_to_local(L, x0):
     for a, b, c in iter_multi(p):
         Lnew = 0.
         for j in range(b, p+1-a-c):
-            Lnew = Lnew + binom(j, b) * x0[..., 1]**(j - b) * Lx[index_of_mp[(a, j, c)]]
+            Lnew = Lnew + binom(j, b) * dx[..., 1]**(j - b) * Lx[index_of_mp[(a, j, c)]]
         Lxy.append(Lnew)
 
     # Stage 3: shift in z
@@ -119,7 +146,7 @@ def shift_local_to_local(L, x0):
     for a, b, c in iter_multi(p):
         Lnew = 0.
         for k in range(c, p+1-a-b):
-            Lnew = Lnew + binom(k, c) * x0[..., 2]**(k - c) * Lxy[index_of_mp[(a, b, k)]]
+            Lnew = Lnew + binom(k, c) * dx[..., 2]**(k - c) * Lxy[index_of_mp[(a, b, k)]]
         Lxyz.append(Lnew)
 
     return jnp.stack(Lxyz, axis=-1)
