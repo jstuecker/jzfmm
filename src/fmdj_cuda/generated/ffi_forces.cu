@@ -28,7 +28,7 @@ namespace ffi = xla::ffi;
 ffi::Error ForceAndPotentialFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer xm,
-    ffi::Result<ffi::AnyBuffer> fphi,
+    ffi::Result<ffi::AnyBuffer> loc_out,
     float epsilon,
     bool kahan,
     size_t block_size
@@ -41,11 +41,11 @@ ffi::Error ForceAndPotentialFFIHost(
     // Build a bundled argument list for cudaLaunchKernel
     // For pointers we need to create a pointer to the pointer
     PosMass* xm_val = reinterpret_cast<PosMass*>(xm.untyped_data());
-    ForcePot* fphi_val = reinterpret_cast<ForcePot*>(fphi->untyped_data());
+    LocalExp* loc_out_val = reinterpret_cast<LocalExp*>(loc_out->untyped_data());
 
     void* args[] = {
         &xm_val,
-        &fphi_val,
+        &loc_out_val,
         &n,
         &epsilon
     };
@@ -85,7 +85,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // xm
-        .Ret<ffi::AnyBuffer>() // fphi
+        .Ret<ffi::AnyBuffer>() // loc_out
         .Attr<float>("epsilon")
         .Attr<bool>("kahan")
         .Attr<size_t>("block_size"),
@@ -98,7 +98,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 
 ffi::Error BwdForceAndPotentialFFIHost(
     cudaStream_t stream,
-    ffi::AnyBuffer gfphi,
+    ffi::AnyBuffer gloc,
     ffi::AnyBuffer xm,
     ffi::Result<ffi::AnyBuffer> gxm,
     float epsilon,
@@ -112,12 +112,12 @@ ffi::Error BwdForceAndPotentialFFIHost(
     
     // Build a bundled argument list for cudaLaunchKernel
     // For pointers we need to create a pointer to the pointer
-    ForcePot* gfphi_val = reinterpret_cast<ForcePot*>(gfphi.untyped_data());
+    LocalExp* gloc_val = reinterpret_cast<LocalExp*>(gloc.untyped_data());
     PosMass* xm_val = reinterpret_cast<PosMass*>(xm.untyped_data());
     PosMass* gxm_val = reinterpret_cast<PosMass*>(gxm->untyped_data());
 
     void* args[] = {
-        &gfphi_val,
+        &gloc_val,
         &xm_val,
         &gxm_val,
         &n,
@@ -158,7 +158,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     BwdForceAndPotentialFFI, BwdForceAndPotentialFFIHost,
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
-        .Arg<ffi::AnyBuffer>() // gfphi
+        .Arg<ffi::AnyBuffer>() // gloc
         .Arg<ffi::AnyBuffer>() // xm
         .Ret<ffi::AnyBuffer>() // gxm
         .Attr<float>("epsilon")
@@ -178,7 +178,7 @@ ffi::Error GroupedForceAndPotFFIHost(
     ffi::AnyBuffer spl_ilist,
     ffi::AnyBuffer ilist_nodes,
     ffi::AnyBuffer posm,
-    ffi::Result<ffi::AnyBuffer> fphi,
+    ffi::Result<ffi::AnyBuffer> loc_out,
     float softening,
     int max_leaf_size,
     bool kahan
@@ -188,7 +188,7 @@ ffi::Error GroupedForceAndPotFFIHost(
     size_t smem = blockDim.x * sizeof(float4);
     
     // Initialize output buffers
-    cudaMemsetAsync(fphi->untyped_data(), 0, fphi->size_bytes(), stream);
+    cudaMemsetAsync(loc_out->untyped_data(), 0, loc_out->size_bytes(), stream);
     
     // Build a bundled argument list for cudaLaunchKernel
     // For pointers we need to create a pointer to the pointer
@@ -197,7 +197,7 @@ ffi::Error GroupedForceAndPotFFIHost(
     int* spl_ilist_val = reinterpret_cast<int*>(spl_ilist.untyped_data());
     int* ilist_nodes_val = reinterpret_cast<int*>(ilist_nodes.untyped_data());
     PosMass* posm_val = reinterpret_cast<PosMass*>(posm.untyped_data());
-    ForcePot* fphi_val = reinterpret_cast<ForcePot*>(fphi->untyped_data());
+    LocalExp* loc_out_val = reinterpret_cast<LocalExp*>(loc_out->untyped_data());
 
     void* args[] = {
         &node_range_val,
@@ -205,7 +205,7 @@ ffi::Error GroupedForceAndPotFFIHost(
         &spl_ilist_val,
         &ilist_nodes_val,
         &posm_val,
-        &fphi_val,
+        &loc_out_val,
         &softening,
         &max_leaf_size
     };
@@ -249,7 +249,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // spl_ilist
         .Arg<ffi::AnyBuffer>() // ilist_nodes
         .Arg<ffi::AnyBuffer>() // posm
-        .Ret<ffi::AnyBuffer>() // fphi
+        .Ret<ffi::AnyBuffer>() // loc_out
         .Attr<float>("softening")
         .Attr<int>("max_leaf_size")
         .Attr<bool>("kahan"),

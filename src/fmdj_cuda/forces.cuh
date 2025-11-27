@@ -9,7 +9,18 @@
 /*                                        Helper Functions                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-__forceinline__ __device__ ForcePot GetForceAndPot(
+struct __align__(16) LocalExp {
+    union {
+        struct {
+            float  pot;
+            float3 grad;
+        };
+
+        float4 f4;
+    };
+};
+
+__forceinline__ __device__ LocalExp GetForceAndPot(
     PosMass xmi, 
     PosMass xmj, 
     float softening2
@@ -18,17 +29,17 @@ __forceinline__ __device__ ForcePot GetForceAndPot(
     float rinv = rsqrtf(norm2(dx) + softening2);
     float minvr = xmj.mass * rinv;
 
-    ForcePot fphi = {
-        (minvr * rinv * rinv) * dx,
-        -minvr
+    LocalExp loc = {
+        -minvr,
+        -(minvr * rinv * rinv) * dx
     };
 
-    return fphi;
+    return loc;
 }
 
 __forceinline__ __device__ PosMass VJP_GFPhiToGXM(
     const PosMass xmi, const PosMass xmj, 
-    const ForcePot gi, const ForcePot gj, 
+    const LocalExp gi, const LocalExp gj, 
     float epsilon2
 ) {
     // calculates the vector jacobian product of the interaction between xmi and xmj
@@ -43,13 +54,13 @@ __forceinline__ __device__ PosMass VJP_GFPhiToGXM(
     float f1 = -rinv*rinv2;
     float f2 = 3*rinv*rinv2*rinv2;
 
-    float3 gm_diff = xmj.mass * gi.force - xmi.mass * gj.force;
+    float3 gm_diff = xmi.mass * gj.grad - xmj.mass * gi.grad;
     float fgdiff = f2*dot(gm_diff, dx) + f1 * (gi.pot * xmj.mass + gj.pot * xmi.mass);
 
     PosMass gxmi;
 
     gxmi.pos = f1 * gm_diff + fgdiff * dx;
-    gxmi.mass = f1 * dot(dx, gj.force) - rinv * gj.pot;
+    gxmi.mass = - f1 * dot(dx, gj.grad) - rinv * gj.pot;
 
     return gxmi;
 }
@@ -61,7 +72,7 @@ __forceinline__ __device__ PosMass VJP_GFPhiToGXM(
 template <bool kahan>
 __global__ void ForceAndPotential(
     const PosMass *xm,
-    ForcePot *fphi,
+    LocalExp *loc_out,
     int n,
     float epsilon
 ) {
@@ -75,8 +86,8 @@ __global__ void ForceAndPotential(
 
     extern __shared__ PosMass xmj_shared[];
 
-    ForcePot fphi_i = {0.f, 0.f, 0.f, 0.f};
-    ForcePot fphi_kahan = {0.f, 0.f, 0.f, 0.f};
+    LocalExp loc_i = {0.f, 0.f, 0.f, 0.f};
+    LocalExp loc_kahan = {0.f, 0.f, 0.f, 0.f};
 
     for (int jblock = 0; jblock < steps; jblock += 1) {
         int num = min(blockDim.x, n - blockDim.x * jblock);
@@ -87,23 +98,23 @@ __global__ void ForceAndPotential(
         __syncthreads();
 
         for (int j = 0; j < num; j++) {
-            ForcePot fphi_new = GetForceAndPot(xmi, xmj_shared[j], epsilon2);
+            LocalExp loc_new = GetForceAndPot(xmi, xmj_shared[j], epsilon2);
             if(kahan)
-                kahan_add_f4(fphi_i.f4, fphi_new.f4, fphi_kahan.f4);
+                kahan_add_f4(loc_i.f4, loc_new.f4, loc_kahan.f4);
             else
-                fphi_i.f4 = fphi_i.f4 + fphi_new.f4;
+                loc_i.f4 = loc_i.f4 + loc_new.f4;
         }
     }
 
-    fphi_i.pot += xmi.mass / epsilon; // remove self-interaction from potential
+    loc_i.pot += xmi.mass / epsilon; // remove self-interaction from potential
 
     if(ipart < n)
-        fphi[blockIdx.x * blockDim.x + threadIdx.x] = fphi_i;
+        loc_out[blockIdx.x * blockDim.x + threadIdx.x] = loc_i;
 }
 
 template <bool kahan>
 __global__ void BwdForceAndPotential(
-    const ForcePot *gfphi,
+    const LocalExp *gloc,
     const PosMass *xm,
     PosMass *gxm,
     int n,
@@ -113,16 +124,16 @@ __global__ void BwdForceAndPotential(
     float epsilon2 = epsilon * epsilon;
 
     PosMass xmi;
-    ForcePot gfphi_i;
+    LocalExp gloc_i;
 
     int ipart = blockIdx.x * blockDim.x + threadIdx.x;
     if(ipart < n) {
         xmi = xm[ipart];
-        gfphi_i = gfphi[ipart];
+        gloc_i = gloc[ipart];
     }
 
     extern __shared__ PosMass xmj_shared[];
-    ForcePot* gfphi_j_shared = (ForcePot*) &xmj_shared[blockDim.x];
+    LocalExp* gloc_j_shared = (LocalExp*) &xmj_shared[blockDim.x];
 
     PosMass gxm_i = {0.f, 0.f, 0.f, 0.f};
     PosMass gxm_i_kahan = {0.f, 0.f, 0.f, 0.f};
@@ -133,14 +144,14 @@ __global__ void BwdForceAndPotential(
         __syncthreads();
         if(threadIdx.x < num) {
             xmj_shared[threadIdx.x] = xm[jblock * blockDim.x + threadIdx.x];
-            gfphi_j_shared[threadIdx.x] = gfphi[jblock * blockDim.x + threadIdx.x];
+            gloc_j_shared[threadIdx.x] = gloc[jblock * blockDim.x + threadIdx.x];
         }
         __syncthreads();
 
         for (int j = 0; j < num; j++) {
             PosMass gxm_inc = VJP_GFPhiToGXM(
                 xmi, xmj_shared[j],
-                gfphi_i, gfphi_j_shared[j],
+                gloc_i, gloc_j_shared[j],
                 epsilon2
             );
             if(kahan)
@@ -167,7 +178,7 @@ __global__ void GroupedForceAndPot(
     const int* ilist_nodes,
     const PosMass* posm,
     // outputs:
-    ForcePot* fphi,
+    LocalExp* loc_out,
     // attributes:
     float softening,
     int max_leaf_size
@@ -206,8 +217,8 @@ __global__ void GroupedForceAndPot(
         32
     );
 
-    ForcePot fphi_a = {0.f,0.f,0.f,0.f};
-    ForcePot fphi_a_kahan = {0.f,0.f,0.f,0.f};
+    LocalExp loc_a = {0.f,0.f,0.f,0.f};
+    LocalExp loc_a_kahan = {0.f,0.f,0.f,0.f};
 
     extern __shared__ PosMass xm_b[];
 
@@ -222,11 +233,11 @@ __global__ void GroupedForceAndPot(
 
         // Now compute interactions
         for(int ib=read_b_offset; ib < seg_mgr.num_loaded; ib += n_write) {
-            ForcePot fphi_new = GetForceAndPot(xaWrite, xm_b[ib], softening2);
+            LocalExp loc_new = GetForceAndPot(xaWrite, xm_b[ib], softening2);
             if(kahan)
-                kahan_add_f4(fphi_a.f4, fphi_new.f4, fphi_a_kahan.f4);
+                kahan_add_f4(loc_a.f4, loc_new.f4, loc_a_kahan.f4);
             else
-                fphi_a.f4 = fphi_a.f4 + fphi_new.f4;
+                loc_a.f4 = loc_a.f4 + loc_new.f4;
         }
 
         __syncthreads();
@@ -234,10 +245,10 @@ __global__ void GroupedForceAndPot(
 
     if(valid) {
         int iout = prange.x + a_write;
-        atomicAdd(&fphi[iout].force.x, fphi_a.force.x);
-        atomicAdd(&fphi[iout].force.y, fphi_a.force.y);
-        atomicAdd(&fphi[iout].force.z, fphi_a.force.z);
-        atomicAdd(&fphi[iout].pot, fphi_a.pot);    
+        atomicAdd(&loc_out[iout].pot, loc_a.pot);
+        atomicAdd(&loc_out[iout].grad.x, loc_a.grad.x);
+        atomicAdd(&loc_out[iout].grad.y, loc_a.grad.y);
+        atomicAdd(&loc_out[iout].grad.z, loc_a.grad.z);
     }
 }
 

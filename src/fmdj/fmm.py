@@ -111,7 +111,7 @@ def grouped_force_and_pot(particles: PosMass,
                          cfg: Config) -> jnp.ndarray:
     node_range = jnp.array([0, plane.nnodes], dtype=jnp.int32)
     
-    fphi = jax.ffi.ffi_call("GroupedForceAndPot", (
+    loc = jax.ffi.ffi_call("GroupedForceAndPot", (
         jax.ShapeDtypeStruct((particles.pos.shape[0], 4), jnp.float32),
     ))(
         node_range, plane.ispl, ilist.ispl, ilist.iother, particles.posm(),
@@ -119,9 +119,9 @@ def grouped_force_and_pot(particles: PosMass,
         kahan=bool(cfg.fmm.kahan_summation)
     )[0]
 
-    fphi = fphi.at[...,3].add(particles.mass/cfg.softening) # Remove self-interaction from potential
+    loc = loc.at[...,0].add(particles.mass/cfg.softening) # Remove self-interaction from potential
 
-    return fphi
+    return loc
 grouped_force_and_pot.jit = jax.jit(grouped_force_and_pot, static_argnames=['cfg'])
 
 # ------------------------------------------------------------------------------------------------ #
@@ -136,14 +136,14 @@ def direct_force_and_potential_fwd(xm, block_size=64, softening=1e-2, kahan=Fals
     assert softening > 0, "Epsilon must be positive to deal with self-interaction."
 
     out_type = jax.ShapeDtypeStruct(xm.shape, xm.dtype)
-    fphi = jax.ffi.ffi_call("ForceAndPotential", (out_type,))(
+    loc = jax.ffi.ffi_call("ForceAndPotential", (out_type,))(
         xm, block_size=np.uint64(block_size), epsilon=np.float32(softening), kahan=kahan)[0]
-    return fphi, xm
+    return loc, xm
 
-def force_and_potential_bwd(block_size, softening, kahan, xm, gfphi):
+def force_and_potential_bwd(block_size, softening, kahan, xm, gloc):
     out_type = jax.ShapeDtypeStruct(xm.shape, xm.dtype)
     gxm = jax.ffi.ffi_call("BwdForceAndPotential", (out_type,))(
-        gfphi, xm, block_size=np.uint64(block_size), epsilon=np.float32(softening), kahan=kahan)[0]
+        gloc, xm, block_size=np.uint64(block_size), epsilon=np.float32(softening), kahan=kahan)[0]
     return gxm,
 
 @partial(jax.custom_vjp, nondiff_argnames=("block_size", "softening", "kahan"))
@@ -211,8 +211,7 @@ def fast_multipole_method(part: PosMass, cfg: Config, pout: int = 1) -> LocalExp
 
     node_node_loc = shift_local_to_children(th[0].ispl, loc, th[0].mp.center(), particlesz.pos, pout=pout)
 
-    leaf_leaf_fphi = grouped_force_and_pot(particlesz, th[0], ilist, cfg=cfg)
-    leaf_leaf_loc = jnp.concatenate([leaf_leaf_fphi[:,3:4], -leaf_leaf_fphi[:,0:3]], axis=-1)
+    leaf_leaf_loc = grouped_force_and_pot(particlesz, th[0], ilist, cfg=cfg)
     loc = leaf_leaf_loc + node_node_loc
 
     inv_sort = jnp.zeros_like(isortz).at[isortz].set(jnp.arange(len(isortz), dtype=isortz.dtype))
@@ -222,8 +221,8 @@ fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg
 
 def force_and_potential(p: PosMass, cfg : Config) -> LocalExpansion:
     if cfg.fmm is None:
-        fphi = direct_force_and_potential(p.posm(), softening=cfg.softening, kahan=True) * cfg.G()
-        return LocalExpansion(jnp.concatenate([fphi[:,3:4], -fphi[:,0:3]], axis=-1))
+        loc = direct_force_and_potential(p.posm(), softening=cfg.softening, kahan=True) * cfg.G()
+        return LocalExpansion(loc)
     else:
         return fast_multipole_method(p, cfg=cfg, pout=1)
 force_and_potential.jit = jax.jit(force_and_potential, static_argnames=("cfg",))

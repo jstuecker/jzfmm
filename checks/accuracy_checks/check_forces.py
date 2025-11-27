@@ -19,7 +19,8 @@ t0 = time.time()
 cfg = fmdj.Config(softening=eps)
 cfg.fmm.kahan_summation = True
 
-fphi = fmdj.fmm.direct_force_and_potential.jit(part.posm(), softening=eps, kahan=True) * cfg.G()
+loc = fmdj.fmm.direct_force_and_potential.jit(part.posm(), softening=eps, kahan=True) * cfg.G()
+loc_ref = fmdj.data.LocalExpansion(loc)
 
 print(f"Direct sum. done, {time.time() - t0:.2f}s")
 
@@ -30,11 +31,11 @@ for p in (1,2,3,4,5):
 
     loc: fmdj.data.LocalExpansion = fmdj.fmm.fast_multipole_method.jit(part, cfg)
 
-    rel_err = jnp.linalg.norm(loc.force() - fphi[:,:3], axis=-1)/jnp.linalg.norm(fphi[:,:3], axis=-1)
+    rel_err = jnp.linalg.norm(loc.force() - loc_ref.force(), axis=-1)/jnp.linalg.norm(loc_ref.force(), axis=-1)
 
     axs[0].hist(np.log10(rel_err), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5,
              color="C%d"%(p-1), edgecolor='black')
-    axs[1].hist(np.log10(np.abs((loc.potential() - fphi[:,3])/fphi[:,3])), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5,
+    axs[1].hist(np.log10(np.abs((loc.potential() - loc_ref.potential())/loc_ref.potential())), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5,
              color="C%d"%(p-1), edgecolor='black')
 
     print(f"p={p} done, {time.time() - t0:.2f}s")

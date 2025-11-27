@@ -6,15 +6,16 @@ from dataclasses import replace
 
 @pytest.mark.parametrize("npart", [1024], indirect=True)
 def test_direct_sum_gradient(pos_mass_z: fmdj.data.PosMass):
-    fphi = fmdj.fmm.direct_force_and_potential.jit(pos_mass_z.posm(), softening=1e-2, kahan=True)
+    loc = fmdj.fmm.direct_force_and_potential.jit(pos_mass_z.posm(), softening=1e-2, kahan=True)
+    loc = fmdj.data.LocalExpansion(loc)
     fphi_jax = fmdj.fmm.direct_force_and_potential_jax.jit(pos_mass_z.pos, pos_mass_z.mass, softening=1e-2)
 
-    assert fphi == pytest.approx(fphi_jax, rel=1e-4, abs=1e-5)
+    assert loc.fphi() == pytest.approx(fphi_jax, rel=1e-4, abs=1e-5)
 
     def loss(xm):
-        fphi = fmdj.fmm.direct_force_and_potential(xm, softening=1e-2, kahan=True)
+        loc = fmdj.fmm.direct_force_and_potential(xm, softening=1e-2, kahan=True)
 
-        return jnp.sum(fphi)
+        return jnp.sum(fmdj.data.LocalExpansion(loc).fphi())
 
     def loss_jax(xm):
         return jnp.sum(fmdj.fmm.direct_force_and_potential_jax.jit(xm[:,0:3], xm[:,3], softening=1e-2))
