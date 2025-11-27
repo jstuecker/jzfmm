@@ -26,9 +26,8 @@ t0 = time.time()
 
 phi0 = fmdj.fmm.direct_force_and_potential.jit(xm, softening=eps, kahan=True)[:,3]
 
-# for p in (1,2,3,4,5):
 for p in (1,2,3,4,5):
-    cfg = fmdj.Config(softening=eps, verbose=2)
+    cfg = fmdj.Config(softening=eps)
     cfg.fmm.kahan_summation = True
     cfg.fmm.p = p
 

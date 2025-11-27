@@ -36,8 +36,8 @@ class Particles():
 @jax.tree_util.register_dataclass
 @dataclass
 class Multipoles:
-    xcent : jnp.ndarray # (3,) center of expansion
-    values: jnp.ndarray # Multipoles in (M, Nnodes) layout
+    xcent : jnp.ndarray
+    values: jnp.ndarray
 
     p: int = static_field(default=2)
 
@@ -47,6 +47,22 @@ class Multipoles:
         return self.xcent
     def get(self, i):
         return self.values[:, i]
+
+@jax.tree_util.register_dataclass
+@dataclass
+class LocalExpansion:
+    values: jnp.ndarray
+
+    def fphi(self):
+        return jnp.concatenate([self.force(), self.potential()[...,None]], axis=-1)
+    def potential(self):
+        return self.values[:, 0]
+    def force(self):
+        assert self.values.shape[1] >= 4, "Force components not available"
+        return -self.values[:, 1:4]
+    def tide(self):
+        assert self.values.shape[1] >= 10, "Tidal components not available"
+        return -self.values[:, 4:10]
 
 @jax.tree_util.register_dataclass
 @dataclass

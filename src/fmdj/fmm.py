@@ -4,7 +4,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 from .config import Config
-from .data import TreePlane, PosMass, InteractionList, dense_interaction_list
+from .data import TreePlane, PosMass, InteractionList, dense_interaction_list, LocalExpansion
 from .ztree import pos_zorder_sort, build_tree_hierarchy
 from .multipoles import shift_local_to_children
 
@@ -200,7 +200,7 @@ direct_potential_scan_jax.jit = jax.jit(direct_potential_scan_jax, static_argnam
 #                                         Master Functions                                         #
 # ------------------------------------------------------------------------------------------------ #
 
-def fmm_force_and_potential(pos, mass, cfg : Config, return_sorted=False):
+def fmm_force_and_potential(pos, mass, cfg : Config):
     if mass is None:
         mass = jnp.ones((pos.shape[0],), dtype=pos.dtype)
     elif jnp.shape(mass) != jnp.shape(pos)[:-1]:
@@ -213,15 +213,12 @@ def fmm_force_and_potential(pos, mass, cfg : Config, return_sorted=False):
     loc, ilist = evaluate_interaction_hierarchy(th, cfg=cfg)
 
     phif_loc = shift_local_to_children(th[0].ispl, loc, th[0].mp.center(), particlesz.pos, pout=1)
-    fphi_loc = jnp.concatenate([-phif_loc[...,1:4], phif_loc[...,0:1]], axis=-1)
+    lexp = LocalExpansion(values=phif_loc)
 
-    fphi = grouped_force_and_pot(particlesz, th[0], ilist, cfg=cfg) + fphi_loc
+    fphi = grouped_force_and_pot(particlesz, th[0], ilist, cfg=cfg) + lexp.fphi()
 
-    if return_sorted:
-        return particlesz.pos, particlesz.mass, isortz, fphi
-    else:
-        fphi_unsorted = jnp.zeros_like(fphi).at[isortz].set(fphi)
-        return fphi_unsorted
+    fphi_unsorted = jnp.zeros_like(fphi).at[isortz].set(fphi)
+    return fphi_unsorted
 fmm_force_and_potential.jit = jax.jit(fmm_force_and_potential, static_argnames=("cfg", "return_sorted"))
 
 def force_and_potential(pos, mass, cfg : Config, separately=False):
