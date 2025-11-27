@@ -50,12 +50,10 @@ def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipo
 coarsen_multipoles.jit = jax.jit(coarsen_multipoles, static_argnames=['cfg'])
 
 def shift_local_to_children(
-        # tp: TreePlane, 
         ispl: jnp.array,
+        loc: jnp.array,
         xnode: jnp.array,
-        loc: jnp.array, 
-        xchild: jnp.array, 
-        *, cfg: Config, 
+        xchild: jnp.array,
         pout=None,
         block_size=32
     ) -> jnp.array:
@@ -63,18 +61,19 @@ def shift_local_to_children(
     dtype = loc.dtype
 
     assert loc.dtype == jnp.float32
-    # assert tp.ispl.dtype == jnp.int32
+
+    p = p_of_num_multi(loc.shape[1])
 
     if pout is None:
-        pout = cfg.fmm.p
+        pout = p
 
-    assert pout <= cfg.fmm.p
+    assert (pout >= 0) and (pout <= p)
 
     out_loc = jax.ShapeDtypeStruct((xchild.shape[0], num_multi(pout)), dtype)
 
     locnew = jax.ffi.ffi_call("TranslateLocalToLocal", (out_loc,))(
         ispl, loc, xnode, xchild,
-        p=np.int32(cfg.fmm.p), pout=np.int32(pout), block_size=np.uint64(block_size)
+        p=np.int32(p), pout=np.int32(pout), block_size=np.uint64(block_size)
     )[0]
     return locnew
 
