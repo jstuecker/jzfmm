@@ -76,7 +76,7 @@ def shift_local_to_children(
         p=np.int32(p), pout=np.int32(pout), block_size=np.uint64(block_size)
     )[0]
     return locnew
-
+shift_local_to_children.jit = jax.jit(shift_local_to_children, static_argnames=['pout', 'block_size'])
 
 # ------------------------------------------------------------------------------------------------ #
 #                                        Some Combinatorics                                        #
@@ -150,7 +150,7 @@ def shift_local_to_local_jax(L, dx):
 
     return jnp.stack(Lxyz, axis=-1)
 
-def evaluate_local_fphi(L, x):
+def evaluate_local_fphi_jax(L, x):
     """Evaluates the function value of the expansion at x"""
     p = p_of_num_multi(L.shape[-1])
 
@@ -170,4 +170,4 @@ def evaluate_local_fphi(L, x):
     fphi = jnp.stack((fx, fy, fz, phi), axis=-1)
 
     return fphi
-evaluate_local_fphi.jit = jax.jit(evaluate_local_fphi)
+evaluate_local_fphi_jax.jit = jax.jit(evaluate_local_fphi_jax)

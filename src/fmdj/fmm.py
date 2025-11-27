@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from .config import Config
 from .data import TreePlane, PosMass, InteractionList, dense_interaction_list
 from .ztree import pos_zorder_sort, build_tree_hierarchy
-from .multipoles import shift_local_to_local_jax, evaluate_local_fphi, shift_local_to_children
+from .multipoles import shift_local_to_children
 
 import fmdj_cuda.ffi_fmm as ffi_fmm
 import fmdj_cuda.ffi_forces as ffi_forces
@@ -212,8 +212,8 @@ def fmm_force_and_potential(pos, mass, cfg : Config, return_sorted=False):
     th = build_tree_hierarchy(particlesz, cfg)
     loc, ilist = evaluate_interaction_hierarchy(th, cfg=cfg)
 
-    parent = th[0].icoarse_of_fine()
-    fphi_loc = evaluate_local_fphi(loc[parent], particlesz.pos - th[0].mp.center()[parent])
+    phif_loc = shift_local_to_children(th[0].ispl, loc, th[0].mp.center(), particlesz.pos, pout=1)
+    fphi_loc = jnp.concatenate([-phif_loc[...,1:4], phif_loc[...,0:1]], axis=-1)
 
     fphi = grouped_force_and_pot(particlesz, th[0], ilist, cfg=cfg) + fphi_loc
 

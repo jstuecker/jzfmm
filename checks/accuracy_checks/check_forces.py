@@ -32,7 +32,7 @@ for p in (1,2,3,4,5):
 
     print(f"p={p} done, {time.time() - t0:.2f}s")
 
-plt.xlim(-7, -1)
+plt.xlim(-6, -1)
 plt.legend()
 plt.xlabel("log10(relative error)")
 plt.ylabel("count")

@@ -61,7 +61,8 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
     th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build")[1]
     loc, ilist = jb.measure(fn_jit=fmdj.fmm.evaluate_interaction_hierarchy.jit, th=th, cfg=cfg, tag="node2node")[1]
     parent = th[0].icoarse_of_fine()
-    fphi_loc = jb.measure(fn_jit=fmdj.fmm.evaluate_local_fphi.jit, L=loc[th[0].icoarse_of_fine()],
-                          x=pos_mass_z.pos - th[0].mp.center()[parent], tag="loc2loc")[1]
+    phif = jb.measure(fn_jit=fmdj.fmm.shift_local_to_children.jit, 
+                      ispl = th[0].ispl, loc=loc, xnode=th[0].mp.center(), xchild=pos_mass_z.pos,
+                      pout=1,tag="loc2loc")[1]
     fphi = jb.measure(fn_jit=fmdj.fmm.grouped_force_and_pot.jit,
                       particles=pos_mass_z, plane=th[0], ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]
