@@ -27,11 +27,11 @@ __forceinline__ __device__ LocalExp GetForceAndPot(
 ) {
     float3 dx = xmj.pos - xmi.pos;
     float rinv = rsqrtf(norm2(dx) + softening2);
-    float minvr = xmj.mass * rinv;
+    float minvr = -xmj.mass * rinv;
 
     LocalExp loc = {
-        -minvr,
-        -(minvr * rinv * rinv) * dx
+        minvr,
+        (minvr * rinv * rinv) * dx
     };
 
     return loc;
