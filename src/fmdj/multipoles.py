@@ -108,3 +108,23 @@ def shift_local_to_children(
     )[0]
     return locnew
 shift_local_to_children.jit = jax.jit(shift_local_to_children, static_argnames=['pout', 'block_size'])
+
+from fmdj_jaxonly.jaxonly_multipoles import get_index_map, iter_multi
+
+def local_eval_vjp(loc: jnp.ndarray, gloc: jnp.ndarray):
+    p_loc, p_gloc = p_of_num_multi(loc.shape[1]), p_of_num_multi(gloc.shape[1])
+
+    assert p_loc == p_gloc + 1
+
+    imap_a, imap_b = get_index_map(p_loc), get_index_map(p_gloc)
+    
+    out = []
+    for a1,a2,a3 in ((1,0,0),(0,1,0),(0,0,1)):
+        onew = jnp.zeros_like(gloc[:,0])
+        for m1, m2, m3 in iter_multi(p_gloc):
+            if m1 + a1 + m2 + a2 + m3 + a3 > p_loc:
+                continue
+            onew += gloc[:,imap_b[m1,m2,m3]] * loc[:,imap_a[m1+a1,m2+a2,m3+a3]]
+        out.append(onew)
+    
+    return jnp.stack(out, axis=-1)

@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from .config import Config
 from .data import TreePlane, PosMass, InteractionList, dense_interaction_list, LocalExpansion, Multipoles
 from .ztree import pos_zorder_sort, build_tree_hierarchy
-from .multipoles import shift_local_to_children, build_multipole_hierarchy
+from .multipoles import shift_local_to_children, build_multipole_hierarchy, local_eval_vjp
 
 import fmdj_cuda.ffi_fmm as ffi_fmm
 import fmdj_cuda.ffi_forces as ffi_forces
@@ -106,10 +106,11 @@ evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, sta
 #                           Leaf-Leaf (Particle to Particle) Interactions                          #
 # ------------------------------------------------------------------------------------------------ #
 
+@partial(jax.custom_vjp, nondiff_argnames=['cfg'])
 def grouped_force_and_pot(particles: PosMass, 
                          plane: TreePlane, 
                          ilist: InteractionList,
-                         cfg: Config) -> jnp.ndarray:
+                         cfg: Config = None) -> jnp.ndarray:
     node_range = jnp.array([0, plane.nnodes], dtype=jnp.int32)
     
     loc = jax.ffi.ffi_call("GroupedForceAndPot", (
@@ -123,6 +124,17 @@ def grouped_force_and_pot(particles: PosMass,
     loc = loc.at[...,0].add(particles.mass/cfg.softening) # Remove self-interaction from potential
 
     return loc
+
+def grouped_force_and_pot_fwd(particles, plane, ilist, cfg=None):
+    loc = grouped_force_and_pot(particles, plane, ilist, cfg=cfg)
+    return loc, (particles, )
+
+def grouped_force_and_pot_bwd(cfg, res, gloc):
+    particles, = res
+    
+    return PosMass(jnp.zeros_like(particles.pos), jnp.zeros_like(particles.mass)), None, None
+
+grouped_force_and_pot.defvjp(grouped_force_and_pot_fwd, grouped_force_and_pot_bwd)
 grouped_force_and_pot.jit = jax.jit(grouped_force_and_pot, static_argnames=['cfg'])
 
 # ------------------------------------------------------------------------------------------------ #
@@ -201,21 +213,59 @@ direct_potential_scan_jax.jit = jax.jit(direct_potential_scan_jax, static_argnam
 #                                         Master Functions                                         #
 # ------------------------------------------------------------------------------------------------ #
 
+
+def evaluate_node_node_fmm_fwd(
+        partz: PosMass,
+        mpz: Multipoles,
+        th: list[TreePlane],
+        cfg: Config
+):
+    mph = build_multipole_hierarchy(th, partz.pos, mpz, cfg=cfg)
+    loc, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
+    loc_shifted = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=2)
+
+    return (loc_shifted[...,0:4], ilist), (th, loc_shifted, partz)
+
+def evaluate_local_fmm_bwd(cfg, res, grads):
+    gloc, gilist = grads
+    th, loc_fwd, partz = res
+
+    l1 = local_eval_vjp(loc_fwd, gloc)
+
+    mph = build_multipole_hierarchy(th, partz.pos, gloc, cfg=cfg)
+    loc = evaluate_interaction_hierarchy(th, mph, cfg=cfg)[0]
+    l2 = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=1)
+
+    gpm = PosMass(l1 + l2[...,1:4]/partz.mass[:,None], l2[...,0])
+
+    return gpm, None, None
+
+@partial(jax.custom_vjp, nondiff_argnames=("cfg",))
+def evaluate_node_node_fmm(
+        partz: PosMass,
+        mpz: Multipoles,
+        th: list[TreePlane],
+        cfg: Config
+) -> Tuple[LocalExpansion, InteractionList]:
+    mph = build_multipole_hierarchy(th, partz.pos, mpz, cfg=cfg)
+    loc, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
+    loc_shifted = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=1)
+
+    return loc_shifted, ilist
+evaluate_node_node_fmm.defvjp(evaluate_node_node_fmm_fwd, evaluate_local_fmm_bwd)
+
 def fast_multipole_method_z(partz: PosMass, *, mpz: jnp.ndarray | None = None, cfg: Config, pout: int = 1) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
 
     if mpz is None:
         mpz = partz.mass
 
-    th = build_tree_hierarchy(partz, cfg)
-    mph = build_multipole_hierarchy(th, partz.pos, mpz, cfg=cfg)
+    th = build_tree_hierarchy(jax.lax.stop_gradient(partz), cfg)
 
-    loc, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
+    loc_node_node, ilist = evaluate_node_node_fmm(partz, partz.mass, th, cfg=cfg)
 
-    node_node_loc = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=pout)
-
-    leaf_leaf_loc = grouped_force_and_pot(partz, th[0], ilist, cfg=cfg)
-    loc = leaf_leaf_loc + node_node_loc
+    loc_leaf_leaf = grouped_force_and_pot(partz, th[0], ilist, cfg=cfg)
+    loc = loc_leaf_leaf + loc_node_node
 
     return LocalExpansion(loc * cfg.G())
 fast_multipole_method_z.jit = jax.jit(fast_multipole_method_z, static_argnames=("cfg", "pout"))
