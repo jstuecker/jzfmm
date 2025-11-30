@@ -78,21 +78,6 @@ def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config,
     return mp
 multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnames=['cfg'])
 
-
-def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config, 
-                       xcent: jnp.ndarray | None = None) -> Multipoles:
-    """Determines the multipoles at the next coarser tree plane"""
-    if xcent is None:
-        if cfg.fmm.multipoles_around_com:
-            xcent = center_of_mass(tp.ispl, PosMass(pos=mp.xcent, mass=mp.values[:,0]), cfg=cfg).pos
-        else:
-            xcent = tp.geom_cent
-
-    return summarize_multipoles(
-        tp.ispl, xcent, mp.xcent, mp.values, cfg=cfg
-    )
-coarsen_multipoles.jit = jax.jit(coarsen_multipoles, static_argnames=['cfg'])
-
 def shift_local_to_children(
         ispl: jnp.array,
         loc: jnp.array,

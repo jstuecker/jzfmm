@@ -6,7 +6,7 @@ from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
 from .data import TreePlane, PosMass
 from .config import Config
-from .multipoles import coarsen_multipoles, multipoles_from_particles, center_of_mass
+from .multipoles import multipoles_from_particles, center_of_mass, summarize_multipoles
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
@@ -141,7 +141,9 @@ def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
     coarse.mass_cent = center_of_mass(coarse.ispl, fine.mass_cent, cfg=cfg)
 
     if fine.mp is not None:
-        coarse.mp = coarsen_multipoles(fine.mp, coarse, cfg=cfg, xcent=coarse.center())
+        coarse.mp = summarize_multipoles(
+            coarse.ispl, coarse.center(), fine.mp.center(), fine.mp.values, cfg=cfg
+        )
 
     return coarse
 coarsen_plane.jit = jax.jit(coarsen_plane, static_argnames=['cfg'])
