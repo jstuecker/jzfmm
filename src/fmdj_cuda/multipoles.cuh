@@ -88,7 +88,7 @@ __global__ void CenterOfMass(
     const int* __restrict__ isplit,
     const float3* __restrict__ pos,
     const float* __restrict__ mass,
-    float3* __restrict__ com_out,
+    PosMass* __restrict__ com_out,
     int nnodes,
     bool kahan
 ) {
@@ -100,7 +100,7 @@ __global__ void CenterOfMass(
     int istart = isplit[inode], iend = isplit[inode + 1];
 
     if(istart >= iend) {
-        com_out[inode] = make_float3(CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F);
+        com_out[inode] = {CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F};
         return;
     }
     
@@ -111,14 +111,20 @@ __global__ void CenterOfMass(
         float m = mass[ip];
         float4 mpnew = {m, pos[ip].x * m, pos[ip].y * m, pos[ip].z * m};
 
-        kahan_add_f4(mp_sum, mpnew, mp_kahan);
+        if(kahan)
+            kahan_add_f4(mp_sum, mpnew, mp_kahan);
+        else
+            mp_sum = mp_sum + mpnew;
     }
 
     if (mp_sum.x > 0.f) {
-        com_out[inode] = (1.f / mp_sum.x) * make_float3(mp_sum.y, mp_sum.z, mp_sum.w);
+        PosMass out;
+        out.pos = (1.f / mp_sum.x) * make_float3(mp_sum.y, mp_sum.z, mp_sum.w);
+        out.mass = mp_sum.x;
+        com_out[inode] = out;
     }
     else {
-        com_out[inode] = make_float3(CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F);
+        com_out[inode].f4 = make_float4(CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F);
     }
 }
 

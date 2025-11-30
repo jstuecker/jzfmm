@@ -18,7 +18,7 @@ t0 = time.time()
 
 cfg = fmdj.Config(softening=eps)
 cfg.fmm.kahan_summation = True
-cfg.fmm.multipoles_around_com = False
+cfg.fmm.multipoles_around_com = True
 
 loc = fmdj.fmm.direct_force_and_potential.jit(part.posm(), softening=eps, kahan=True) * cfg.G()
 loc_ref = fmdj.data.LocalExpansion(loc)

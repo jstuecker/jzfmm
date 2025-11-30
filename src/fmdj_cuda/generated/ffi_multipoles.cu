@@ -44,7 +44,7 @@ ffi::Error CenterOfMassFFIHost(
     int* isplit_val = reinterpret_cast<int*>(isplit.untyped_data());
     float3* pos_val = reinterpret_cast<float3*>(pos.untyped_data());
     float* mass_val = reinterpret_cast<float*>(mass.untyped_data());
-    float3* com_out_val = reinterpret_cast<float3*>(com_out->untyped_data());
+    PosMass* com_out_val = reinterpret_cast<PosMass*>(com_out->untyped_data());
 
     void* args[] = {
         &isplit_val,

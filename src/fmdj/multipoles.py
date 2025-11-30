@@ -23,19 +23,19 @@ jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLoc
 jax.ffi.register_ffi_target("CenterOfMass", ffi_multipoles.CenterOfMass(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeMultipoles", ffi_multipoles.SummarizeMultipoles(), platform="CUDA")
 
-def center_of_mass(ispl: jnp.ndarray, part: PosMass, *, cfg: Config, block_size=32) -> jnp.ndarray:
+def center_of_mass(ispl: jnp.ndarray, part: PosMass, *, cfg: Config, block_size=32) -> PosMass:
     """Computes the center of mass of the nodes in the tree plane"""
     assert part.pos.dtype == jnp.float32
     assert ispl.dtype == jnp.int32
 
-    out_xcent = jax.ShapeDtypeStruct((ispl.size-1, 3), part.pos.dtype)
+    out_xcent = jax.ShapeDtypeStruct((ispl.size-1, 4), part.pos.dtype)
 
-    xcent = jax.ffi.ffi_call("CenterOfMass", (out_xcent,))(
+    xm = jax.ffi.ffi_call("CenterOfMass", (out_xcent,))(
         ispl, part.pos, part.mass,
         kahan = cfg.fmm.kahan_summation,
         block_size=np.uint64(block_size)
     )[0]
-    return xcent
+    return PosMass(pos=xm[...,0:3], mass=xm[...,4])
 center_of_mass.jit = jax.jit(center_of_mass, static_argnames=['cfg', 'block_size'])
 
 def summarize_multipoles(
@@ -66,7 +66,7 @@ def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config,
                               xcent: jnp.ndarray | None = None) -> Multipoles:
     if xcent is None:
         if cfg.fmm.multipoles_around_com:
-            xcent = center_of_mass(tp.ispl, part, cfg=cfg)
+            xcent = center_of_mass(tp.ispl, part, cfg=cfg).pos
         else:
             xcent = tp.geom_center()
     
@@ -84,7 +84,7 @@ def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config,
     """Determines the multipoles at the next coarser tree plane"""
     if xcent is None:
         if cfg.fmm.multipoles_around_com:
-            xcent = center_of_mass(tp.ispl, PosMass(pos=mp.xcent, mass=mp.values[:,0]), cfg=cfg)
+            xcent = center_of_mass(tp.ispl, PosMass(pos=mp.xcent, mass=mp.values[:,0]), cfg=cfg).pos
         else:
             xcent = tp.geom_center()
 
