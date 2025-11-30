@@ -30,7 +30,7 @@ fig, axs = plt.subplots(1,2, figsize=(12,5))
 for p in (1,2,3,4,5):
     cfg.fmm.p = p
 
-    loc: fmdj.data.LocalExpansion = fmdj.fmm.fast_multipole_method.jit(part, cfg)
+    loc: fmdj.data.LocalExpansion = fmdj.fmm.fast_multipole_method.jit(part, cfg=cfg)
 
     rel_err = jnp.linalg.norm(loc.force() - loc_ref.force(), axis=-1)/jnp.linalg.norm(loc_ref.force(), axis=-1)
 

@@ -201,14 +201,14 @@ direct_potential_scan_jax.jit = jax.jit(direct_potential_scan_jax, static_argnam
 #                                         Master Functions                                         #
 # ------------------------------------------------------------------------------------------------ #
 
-def fast_multipole_method(part: PosMass, cfg: Config, pout: int = 1) -> LocalExpansion:
+def fast_multipole_method_z(partz: PosMass, *, mpz: jnp.ndarray | None = None, cfg: Config, pout: int = 1) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
 
-    posz, isortz = pos_zorder_sort(part.pos)
-    partz = PosMass(pos=posz, mass=part.mass[isortz])
+    if mpz is None:
+        mpz = partz.mass
 
     th = build_tree_hierarchy(partz, cfg)
-    mph = build_multipole_hierarchy(th, partz.pos, part.mass, cfg=cfg)
+    mph = build_multipole_hierarchy(th, partz.pos, mpz, cfg=cfg)
 
     loc, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
 
@@ -217,9 +217,20 @@ def fast_multipole_method(part: PosMass, cfg: Config, pout: int = 1) -> LocalExp
     leaf_leaf_loc = grouped_force_and_pot(partz, th[0], ilist, cfg=cfg)
     loc = leaf_leaf_loc + node_node_loc
 
+    return LocalExpansion(loc * cfg.G())
+fast_multipole_method_z.jit = jax.jit(fast_multipole_method_z, static_argnames=("cfg", "pout"))
+
+def fast_multipole_method(part: PosMass, *, cfg: Config, pout: int = 1) -> LocalExpansion:
+    assert pout == 1, "Only pout=1 (potential only) is supported currently."
+
+    posz, isortz = pos_zorder_sort(part.pos)
+    partz = PosMass(pos=posz, mass=part.mass[isortz])
+
+    locz = fast_multipole_method_z(partz, cfg=cfg, pout=pout)
+
     inv_sort = jnp.zeros_like(isortz).at[isortz].set(jnp.arange(len(isortz), dtype=isortz.dtype))
 
-    return LocalExpansion(loc[inv_sort] * cfg.G())
+    return LocalExpansion(locz.values[inv_sort])
 fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg", "pout"))
 
 def force_and_potential(p: PosMass, cfg : Config) -> LocalExpansion:
