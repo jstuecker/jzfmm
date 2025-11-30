@@ -41,10 +41,12 @@ def binom(n, k):
 #                                           M2M Operators                                          #
 # ------------------------------------------------------------------------------------------------ #
 
-def shift_multipoles(m, x0, p=2):
+def shift_multipoles(m, x0):
     """m[...,i] corresponds to the expectation value of x**c[0] * y**c[1] * z**c[2]
     we shift it so that the new coefficients hold at the center dx
     mnew[...,i] = (x + x0)**c[0] * (y + y0)**c[1] * (z + z0)**c[2]"""
+    p = p_of_num_multi(m.shape[-1])
+
     index_of_mp = get_index_map(p)
     x0 = -x0 # Makes writing things easier
     m = m.T
@@ -88,27 +90,25 @@ def coarsen_multipoles_jax(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Mul
     )
 
     # Compute the center of mass
-    mnode = jax.ops.segment_sum(mp.get(0), **kwargs)
+    mnode = jax.ops.segment_sum(mp.values[0], **kwargs)
 
     dx = mp.center() - tp.geom_center()[parent]
-    mxnode = [jax.ops.segment_sum(dx[...,d]*mp.get(0), **kwargs) for d in range(3)]
+    mxnode = [jax.ops.segment_sum(dx[...,d]*mp.values[0], **kwargs) for d in range(3)]
     
-    if mp.around_com:
+    if cfg.fmm.multipoles_around_com:
         xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_center()
     else:
         xcent = tp.geom_center()
     
     dx = xcent[parent] - mp.center()
     
-    mpshift = shift_multipoles(mp.values, dx, p=mp.p)
+    mpshift = shift_multipoles(mp.values, dx)
 
     mp_coarse = [jax.ops.segment_sum(mpshift[...,k], **kwargs) for k in range(mpshift.shape[-1])]
 
     return Multipoles(
         xcent=xcent,
-        values=jnp.stack(mp_coarse, axis=-1),
-        p=mp.p,
-        around_com=mp.around_com
+        values=jnp.stack(mp_coarse, axis=-1)
     )
 coarsen_multipoles_jax.jit = jax.jit(coarsen_multipoles_jax, static_argnames=['cfg'])
 
@@ -144,9 +144,7 @@ def multipoles_from_particles_jax(tp: TreePlane, part: PosMass, *, cfg: Config) 
 
     return Multipoles(
         xcent=xcent,
-        values=jnp.stack(mp, axis=-1),
-        p=cfg.fmm.p,
-        around_com=cfg.fmm.multipoles_around_com
+        values=jnp.stack(mp, axis=-1)
     )
 multipoles_from_particles_jax.jit = jax.jit(multipoles_from_particles_jax, static_argnames=['cfg'])
 

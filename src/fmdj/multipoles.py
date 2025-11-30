@@ -61,7 +61,7 @@ def summarize_multipoles(
         kahan = cfg.fmm.kahan_summation
     )[0]
 
-    return Multipoles(xcent=xnode, values=mpnew, p=cfg.fmm.p, around_com=cfg.fmm.multipoles_around_com)
+    return Multipoles(xcent=xnode, values=mpnew)
 summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', 'block_size'])
 
 def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
@@ -78,7 +78,7 @@ def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> M
         around_com=cfg.fmm.multipoles_around_com
     )
     
-    return Multipoles(xcent=xcent, values=mp, p=cfg.fmm.p, around_com=True)
+    return Multipoles(xcent=xcent, values=mp)
 multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnames=['cfg'])
 
 def coarsen_partial_multipoles(part: PosMass, mp: jnp.ndarray, tp: TreePlane, *, cfg: Config) -> Multipoles:
@@ -103,7 +103,7 @@ def coarsen_partial_multipoles(part: PosMass, mp: jnp.ndarray, tp: TreePlane, *,
         tp.ispl, mp, part.pos, p=np.int32(cfg.fmm.p), block_size=np.uint64(32),
         around_com = cfg.fmm.multipoles_around_com
     )
-    return Multipoles(xcent=xcent, values=mpnew, p=cfg.fmm.p, around_com=cfg.fmm.multipoles_around_com)
+    return Multipoles(xcent=xcent, values=mpnew)
 coarsen_partial_multipoles.jit = jax.jit(coarsen_partial_multipoles, static_argnames=['cfg'])
 
 
@@ -114,14 +114,14 @@ def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipo
     assert mp.values.dtype == jnp.float32
     assert tp.ispl.dtype == jnp.int32
 
-    out_mp = jax.ShapeDtypeStruct((tp.size(), num_multi(mp.p)), dtype)
+    out_mp = jax.ShapeDtypeStruct((tp.size(), num_multi(cfg.fmm.p)), dtype)
     out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), dtype)
 
     mpnew, xcent = jax.ffi.ffi_call("CoarsenMultipoles", (out_mp, out_xcent))(
-        tp.ispl, mp.values, mp.center(), p=np.int32(mp.p), block_size=np.uint64(32),
+        tp.ispl, mp.values, mp.center(), p=np.int32(cfg.fmm.p), block_size=np.uint64(32),
         around_com = cfg.fmm.multipoles_around_com
     )
-    return Multipoles(xcent=xcent, values=mpnew, p=mp.p, around_com=mp.around_com)
+    return Multipoles(xcent=xcent, values=mpnew)
 coarsen_multipoles.jit = jax.jit(coarsen_multipoles, static_argnames=['cfg'])
 
 def shift_local_to_children(

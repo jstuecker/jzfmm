@@ -52,14 +52,8 @@ class Multipoles:
     xcent : jnp.ndarray
     values: jnp.ndarray
 
-    p: int = static_field(default=2)
-
-    around_com : bool = static_field(default=True)
-
     def center(self):
         return self.xcent
-    def get(self, i):
-        return self.values[:, i]
 
 @jax.tree_util.register_dataclass
 @dataclass
