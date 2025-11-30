@@ -22,6 +22,22 @@ def p_of_num_multi(ncomp):
 jax.ffi.register_ffi_target("MultipolesFromParticles", ffi_multipoles.MultipolesFromParticles(), platform="CUDA")
 jax.ffi.register_ffi_target("CoarsenMultipoles", ffi_multipoles.CoarsenMultipoles(), platform="CUDA")
 jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLocalToLocal(), platform="CUDA")
+jax.ffi.register_ffi_target("CenterOfMass", ffi_multipoles.CenterOfMass(), platform="CUDA")
+
+def center_of_mass(ispl: jnp.ndarray, part: PosMass, *, cfg: Config, block_size=32) -> jnp.ndarray:
+    """Computes the center of mass of the nodes in the tree plane"""
+    assert part.pos.dtype == jnp.float32
+    assert ispl.dtype == jnp.int32
+
+    out_xcent = jax.ShapeDtypeStruct((ispl.size-1, 3), part.pos.dtype)
+
+    xcent = jax.ffi.ffi_call("CenterOfMass", (out_xcent,))(
+        ispl, part.pos, part.mass,
+        kahan = cfg.fmm.kahan_summation,
+        block_size=np.uint64(block_size)
+    )[0]
+    return xcent
+center_of_mass.jit = jax.jit(center_of_mass, static_argnames=['cfg', 'block_size'])
 
 def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
     posm = part.posm()

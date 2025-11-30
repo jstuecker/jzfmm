@@ -185,6 +185,46 @@ __global__ void MultipolesFromParticles(
     }
 }
 
+__global__ void CenterOfMass(
+    const int* __restrict__ isplit,
+    const float3* __restrict__ pos,
+    const float* __restrict__ mass,
+    float3* __restrict__ com_out,
+    int nnodes,
+    bool kahan
+) {
+    int inode = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (inode >= nnodes) {
+        com_out[inode] = make_float3(CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F);
+        return;
+    }
+
+    int istart = isplit[inode], iend = isplit[inode + 1];
+
+    if(istart >= iend) {
+        com_out[inode] = make_float3(CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F);
+        return;
+    }
+    
+    float4 mp_sum = {0.f, 0.f, 0.f, 0.f};
+    float4 mp_kahan = {0.f, 0.f, 0.f, 0.f};
+
+    for(int ip = istart; ip < iend; ip++) {
+        float m = mass[ip];
+        float4 mpnew = {m, pos[ip].x * m, pos[ip].y * m, pos[ip].z * m};
+
+        kahan_add_f4(mp_sum, mpnew, mp_kahan);
+    }
+
+    if (mp_sum.x > 0.f) {
+        com_out[inode] = (1.f / mp_sum.x) * make_float3(mp_sum.y, mp_sum.z, mp_sum.w);
+    }
+    else {
+        com_out[inode] = make_float3(CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F);
+    }
+}
+
 /* ---------------------------------------------------------------------------------------------- */
 /*                                         M2M Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
