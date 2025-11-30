@@ -71,21 +71,15 @@ kernels = parse.get_functions_from_file(
     only_kernels=True
 )
 
-for kname in ("CoarsenMultipoles", "TranslateLocalToLocal", "SummarizeMultipoles"):
+for kname in ("TranslateLocalToLocal", "SummarizeMultipoles"):
     kernels[kname].template_par["p"].instances = p_instance_values
 
-for kname in ("CoarsenMultipoles", "TranslateLocalToLocal"):
+for kname in ("TranslateLocalToLocal",):
     kernels[kname].init_outputs_zero = True
 
-kernels["CoarsenMultipoles"].grid_size_expression = "isplit.element_count() - 1"
-kernels["TranslateLocalToLocal"].grid_size_expression = "div_ceil(isplit.element_count() - 1, block_size)"
-kernels["TranslateLocalToLocal"].par["nnodes"].expression = "isplit.element_count() - 1"
-
-kernels["CenterOfMass"].grid_size_expression = "div_ceil(isplit.element_count() - 1, block_size)"
-kernels["CenterOfMass"].par["nnodes"].expression = "isplit.element_count() - 1"
-
-kernels["SummarizeMultipoles"].grid_size_expression = "div_ceil(isplit.element_count() - 1, block_size)"
-kernels["SummarizeMultipoles"].par["nnodes"].expression = "isplit.element_count() - 1"
+for kname in ("TranslateLocalToLocal", "CenterOfMass", "SummarizeMultipoles"):
+    kernels[kname].grid_size_expression = "div_ceil(isplit.element_count() - 1, block_size)"
+    kernels[kname].par["nnodes"].expression = "isplit.element_count() - 1"
 
 gen.generate_ffi_module_file(
     output_file = str(HERE / "generated/ffi_multipoles.cu"), 

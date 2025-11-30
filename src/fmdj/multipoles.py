@@ -19,7 +19,6 @@ def p_of_num_multi(ncomp):
 #                                             FFI Calls                                            #
 # ------------------------------------------------------------------------------------------------ #
 
-jax.ffi.register_ffi_target("CoarsenMultipoles", ffi_multipoles.CoarsenMultipoles(), platform="CUDA")
 jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLocalToLocal(), platform="CUDA")
 jax.ffi.register_ffi_target("CenterOfMass", ffi_multipoles.CenterOfMass(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeMultipoles", ffi_multipoles.SummarizeMultipoles(), platform="CUDA")
@@ -63,57 +62,35 @@ def summarize_multipoles(
     return Multipoles(xcent=xnode, values=mpnew)
 summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', 'block_size'])
 
-def multipoles_from_particles(ispl: jnp.ndarray, part: PosMass, *, cfg: Config) -> Multipoles:
-    xcent = center_of_mass(ispl, part, cfg=cfg)
+def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config,
+                              xcent: jnp.ndarray | None = None) -> Multipoles:
+    if xcent is None:
+        if cfg.fmm.multipoles_around_com:
+            xcent = center_of_mass(tp.ispl, part, cfg=cfg)
+        else:
+            xcent = tp.geom_center()
+    
     # particles are monopoles, we can use the same function as for "normal" m2m translation
     mp = summarize_multipoles(
-        ispl, xcent, part.pos, part.mass.reshape(-1,1), cfg=cfg
+        tp.ispl, xcent, part.pos, part.mass.reshape(-1,1), cfg=cfg
     )
 
     return mp
 multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnames=['cfg'])
 
-def coarsen_partial_multipoles(part: PosMass, mp: jnp.ndarray, tp: TreePlane, *, cfg: Config) -> Multipoles:
+
+def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config, 
+                       xcent: jnp.ndarray | None = None) -> Multipoles:
     """Determines the multipoles at the next coarser tree plane"""
-    assert not cfg.fmm.multipoles_around_com, "Kernel doesn't get the correct center yet..."
-    assert mp.dtype == jnp.float32
-    assert tp.ispl.dtype == jnp.int32
+    if xcent is None:
+        if cfg.fmm.multipoles_around_com:
+            xcent = center_of_mass(tp.ispl, PosMass(pos=mp.xcent, mass=mp.values[:,0]), cfg=cfg)
+        else:
+            xcent = tp.geom_center()
 
-    dtype = mp.dtype
-
-    pin = p_of_num_multi(mp.shape[1])
-
-    assert pin <= cfg.fmm.p
-
-    if pin < cfg.fmm.p:
-        mp = jnp.pad(mp, ((0,0),(0, num_multi(cfg.fmm.p) - num_multi(pin))), mode='empty')
-
-    out_mp = jax.ShapeDtypeStruct((tp.size(), num_multi(cfg.fmm.p)), dtype)
-    out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), dtype)
-
-    mpnew, xcent = jax.ffi.ffi_call("CoarsenMultipoles", (out_mp, out_xcent))(
-        tp.ispl, mp, part.pos, p=np.int32(cfg.fmm.p), block_size=np.uint64(32),
-        around_com = cfg.fmm.multipoles_around_com
+    return summarize_multipoles(
+        tp.ispl, xcent, mp.xcent, mp.values, cfg=cfg
     )
-    return Multipoles(xcent=xcent, values=mpnew)
-coarsen_partial_multipoles.jit = jax.jit(coarsen_partial_multipoles, static_argnames=['cfg'])
-
-
-def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipoles:
-    """Determines the multipoles at the next coarser tree plane"""
-    dtype = mp.values.dtype
-
-    assert mp.values.dtype == jnp.float32
-    assert tp.ispl.dtype == jnp.int32
-
-    out_mp = jax.ShapeDtypeStruct((tp.size(), num_multi(cfg.fmm.p)), dtype)
-    out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), dtype)
-
-    mpnew, xcent = jax.ffi.ffi_call("CoarsenMultipoles", (out_mp, out_xcent))(
-        tp.ispl, mp.values, mp.center(), p=np.int32(cfg.fmm.p), block_size=np.uint64(32),
-        around_com = cfg.fmm.multipoles_around_com
-    )
-    return Multipoles(xcent=xcent, values=mpnew)
 coarsen_multipoles.jit = jax.jit(coarsen_multipoles, static_argnames=['cfg'])
 
 def shift_local_to_children(
