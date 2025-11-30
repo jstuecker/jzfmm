@@ -22,90 +22,6 @@ namespace nb = nanobind;
 namespace ffi = xla::ffi;
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                             FFI call to CUDA kernel: MultipolesFromParticles                   */
-/* ---------------------------------------------------------------------------------------------- */
-
-ffi::Error MultipolesFromParticlesFFIHost(
-    cudaStream_t stream,
-    ffi::AnyBuffer isplit,
-    ffi::AnyBuffer part_posm,
-    ffi::Result<ffi::AnyBuffer> mp_out,
-    ffi::Result<ffi::AnyBuffer> xcom_out,
-    bool around_com,
-    int p,
-    size_t block_size
-) {
-    dim3 blockDim(block_size);
-    dim3 gridDim(isplit.element_count() - 1);
-    size_t smem = 0;
-    
-    // Initialize output buffers
-    cudaMemsetAsync(mp_out->untyped_data(), 0, mp_out->size_bytes(), stream);
-    cudaMemsetAsync(xcom_out->untyped_data(), 0, xcom_out->size_bytes(), stream);
-    
-    // Build a bundled argument list for cudaLaunchKernel
-    // For pointers we need to create a pointer to the pointer
-    int* isplit_val = reinterpret_cast<int*>(isplit.untyped_data());
-    PosMass* part_posm_val = reinterpret_cast<PosMass*>(part_posm.untyped_data());
-    float* mp_out_val = reinterpret_cast<float*>(mp_out->untyped_data());
-    float3* xcom_out_val = reinterpret_cast<float3*>(xcom_out->untyped_data());
-
-    void* args[] = {
-        &isplit_val,
-        &part_posm_val,
-        &mp_out_val,
-        &xcom_out_val,
-        &around_com
-    };
-    
-    // We have template parameters, so we need to instantiate all valid templates
-    // For this we select a function pointer through a map
-    using TTuple = std::tuple<int>;
-    using TFunctionType = decltype(MultipolesFromParticles<1>);
-
-    std::map<TTuple, TFunctionType*> instance_map;
-    instance_map[{1}] = MultipolesFromParticles<1>;
-    instance_map[{2}] = MultipolesFromParticles<2>;
-    instance_map[{3}] = MultipolesFromParticles<3>;
-    instance_map[{4}] = MultipolesFromParticles<4>;
-    instance_map[{5}] = MultipolesFromParticles<5>;
-
-    auto it = instance_map.find({p});
-
-    if(it == instance_map.end()) {
-        return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (p)"\
-            " in MultipolesFromParticlesFFIHost -- Only supporting:\n"\
-            "(1), (2), (3), (4), (5)"
-        );
-    }
-
-    TFunctionType* instance = it->second;
-    
-    cudaLaunchKernel((const void*)instance, gridDim, blockDim, args, smem, stream);
-
-    cudaError_t last_error = cudaGetLastError();
-    if (last_error != cudaSuccess) {
-        return ffi::Error::Internal(std::string("CUDA error: ") + cudaGetErrorString(last_error));
-    }
-    return ffi::Error::Success();
-}
-
-XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    MultipolesFromParticlesFFI, MultipolesFromParticlesFFIHost,
-    ffi::Ffi::Bind()
-        .Ctx<ffi::PlatformStream<cudaStream_t>>()
-        .Arg<ffi::AnyBuffer>() // isplit
-        .Arg<ffi::AnyBuffer>() // part_posm
-        .Ret<ffi::AnyBuffer>() // mp_out
-        .Ret<ffi::AnyBuffer>() // xcom_out
-        .Attr<bool>("around_com")
-        .Attr<int>("p")
-        .Attr<size_t>("block_size"),
-    {xla::ffi::Traits::kCmdBufferCompatible}
-);
-
-/* ---------------------------------------------------------------------------------------------- */
 /*                             FFI call to CUDA kernel: CenterOfMass                              */
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -431,7 +347,6 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 /* ---------------------------------------------------------------------------------------------- */
 
 NB_MODULE(ffi_multipoles, m) {
-    m.def("MultipolesFromParticles", []() { return EncapsulateFfiCall(&MultipolesFromParticlesFFI); });
     m.def("CenterOfMass", []() { return EncapsulateFfiCall(&CenterOfMassFFI); });
     m.def("CoarsenMultipoles", []() { return EncapsulateFfiCall(&CoarsenMultipolesFFI); });
     m.def("SummarizeMultipoles", []() { return EncapsulateFfiCall(&SummarizeMultipolesFFI); });

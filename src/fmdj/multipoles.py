@@ -19,7 +19,6 @@ def p_of_num_multi(ncomp):
 #                                             FFI Calls                                            #
 # ------------------------------------------------------------------------------------------------ #
 
-jax.ffi.register_ffi_target("MultipolesFromParticles", ffi_multipoles.MultipolesFromParticles(), platform="CUDA")
 jax.ffi.register_ffi_target("CoarsenMultipoles", ffi_multipoles.CoarsenMultipoles(), platform="CUDA")
 jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLocalToLocal(), platform="CUDA")
 jax.ffi.register_ffi_target("CenterOfMass", ffi_multipoles.CenterOfMass(), platform="CUDA")
@@ -64,21 +63,14 @@ def summarize_multipoles(
     return Multipoles(xcent=xnode, values=mpnew)
 summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', 'block_size'])
 
-def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
-    posm = part.posm()
-
-    assert posm.dtype == jnp.float32
-    assert tp.ispl.dtype == jnp.int32
-    
-    out_mp = jax.ShapeDtypeStruct((tp.size(), num_multi(cfg.fmm.p)), posm.dtype)
-    out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), posm.dtype)
-
-    mp, xcent = jax.ffi.ffi_call("MultipolesFromParticles", (out_mp, out_xcent))(
-        tp.ispl, posm, p=np.int32(cfg.fmm.p), block_size=np.uint64(32),
-        around_com=cfg.fmm.multipoles_around_com
+def multipoles_from_particles(ispl: jnp.ndarray, part: PosMass, *, cfg: Config) -> Multipoles:
+    xcent = center_of_mass(ispl, part, cfg=cfg)
+    # particles are monopoles, we can use the same function as for "normal" m2m translation
+    mp = summarize_multipoles(
+        ispl, xcent, part.pos, part.mass.reshape(-1,1), cfg=cfg
     )
-    
-    return Multipoles(xcent=xcent, values=mp)
+
+    return mp
 multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnames=['cfg'])
 
 def coarsen_partial_multipoles(part: PosMass, mp: jnp.ndarray, tp: TreePlane, *, cfg: Config) -> Multipoles:

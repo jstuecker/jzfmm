@@ -6,7 +6,7 @@ from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
 from .data import TreePlane, PosMass
 from .config import Config
-from .multipoles import coarsen_multipoles, multipoles_from_particles
+from .multipoles import coarsen_multipoles, multipoles_from_particles, summarize_multipoles, center_of_mass
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
@@ -148,7 +148,7 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
     )
     leaves = TreePlane(*res, max_node_size=cfg.fmm.max_leaf_size, tot_npart=part.pos.shape[0], size_children=len(part.pos))
     if cfg.fmm.p > 0:
-        leaves.mp = multipoles_from_particles(leaves, part, cfg=cfg)
+        leaves.mp = multipoles_from_particles(leaves.ispl, part, cfg=cfg)
 
     tree_levels : list[TreePlane] = [leaves]
 
