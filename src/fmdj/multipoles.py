@@ -40,31 +40,29 @@ def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> M
     return Multipoles(xcent=xcent, values=mp, p=cfg.fmm.p, around_com=True)
 multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnames=['cfg'])
 
-def coarsen_partial_multipoles(p: PosMass, mp: jnp.ndarray, tp: TreePlane, *, cfg: Config) -> Multipoles:
+def coarsen_partial_multipoles(part: PosMass, mp: jnp.ndarray, tp: TreePlane, *, cfg: Config) -> Multipoles:
     """Determines the multipoles at the next coarser tree plane"""
-    assert mp.values.dtype == jnp.float32
+    assert not cfg.fmm.multipoles_around_com, "Kernel doesn't get the correct center yet..."
+    assert mp.dtype == jnp.float32
     assert tp.ispl.dtype == jnp.int32
-    # assert cfg.fmm.ce
 
-    dtype = mp.values.dtype
+    dtype = mp.dtype
 
-    pin = p_of_num_multi(mp.values.shape[1])
+    pin = p_of_num_multi(mp.shape[1])
 
-    assert pin <= mp.p
+    assert pin <= cfg.fmm.p
 
-    if pin < mp.p:
-        mp = jnp.pad(mp.values, ((0,0),(0, num_multi(mp.p) - num_multi(pin))), mode='empty')
-        print(mp.shape, pin.shape)
+    if pin < cfg.fmm.p:
+        mp = jnp.pad(mp, ((0,0),(0, num_multi(cfg.fmm.p) - num_multi(pin))), mode='empty')
 
     out_mp = jax.ShapeDtypeStruct((tp.size(), num_multi(cfg.fmm.p)), dtype)
     out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), dtype)
 
-    raise NotImplementedError("Partial multipole coarsening needs modified implementation of center of mass")
-
     mpnew, xcent = jax.ffi.ffi_call("CoarsenMultipoles", (out_mp, out_xcent))(
-        tp.ispl, mp.values, mp.center(), p=np.int32(mp.p), block_size=np.uint64(32)
+        tp.ispl, mp, part.pos, p=np.int32(cfg.fmm.p), block_size=np.uint64(32),
+        around_com = cfg.fmm.multipoles_around_com
     )
-    return Multipoles(xcent=xcent, values=mpnew, p=mp.p, around_com=mp.around_com)
+    return Multipoles(xcent=xcent, values=mpnew, p=cfg.fmm.p, around_com=cfg.fmm.multipoles_around_com)
 coarsen_partial_multipoles.jit = jax.jit(coarsen_partial_multipoles, static_argnames=['cfg'])
 
 

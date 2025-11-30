@@ -66,3 +66,21 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
                       pout=1,tag="loc2loc")[1]
     fphi = jb.measure(fn_jit=fmdj.fmm.grouped_force_and_pot.jit,
                       particles=pos_mass_z, plane=th[0], ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]
+
+@pytest.mark.parametrize("p", [3,4,5])
+def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_hierarchy):
+    th = tree_hierarchy
+
+    jb = jax_bench(jit_rounds=200, jit_warmup=20)
+
+    cfg = Config(fmm=FMMConfig(p=p, multipoles_around_com=False))
+
+    jb.measure(fn_jit = fmdj.multipoles.multipoles_from_particles.jit,
+               tp=th[0], part=pos_mass_z, cfg=cfg,
+               tag="part2mp"
+    )
+
+    jb.measure(fn_jit = fmdj.multipoles.coarsen_partial_multipoles.jit,
+               tp=th[0], part=pos_mass_z, mp=pos_mass_z.mass.reshape(-1,1), cfg=cfg,
+               tag="m2m"
+    )
