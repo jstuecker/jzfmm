@@ -75,10 +75,10 @@ def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_hierarchy):
 
     cfg = Config(fmm=FMMConfig(p=p, multipoles_around_com=False))
 
-    jb.measure(fn_jit = fmdj.multipoles.multipoles_from_particles.jit,
+    mp1 = jb.measure(fn_jit = fmdj.multipoles.multipoles_from_particles.jit,
                tp=th[0], part=pos_mass_z, cfg=cfg,
                tag="part2mp"
-    )
+    )[1]
 
     jb.measure(fn_jit = fmdj.multipoles.coarsen_partial_multipoles.jit,
                tp=th[0], part=pos_mass_z, mp=pos_mass_z.mass.reshape(-1,1), cfg=cfg,
@@ -89,3 +89,11 @@ def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_hierarchy):
                ispl=th[0].ispl, part=pos_mass_z, cfg=cfg,
                tag="com"
     )
+
+    mp2 = jb.measure(fn_jit = fmdj.multipoles.summarize_multipoles.jit,
+               ispl=th[0].ispl, xnode=mp1.center(),
+               xchild=pos_mass_z.pos, mp=pos_mass_z.mass.reshape(-1,1), cfg=cfg,
+               tag="m2mB"
+    )[1]
+
+    assert mp1.values == pytest.approx(mp2.values, abs=1e-6, rel=1e-4)

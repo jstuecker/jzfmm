@@ -249,6 +249,95 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
+/*                             FFI call to CUDA kernel: SummarizeMultipoles                       */
+/* ---------------------------------------------------------------------------------------------- */
+
+ffi::Error SummarizeMultipolesFFIHost(
+    cudaStream_t stream,
+    ffi::AnyBuffer isplit,
+    ffi::AnyBuffer xnode,
+    ffi::AnyBuffer xchild,
+    ffi::AnyBuffer mp_in,
+    ffi::Result<ffi::AnyBuffer> mp_out,
+    int p_in,
+    bool kahan,
+    int p,
+    size_t block_size
+) {
+    int nnodes = isplit.element_count() - 1;
+    dim3 blockDim(block_size);
+    dim3 gridDim(div_ceil(isplit.element_count() - 1, block_size));
+    size_t smem = 0;
+    
+    // Build a bundled argument list for cudaLaunchKernel
+    // For pointers we need to create a pointer to the pointer
+    int* isplit_val = reinterpret_cast<int*>(isplit.untyped_data());
+    float3* xnode_val = reinterpret_cast<float3*>(xnode.untyped_data());
+    float3* xchild_val = reinterpret_cast<float3*>(xchild.untyped_data());
+    float* mp_in_val = reinterpret_cast<float*>(mp_in.untyped_data());
+    float* mp_out_val = reinterpret_cast<float*>(mp_out->untyped_data());
+
+    void* args[] = {
+        &isplit_val,
+        &xnode_val,
+        &xchild_val,
+        &mp_in_val,
+        &mp_out_val,
+        &nnodes,
+        &p_in,
+        &kahan
+    };
+    
+    // We have template parameters, so we need to instantiate all valid templates
+    // For this we select a function pointer through a map
+    using TTuple = std::tuple<int>;
+    using TFunctionType = decltype(SummarizeMultipoles<1>);
+
+    std::map<TTuple, TFunctionType*> instance_map;
+    instance_map[{1}] = SummarizeMultipoles<1>;
+    instance_map[{2}] = SummarizeMultipoles<2>;
+    instance_map[{3}] = SummarizeMultipoles<3>;
+    instance_map[{4}] = SummarizeMultipoles<4>;
+    instance_map[{5}] = SummarizeMultipoles<5>;
+
+    auto it = instance_map.find({p});
+
+    if(it == instance_map.end()) {
+        return ffi::Error::Internal(
+            "\nUnsupported template parameter combination for (p)"\
+            " in SummarizeMultipolesFFIHost -- Only supporting:\n"\
+            "(1), (2), (3), (4), (5)"
+        );
+    }
+
+    TFunctionType* instance = it->second;
+    
+    cudaLaunchKernel((const void*)instance, gridDim, blockDim, args, smem, stream);
+
+    cudaError_t last_error = cudaGetLastError();
+    if (last_error != cudaSuccess) {
+        return ffi::Error::Internal(std::string("CUDA error: ") + cudaGetErrorString(last_error));
+    }
+    return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    SummarizeMultipolesFFI, SummarizeMultipolesFFIHost,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<cudaStream_t>>()
+        .Arg<ffi::AnyBuffer>() // isplit
+        .Arg<ffi::AnyBuffer>() // xnode
+        .Arg<ffi::AnyBuffer>() // xchild
+        .Arg<ffi::AnyBuffer>() // mp_in
+        .Ret<ffi::AnyBuffer>() // mp_out
+        .Attr<int>("p_in")
+        .Attr<bool>("kahan")
+        .Attr<int>("p")
+        .Attr<size_t>("block_size"),
+    {xla::ffi::Traits::kCmdBufferCompatible}
+);
+
+/* ---------------------------------------------------------------------------------------------- */
 /*                             FFI call to CUDA kernel: TranslateLocalToLocal                     */
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -345,5 +434,6 @@ NB_MODULE(ffi_multipoles, m) {
     m.def("MultipolesFromParticles", []() { return EncapsulateFfiCall(&MultipolesFromParticlesFFI); });
     m.def("CenterOfMass", []() { return EncapsulateFfiCall(&CenterOfMassFFI); });
     m.def("CoarsenMultipoles", []() { return EncapsulateFfiCall(&CoarsenMultipolesFFI); });
+    m.def("SummarizeMultipoles", []() { return EncapsulateFfiCall(&SummarizeMultipolesFFI); });
     m.def("TranslateLocalToLocal", []() { return EncapsulateFfiCall(&TranslateLocalToLocalFFI); });
 }

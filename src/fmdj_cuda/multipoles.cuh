@@ -195,10 +195,8 @@ __global__ void CenterOfMass(
 ) {
     int inode = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (inode >= nnodes) {
-        com_out[inode] = make_float3(CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F);
+    if (inode >= nnodes)
         return;
-    }
 
     int istart = isplit[inode], iend = isplit[inode + 1];
 
@@ -230,7 +228,7 @@ __global__ void CenterOfMass(
 /* ---------------------------------------------------------------------------------------------- */
 
 template<int p>
-__device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, float3 dpos) {
+__device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const float3 dpos) {
 
     // Shift in x
     int iflat = 0;
@@ -404,6 +402,71 @@ __global__ void CoarsenMultipoles(
 
     for (int iM=threadIdx.x; iM < ncomb; iM += blockDim.x) {
         mp_out[inode * ncomb + iM] = mp[iM];
+    }
+}
+
+template<int p>
+__global__ void SummarizeMultipoles(
+    const int* __restrict__ isplit,
+    const float3* __restrict__ xnode,
+    const float3* __restrict__ xchild,
+    const float* __restrict__ mp_in,
+    float* __restrict__ mp_out,
+    int nnodes,
+    int p_in,
+    bool kahan
+) {
+    constexpr int ncomb = NCOMB(p);
+    int ncomb_in = NCOMB(p_in);
+
+    int inode = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (inode >= nnodes)
+        return;
+
+    int istart = isplit[inode], iend = isplit[inode + 1];
+
+    if(istart >= iend) {
+        for(int iM=0; iM < ncomb; iM++) {
+            mp_out[inode * ncomb + iM] = 0.f;
+        }
+        return;
+    }
+    
+    float mp_sum[ncomb];
+    float mp_kahan[ncomb];
+
+    #pragma unroll
+    for(int iM=0; iM < ncomb; iM++) {
+        mp_sum[iM] = 0.f;
+        mp_kahan[iM] = 0.f;
+    }
+
+    for(int ip = istart; ip < iend; ip++) {
+        float mp_new_in[ncomb];
+        for(int iM=0; iM < ncomb; iM++) {
+            if(iM < ncomb_in)
+                mp_new_in[iM] = mp_in[ip * ncomb_in + iM];
+            else
+                mp_new_in[iM] = 0.f;
+        }
+
+        float mp_new_out[ncomb];
+
+        shift_multipoles<p>(mp_new_in, mp_new_out, xchild[ip] - xnode[inode]);
+
+        if(kahan)
+            kahan_add_array<ncomb>(mp_sum, mp_new_out, mp_kahan);
+        else {
+            #pragma unroll
+            for(int iM=0; iM < ncomb; iM++) {
+                mp_sum[iM] += mp_new_out[iM];
+            }
+        }
+    }
+    
+    for(int iM=0; iM < ncomb; iM++) {
+        mp_out[inode * ncomb + iM] = mp_sum[iM];
     }
 }
 

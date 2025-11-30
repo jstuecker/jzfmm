@@ -65,6 +65,14 @@ __forceinline__ __device__ void kahan_add_f4(float4 &sum, float4 add, float4 &c)
     kahan_add(sum.w, add.w, c.w);
 }
 
+template<int num>
+__forceinline__ __device__ void kahan_add_array(float *sum, float *add, float *c) {
+    #pragma unroll
+    for (int i = 0; i < num; i++) {
+        kahan_add(sum[i], add[i], c[i]);
+    }
+}
+
 /* ---------------------------------------------------------------------------------------------- */
 /*                                          Integer Math                                          */
 /* ---------------------------------------------------------------------------------------------- */

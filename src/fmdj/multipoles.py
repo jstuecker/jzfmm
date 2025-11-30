@@ -23,6 +23,7 @@ jax.ffi.register_ffi_target("MultipolesFromParticles", ffi_multipoles.Multipoles
 jax.ffi.register_ffi_target("CoarsenMultipoles", ffi_multipoles.CoarsenMultipoles(), platform="CUDA")
 jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLocalToLocal(), platform="CUDA")
 jax.ffi.register_ffi_target("CenterOfMass", ffi_multipoles.CenterOfMass(), platform="CUDA")
+jax.ffi.register_ffi_target("SummarizeMultipoles", ffi_multipoles.SummarizeMultipoles(), platform="CUDA")
 
 def center_of_mass(ispl: jnp.ndarray, part: PosMass, *, cfg: Config, block_size=32) -> jnp.ndarray:
     """Computes the center of mass of the nodes in the tree plane"""
@@ -38,6 +39,30 @@ def center_of_mass(ispl: jnp.ndarray, part: PosMass, *, cfg: Config, block_size=
     )[0]
     return xcent
 center_of_mass.jit = jax.jit(center_of_mass, static_argnames=['cfg', 'block_size'])
+
+def summarize_multipoles(
+        ispl: jnp.ndarray,
+        xnode: jnp.ndarray,
+        xchild: jnp.ndarray,
+        mp: jnp.ndarray, 
+        *, cfg: Config, 
+        block_size=32) -> Multipoles:
+    """Summarizes multipoles from child nodes to parent nodes"""
+    assert mp.dtype == jnp.float32
+    assert ispl.dtype == jnp.int32
+    dtype = mp.dtype
+    p_in = p_of_num_multi(mp.shape[1])
+    out_mp = jax.ShapeDtypeStruct((ispl.size-1, num_multi(cfg.fmm.p)), dtype)
+    mpnew = jax.ffi.ffi_call("SummarizeMultipoles", (out_mp,))(
+        ispl, xnode, xchild, mp,
+        p_in=np.int32(p_in),
+        p=np.int32(cfg.fmm.p),
+        block_size=np.uint64(block_size),
+        kahan = cfg.fmm.kahan_summation
+    )[0]
+
+    return Multipoles(xcent=xnode, values=mpnew, p=cfg.fmm.p, around_com=cfg.fmm.multipoles_around_com)
+summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', 'block_size'])
 
 def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
     posm = part.posm()
