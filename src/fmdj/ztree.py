@@ -6,7 +6,7 @@ from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
 from .data import TreePlane, PosMass, Multipoles
 from .config import Config
-from .multipoles import multipoles_from_particles, center_of_mass, summarize_multipoles
+from .multipoles import center_of_mass
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")

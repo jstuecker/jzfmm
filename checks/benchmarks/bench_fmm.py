@@ -63,13 +63,13 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
 
     th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build")[1]
     mph = jb.measure(fn_jit=fmdj.multipoles.build_multipole_hierarchy.jit, 
-                     th=th, part=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg, tag="multipoles")[1]
+                     th=th, pos=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg, tag="multipoles")[1]
 
     loc, ilist = jb.measure(fn_jit=fmdj.fmm.evaluate_interaction_hierarchy.jit, 
                             th=th, mph=mph, cfg=cfg, tag="node2node")[1]
     parent = th[0].icoarse_of_fine()
     phif = jb.measure(fn_jit=fmdj.fmm.shift_local_to_children.jit, 
-                      ispl = th[0].ispl, loc=loc, xnode=th[0].mp.center(), xchild=pos_mass_z.pos,
+                      ispl = th[0].ispl, loc=loc, xnode=th[0].center(), xchild=pos_mass_z.pos,
                       pout=1,tag="loc2loc")[1]
     fphi = jb.measure(fn_jit=fmdj.fmm.grouped_force_and_pot.jit,
                       particles=pos_mass_z, plane=th[0], ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]
@@ -82,11 +82,12 @@ def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_hierarchy):
 
     cfg = Config(fmm=FMMConfig(p=p, multipoles_around_com=False))
 
-    mp1 = jb.measure(fn_jit = fmdj.multipoles.multipoles_from_particles.jit,
-               tp=th[0], part=pos_mass_z, cfg=cfg,
-               tag="part2mp"
+    mp1 = jb.measure(
+        fn_jit = fmdj.multipoles.summarize_multipoles.jit,
+        ispl=th[0].ispl, xnode=th[0].center(), xchild=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg,
+        tag="part2mp"
     )[1]
-
+    
     jb.measure(fn_jit = fmdj.multipoles.center_of_mass.jit,
                ispl=th[0].ispl, part=pos_mass_z, cfg=cfg,
                tag="com"

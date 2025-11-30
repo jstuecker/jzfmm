@@ -46,6 +46,9 @@ def summarize_multipoles(
         *, cfg: Config, 
         block_size=32) -> Multipoles:
     """Summarizes multipoles from child nodes to parent nodes"""
+    if len(mp.shape) == 1: # probably plain masses corresponding to monopoles
+        mp = mp.reshape(-1,1)
+
     assert mp.dtype == jnp.float32
     assert ispl.dtype == jnp.int32
     dtype = mp.dtype
@@ -61,22 +64,6 @@ def summarize_multipoles(
 
     return Multipoles(xcent=xnode, values=mpnew)
 summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', 'block_size'])
-
-def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config,
-                              xcent: jnp.ndarray | None = None) -> Multipoles:
-    if xcent is None:
-        if cfg.fmm.multipoles_around_com:
-            xcent = center_of_mass(tp.ispl, part, cfg=cfg).pos
-        else:
-            xcent = tp.geom_cent
-    
-    # particles are monopoles, we can use the same function as for "normal" m2m translation
-    mp = summarize_multipoles(
-        tp.ispl, xcent, part.pos, part.mass.reshape(-1,1), cfg=cfg
-    )
-
-    return mp
-multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnames=['cfg'])
 
 def build_multipole_hierarchy(th: list[TreePlane], pos: jnp.ndarray, mp: jnp.ndarray, *, cfg: Config
                               ) -> list[Multipoles]:
