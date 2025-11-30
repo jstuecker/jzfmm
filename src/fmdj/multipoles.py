@@ -24,8 +24,6 @@ jax.ffi.register_ffi_target("CoarsenMultipoles", ffi_multipoles.CoarsenMultipole
 jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLocalToLocal(), platform="CUDA")
 
 def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
-    assert cfg.fmm.multipoles_around_com
-
     posm = part.posm()
 
     assert posm.dtype == jnp.float32
@@ -35,16 +33,43 @@ def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config) -> M
     out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), posm.dtype)
 
     mp, xcent = jax.ffi.ffi_call("MultipolesFromParticles", (out_mp, out_xcent))(
-        tp.ispl, posm, p=np.int32(cfg.fmm.p), block_size=np.uint64(32)
+        tp.ispl, posm, p=np.int32(cfg.fmm.p), block_size=np.uint64(32),
+        around_com=cfg.fmm.multipoles_around_com
     )
     
     return Multipoles(xcent=xcent, values=mp, p=cfg.fmm.p, around_com=True)
 multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnames=['cfg'])
 
+def coarsen_partial_multipoles(p: PosMass, mp: jnp.ndarray, tp: TreePlane, *, cfg: Config) -> Multipoles:
+    """Determines the multipoles at the next coarser tree plane"""
+    assert mp.values.dtype == jnp.float32
+    assert tp.ispl.dtype == jnp.int32
+    # assert cfg.fmm.ce
+
+    dtype = mp.values.dtype
+
+    pin = p_of_num_multi(mp.values.shape[1])
+
+    assert pin <= mp.p
+
+    if pin < mp.p:
+        mp = jnp.pad(mp.values, ((0,0),(0, num_multi(mp.p) - num_multi(pin))), mode='empty')
+        print(mp.shape, pin.shape)
+
+    out_mp = jax.ShapeDtypeStruct((tp.size(), num_multi(cfg.fmm.p)), dtype)
+    out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), dtype)
+
+    raise NotImplementedError("Partial multipole coarsening needs modified implementation of center of mass")
+
+    mpnew, xcent = jax.ffi.ffi_call("CoarsenMultipoles", (out_mp, out_xcent))(
+        tp.ispl, mp.values, mp.center(), p=np.int32(mp.p), block_size=np.uint64(32)
+    )
+    return Multipoles(xcent=xcent, values=mpnew, p=mp.p, around_com=mp.around_com)
+coarsen_partial_multipoles.jit = jax.jit(coarsen_partial_multipoles, static_argnames=['cfg'])
+
+
 def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipoles:
     """Determines the multipoles at the next coarser tree plane"""
-    assert mp.around_com
-
     dtype = mp.values.dtype
 
     assert mp.values.dtype == jnp.float32
@@ -54,7 +79,8 @@ def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipo
     out_xcent = jax.ShapeDtypeStruct((tp.size(), 3), dtype)
 
     mpnew, xcent = jax.ffi.ffi_call("CoarsenMultipoles", (out_mp, out_xcent))(
-        tp.ispl, mp.values, mp.center(), p=np.int32(mp.p), block_size=np.uint64(32)
+        tp.ispl, mp.values, mp.center(), p=np.int32(mp.p), block_size=np.uint64(32),
+        around_com = cfg.fmm.multipoles_around_com
     )
     return Multipoles(xcent=xcent, values=mpnew, p=mp.p, around_com=mp.around_com)
 coarsen_multipoles.jit = jax.jit(coarsen_multipoles, static_argnames=['cfg'])

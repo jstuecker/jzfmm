@@ -1,6 +1,8 @@
 #ifndef COMMON_MATH_H
 #define COMMON_MATH_H
 
+#include "data.cuh"
+
 /* ---------------------------------------------------------------------------------------------- */
 /*                                           Vector Math                                          */
 /* ---------------------------------------------------------------------------------------------- */
@@ -146,24 +148,6 @@ __device__ __forceinline__ constexpr  int3 flat_to_multi(const int kflat) {
     return int3{ksum-ky-kz, ky, kz};
 }
 
-/* ---------------------------------------------------------------------------------------------- */
-/*                                            Node Math                                           */
-/* ---------------------------------------------------------------------------------------------- */
-
-__device__ __forceinline__ float3 LvlToExt(int level) {
-    // Converts a node's or leaf's binary level to its extend per dimension
-
-    // CUDA's integer division does not what we want for negative numbers. 
-    // e.g. -4/3 = -1 whereas what we want is python behaviour: -4//3 = -2
-    // We add an offset to ensure that CUDA divides positive integers only:
-    int olvl = (level + 3000) / 3 - 1000;
-    int omod = level - olvl * 3;
-    int lx = olvl;
-    int ly = olvl + (omod >= 2);
-    int lz = olvl + (omod >= 1);
-    
-    return make_float3(ldexpf(1.0f, lx), ldexpf(1.0f, ly), ldexpf(1.0f, lz));
-}
 
 /* ---------------------------------------------------------------------------------------------- */
 /*                                         Bit operations                                         */
@@ -196,6 +180,49 @@ __device__ __forceinline__ int32_t float_xor_msb(float a, float b) {
     }
 }
 
+__device__ __forceinline__ int32_t msb_diff_level(const float3 &p1, const float3 &p2) {
+    int msb_x = float_xor_msb(p1.x, p2.x);
+    int msb_y = float_xor_msb(p1.y, p2.y);
+    int msb_z = float_xor_msb(p1.z, p2.z);
+
+    // The level is given by the most significant differing bit
+    // but offset according to the dimension
+    return max(3*msb_x+3, max(3*msb_y+2, 3*msb_z+1));
+}
+
+__device__ __forceinline__ float2 float_common_ext(float a, float b) {
+    // Finds the center and the extend of the domain where floating point numbers
+    // have the same most significant bit as both a and b
+    if (signbit(a) != signbit(b)) {
+        return {-INFINITY, INFINITY};  // The sign is the highest significant bit
+    }
+    int32_t a_bits = __float_as_int(fabsf(a));
+    int32_t b_bits = __float_as_int(fabsf(b));
+
+    int32_t a_exp = (a_bits >> 23) - 127;
+    int32_t b_exp = (b_bits >> 23) - 127;
+
+    float cent, ext;
+
+    if (a_exp == b_exp) {
+
+        int32_t msb = __clz(a_bits ^ b_bits); // leading different bits
+        int32_t common = (0xFFFFFFFFu << (32 - msb)) & a_bits; // common bits of a and b
+        
+        // set the next bit to one to get the center of the common range
+        common |= (1u << (32 - msb - 1));
+
+        cent = (signbit(a) ? -__int_as_float(common) : __int_as_float(common));
+        ext = ldexpf(1.0f, a_exp + (8 - msb));
+    }
+    else { // If exponents differ, the larger exponent gives the difference level
+        int lvl = max(a_exp, b_exp) + 1;
+        cent = ldexpf(signbit(a) ? -0.5f : 0.5f, lvl);
+        ext = ldexpf(1.0f, lvl);
+    }
+    return {cent, ext};
+}
+
 // Whether pos1 should appear before pos2 in a z-curve ordering
 __device__ __forceinline__ bool z_pos_less(float3 pos1, float3 pos2)
 {
@@ -209,6 +236,37 @@ __device__ __forceinline__ bool z_pos_less(float3 pos1, float3 pos2)
     if (ms_dim == 1) return pos1.y < pos2.y;
     return pos1.z < pos2.z;
 }
+
+/* ---------------------------------------------------------------------------------------------- */
+/*                                            Node Math                                           */
+/* ---------------------------------------------------------------------------------------------- */
+
+__device__ __forceinline__ float3 LvlToExt(int level) {
+    // Converts a node's or leaf's binary level to its extend per dimension
+
+    // CUDA's integer division does not what we want for negative numbers. 
+    // e.g. -4/3 = -1 whereas what we want is python behaviour: -4//3 = -2
+    // We add an offset to ensure that CUDA divides positive integers only:
+    int olvl = (level + 3000) / 3 - 1000;
+    int omod = level - olvl * 3;
+    int lx = olvl;
+    int ly = olvl + (omod >= 2);
+    int lz = olvl + (omod >= 1);
+    
+    return make_float3(ldexpf(1.0f, lx), ldexpf(1.0f, ly), ldexpf(1.0f, lz));
+}
+
+__device__ __forceinline__ NodeWithExt get_common_node(const float3 p1, const float3 p2) {
+    float2 ce_x = float_common_ext(p1.x, p2.x);
+    float2 ce_y = float_common_ext(p1.y, p2.y);
+    float2 ce_z = float_common_ext(p1.z, p2.z);
+
+    NodeWithExt node;
+    node.center = make_float3(ce_x.x, ce_y.x, ce_z.x);
+    node.extent = make_float3(ce_x.y, ce_y.y, ce_z.y);
+    return node;
+}
+
 
 /* ---------------------------------------------------------------------------------------------- */
 /*                                     Warp and Group helpers                                     */

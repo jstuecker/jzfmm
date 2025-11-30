@@ -31,6 +31,7 @@ ffi::Error MultipolesFromParticlesFFIHost(
     ffi::AnyBuffer part_posm,
     ffi::Result<ffi::AnyBuffer> mp_out,
     ffi::Result<ffi::AnyBuffer> xcom_out,
+    bool around_com,
     int p,
     size_t block_size
 ) {
@@ -53,7 +54,8 @@ ffi::Error MultipolesFromParticlesFFIHost(
         &isplit_val,
         &part_posm_val,
         &mp_out_val,
-        &xcom_out_val
+        &xcom_out_val,
+        &around_com
     };
     
     // We have template parameters, so we need to instantiate all valid templates
@@ -97,6 +99,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // part_posm
         .Ret<ffi::AnyBuffer>() // mp_out
         .Ret<ffi::AnyBuffer>() // xcom_out
+        .Attr<bool>("around_com")
         .Attr<int>("p")
         .Attr<size_t>("block_size"),
     {xla::ffi::Traits::kCmdBufferCompatible}
@@ -113,6 +116,7 @@ ffi::Error CoarsenMultipolesFFIHost(
     ffi::AnyBuffer xcent,
     ffi::Result<ffi::AnyBuffer> mp_out,
     ffi::Result<ffi::AnyBuffer> xcent_out,
+    bool around_com,
     int p,
     size_t block_size
 ) {
@@ -137,7 +141,8 @@ ffi::Error CoarsenMultipolesFFIHost(
         &mp_values_val,
         &xcent_val,
         &mp_out_val,
-        &xcent_out_val
+        &xcent_out_val,
+        &around_com
     };
     
     // We have template parameters, so we need to instantiate all valid templates
@@ -182,6 +187,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // xcent
         .Ret<ffi::AnyBuffer>() // mp_out
         .Ret<ffi::AnyBuffer>() // xcent_out
+        .Attr<bool>("around_com")
         .Attr<int>("p")
         .Attr<size_t>("block_size"),
     {xla::ffi::Traits::kCmdBufferCompatible}

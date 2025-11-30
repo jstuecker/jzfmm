@@ -142,14 +142,12 @@ def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
 coarsen_plane.jit = jax.jit(coarsen_plane, static_argnames=['cfg'])
 
 def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
-    with_multipoles = cfg.fmm.p > 0
-
     res = summarize_leaves(
         part.pos, max_size=cfg.fmm.max_leaf_size, num_part=part.pos.shape[0],
         alloc_fac_nodes=cfg.fmm.alloc_fac_nodes
     )
     leaves = TreePlane(*res, max_node_size=cfg.fmm.max_leaf_size, tot_npart=part.pos.shape[0], size_children=len(part.pos))
-    if with_multipoles:
+    if cfg.fmm.p > 0:
         leaves.mp = multipoles_from_particles(leaves, part, cfg=cfg)
 
     tree_levels : list[TreePlane] = [leaves]

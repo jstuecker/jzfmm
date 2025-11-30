@@ -76,16 +76,6 @@ std::string PosZorderSort(
     return std::string();
 }
 
-__device__ __forceinline__ int32_t msb_diff_level(const float3 &p1, const float3 &p2) {
-    int msb_x = float_xor_msb(p1.x, p2.x);
-    int msb_y = float_xor_msb(p1.y, p2.y);
-    int msb_z = float_xor_msb(p1.z, p2.z);
-
-    // The level is given by the most significant differing bit
-    // but offset according to the dimension
-    return max(3*msb_x+3, max(3*msb_y+2, 3*msb_z+1));
-}
-
 /* ---------------------------------------------------------------------------------------------- */
 /*                                         SummarizeLeaves                                        */
 /* ---------------------------------------------------------------------------------------------- */

@@ -4,6 +4,7 @@
 #include <math_constants.h>
 
 #include "common/data.cuh"
+#include "common/math.cuh"
 
 /* ---------------------------------------------------------------------------------------------- */
 /*                                 Derivatives of Green's Function                                */
@@ -87,7 +88,8 @@ __global__ void MultipolesFromParticles(
     const int* __restrict__ isplit,
     const PosMass* __restrict__ part_posm,
     float* __restrict__ mp_out,
-    float3* __restrict__ xcom_out
+    float3* __restrict__ xcom_out,
+    bool around_com
 ) {
     constexpr int ncomb = NCOMB(p);
 
@@ -115,21 +117,30 @@ __global__ void MultipolesFromParticles(
     }
     __syncthreads();
 
-    // First pass: compute total mass and center of mass
-    for (int ioff = ipart_start; ioff < ipart_end; ioff += blockDim.x) {
-        PosMass posm;
-        if (ioff + threadIdx.x < ipart_end)
-            posm = part_posm[ioff + threadIdx.x];
-        else
-            posm = PosMass{0.f, 0.f, 0.f, 0.f};
-        
-        accumulate_m_and_mpos(&mp[0], posm, x0);
+    float3 center;
+    if(around_com) {
+        // First pass: compute total mass and center of mass
+        for (int ioff = ipart_start; ioff < ipart_end; ioff += blockDim.x) {
+            PosMass posm;
+            if (ioff + threadIdx.x < ipart_end)
+                posm = part_posm[ioff + threadIdx.x];
+            else
+                posm = PosMass{0.f, 0.f, 0.f, 0.f};
+            
+            accumulate_m_and_mpos(&mp[0], posm, x0);
+        }
+        __syncthreads();
+        center = { mp[1] / mp[0] + x0.x, mp[2] / mp[0] + x0.y, mp[3] / mp[0] + x0.z};
+        __syncthreads();
+        if (threadIdx.x == 0) {
+            mp[0] = 0.f; mp[1] = 0.f; mp[2] = 0.f; mp[3] = 0.f;
+        }
+        __syncthreads();
     }
-    __syncthreads();
-    float3 com = { mp[1] / mp[0] + x0.x, mp[2] / mp[0] + x0.y, mp[3] / mp[0] + x0.z};
-    __syncthreads();
-    if (threadIdx.x == 0) {
-        mp[1] = 0.f; mp[2] = 0.f; mp[3] = 0.f;
+    else {
+        float3 x1 = part_posm[ipart_end - 1].pos;
+        
+        center = get_common_node(x0, x1).center;
     }
 
     // Second pass: compute multipoles around center of mass
@@ -137,21 +148,18 @@ __global__ void MultipolesFromParticles(
         PosMass dpos;
         if (ioff + threadIdx.x < ipart_end) {
             PosMass posm = part_posm[ioff + threadIdx.x];
-            dpos = PosMass{ posm.x - com.x, posm.y - com.y, posm.z - com.z, posm.mass};
+            dpos = PosMass{ posm.x - center.x, posm.y - center.y, posm.z - center.z, posm.mass};
         }
         else
             dpos = PosMass{0.f, 0.f, 0.f, 0.f};
 
-        int kflat = -1;
+        int kflat = 0;
         #pragma unroll
         for(int ksum = 0; ksum <= p; ksum++) {
             #pragma unroll
             for(int kz = 0; kz <= ksum; kz++) {
                 #pragma unroll
                 for(int ky = 0; ky <= ksum - kz; ky++) {
-                    kflat += 1;
-                    if (ksum <= 1)
-                        continue; // Skip monopole and dipole terms (already computed)
                     const int kx = ksum - ky - kz;
 
                     float mnew = dpos.mass * powf(dpos.x, kx) * powf(dpos.y, ky) * powf(dpos.z, kz);
@@ -159,6 +167,8 @@ __global__ void MultipolesFromParticles(
                     float msum = warp_reduce_sum(mnew);
                     if ((threadIdx.x & 31) == 0)
                         atomicAdd(&mp[kflat], msum);
+
+                    kflat += 1;
                 }
             }
         }
@@ -171,7 +181,7 @@ __global__ void MultipolesFromParticles(
         mp_out[inode * ncomb + iM] = mp[iM];
     }
     if (threadIdx.x == 0) {
-        xcom_out[inode] = com;
+        xcom_out[inode] = center;
     }
 }
 
@@ -251,13 +261,15 @@ __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, float
     }
 }
 
+
 template<int p>
 __global__ void CoarsenMultipoles(
     const int* __restrict__ isplit,
     const float* __restrict__ mp_values,
     const float3* __restrict__ xcent,
     float* __restrict__ mp_out,
-    float3* __restrict__ xcent_out
+    float3* __restrict__ xcent_out,
+    bool around_com
 ) {
     constexpr int ncomb = NCOMB(p);
 
@@ -283,33 +295,42 @@ __global__ void CoarsenMultipoles(
     }
     __syncthreads();
 
-    // First pass: compute total mass and center of mass
-    for (int ioff = istart; ioff < iend; ioff += blockDim.x) {
-        int index = ioff + threadIdx.x;
-        PosMass posm;
-        if (index < iend)
-            posm = PosMass{
-                xcent[index].x, xcent[index].y, xcent[index].z,
-                mp_values[index * ncomb + 0]
-            };
-        else
-            posm = PosMass{0.f, 0.f, 0.f, 0.f};
-        
-        accumulate_m_and_mpos(&mp[0], posm, x0);
+    float3 center;
+
+    if(around_com) {
+        // First pass: compute total mass and center of mass
+        for (int ioff = istart; ioff < iend; ioff += blockDim.x) {
+            int index = ioff + threadIdx.x;
+            PosMass posm;
+            if (index < iend)
+                posm = PosMass{
+                    xcent[index].x, xcent[index].y, xcent[index].z,
+                    mp_values[index * ncomb + 0]
+                };
+            else
+                posm = PosMass{0.f, 0.f, 0.f, 0.f};
+            
+            accumulate_m_and_mpos(&mp[0], posm, x0);
+        }
+        __syncthreads();
+        center = { mp[1] / mp[0] + x0.x, mp[2] / mp[0] + x0.y, mp[3] / mp[0] + x0.z };
+        __syncthreads();
+        if (threadIdx.x == 0) {
+            mp[0] = 0.f; mp[1] = 0.f; mp[2] = 0.f; mp[3] = 0.f;
+        }
+        __syncthreads();
     }
-    __syncthreads();
-    float3 com = { mp[1] / mp[0] + x0.x, mp[2] / mp[0] + x0.y, mp[3] / mp[0] + x0.z };
-    __syncthreads();
-    if (threadIdx.x == 0) {
-        mp[1] = 0.f; mp[2] = 0.f; mp[3] = 0.f;
+    else {
+        float3 x1 = xcent[iend - 1];
+
+        center = get_common_node(x0, x1).center;
     }
-    __syncthreads();
 
     // Second pass: for each child shift its multipoles to the inode center and accumulate
     for (int ioff = istart; ioff < iend; ioff += blockDim.x) {
         int index = ioff + threadIdx.x;
         // compute displacement from child center to inode com
-        float3 dpos = make_float3(xcent[index].x-com.x, xcent[index].y-com.y, xcent[index].z-com.z);
+        float3 dpos = make_float3(xcent[index].x-center.x, xcent[index].y-center.y, xcent[index].z-center.z);
 
         // load source multipoles
         // compute shifted multipoles into a small stack array
@@ -326,7 +347,7 @@ __global__ void CoarsenMultipoles(
         
         shift_multipoles<p>(src, moved, dpos);
 
-        for(int iM=1; iM < ncomb; iM++) {
+        for(int iM=0; iM < ncomb; iM++) {
             float val = index < iend ? moved[iM] : 0.f;
             float sum = warp_reduce_sum(val);
             if ((threadIdx.x & 31) == 0) {
@@ -338,7 +359,7 @@ __global__ void CoarsenMultipoles(
 
     // write inode center
     if (threadIdx.x == 0) {
-        xcent_out[inode] = com;
+        xcent_out[inode] = center;
     }
 
     for (int iM=threadIdx.x; iM < ncomb; iM += blockDim.x) {
