@@ -68,7 +68,7 @@ def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config,
         if cfg.fmm.multipoles_around_com:
             xcent = center_of_mass(tp.ispl, part, cfg=cfg).pos
         else:
-            xcent = tp.geom_center()
+            xcent = tp.geom_cent
     
     # particles are monopoles, we can use the same function as for "normal" m2m translation
     mp = summarize_multipoles(
@@ -86,7 +86,7 @@ def coarsen_multipoles(mp: Multipoles, tp: TreePlane, *, cfg: Config,
         if cfg.fmm.multipoles_around_com:
             xcent = center_of_mass(tp.ispl, PosMass(pos=mp.xcent, mass=mp.values[:,0]), cfg=cfg).pos
         else:
-            xcent = tp.geom_center()
+            xcent = tp.geom_cent
 
     return summarize_multipoles(
         tp.ispl, xcent, mp.xcent, mp.values, cfg=cfg

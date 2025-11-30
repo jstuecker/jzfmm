@@ -92,13 +92,13 @@ def coarsen_multipoles_jax(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Mul
     # Compute the center of mass
     mnode = jax.ops.segment_sum(mp.values[0], **kwargs)
 
-    dx = mp.center() - tp.geom_center()[parent]
+    dx = mp.center() - tp.geom_cent[parent]
     mxnode = [jax.ops.segment_sum(dx[...,d]*mp.values[0], **kwargs) for d in range(3)]
     
     if cfg.fmm.multipoles_around_com:
-        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_center()
+        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_cent
     else:
-        xcent = tp.geom_center()
+        xcent = tp.geom_cent
     
     dx = xcent[parent] - mp.center()
     
@@ -125,16 +125,16 @@ def multipoles_from_particles_jax(tp: TreePlane, part: PosMass, *, cfg: Config) 
     # Compute the center of mass
     mnode = jax.ops.segment_sum(part.mass, **kwargs)
 
-    dx = part.pos - tp.geom_center()[parent]
+    dx = part.pos - tp.geom_cent[parent]
     mxnode = [jax.ops.segment_sum(dx[...,d]*part.mass, **kwargs) for d in range(3)]
 
     mp = [mnode]
     
     if cfg.fmm.multipoles_around_com:
-        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_center()
+        xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_cent
         mp.extend([jnp.zeros_like(mnode, dtype=dtype)]*3)
     else:
-        xcent = tp.geom_center()
+        xcent = tp.geom_cent
         mp.extend(mxnode)
     dx = part.pos - xcent[parent]
 

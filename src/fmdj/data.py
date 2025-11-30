@@ -63,7 +63,7 @@ class TreePlane():
 
     npart: jnp.ndarray
     lvl: jnp.ndarray
-    cent: jnp.ndarray
+    geom_cent: jnp.ndarray
 
     # Scalars (data dependent)
     nnodes: jnp.ndarray
@@ -74,15 +74,23 @@ class TreePlane():
 
     size_children : int = static_field()
 
+    around_com: bool = static_field()
+
     # Optional data:
+    mass_cent: PosMass | None = None
+
     mp: Multipoles = None
 
     def icoarse_of_fine(self) -> jnp.ndarray:
         return inverse_of_splits(self.ispl, self.size_children)
-    def geom_center(self) -> jnp.ndarray:
-        return self.cent
     def size(self) -> int:
         return self.lvl.shape[0]
+    def center(self) -> jnp.ndarray:
+        if self.around_com:
+            assert self.mass_cent is not None, "Mass center not available"
+            return self.mass_cent.pos
+        else:
+            return self.geom_cent
     def node_extent(self, diag2=False) -> jnp.ndarray:
         # return jnp.ldexp(1., self.lvl)
         olvl, omod = self.lvl//3, self.lvl % 3

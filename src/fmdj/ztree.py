@@ -6,7 +6,7 @@ from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
 from .data import TreePlane, PosMass
 from .config import Config
-from .multipoles import coarsen_multipoles, multipoles_from_particles
+from .multipoles import coarsen_multipoles, multipoles_from_particles, center_of_mass
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
@@ -129,14 +129,19 @@ def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
     max_size = int(fine.max_node_size * cfg.fmm.coarse_fac)
     
     res = summarize_leaves(
-        fine.cent, fine.npart, max_size=max_size, num_part=fine.tot_npart,
+        fine.geom_cent, fine.npart, max_size=max_size, num_part=fine.tot_npart,
         ref_fac=cfg.fmm.coarse_fac, alloc_fac_nodes=cfg.fmm.alloc_fac_nodes
     )
 
-    coarse = TreePlane(*res, max_node_size = max_size, tot_npart = fine.tot_npart, size_children = fine.size())
+    coarse = TreePlane(
+        *res, 
+        max_node_size = max_size, tot_npart = fine.tot_npart, 
+        size_children = fine.size(), around_com=fine.around_com
+    )
+    coarse.mass_cent = center_of_mass(coarse.ispl, fine.mass_cent, cfg=cfg)
 
     if fine.mp is not None:
-        coarse.mp = coarsen_multipoles(fine.mp, coarse, cfg=cfg)
+        coarse.mp = coarsen_multipoles(fine.mp, coarse, cfg=cfg, xcent=coarse.center())
 
     return coarse
 coarsen_plane.jit = jax.jit(coarsen_plane, static_argnames=['cfg'])
@@ -146,9 +151,15 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
         part.pos, max_size=cfg.fmm.max_leaf_size, num_part=part.pos.shape[0],
         alloc_fac_nodes=cfg.fmm.alloc_fac_nodes
     )
-    leaves = TreePlane(*res, max_node_size=cfg.fmm.max_leaf_size, tot_npart=part.pos.shape[0], size_children=len(part.pos))
+    leaves = TreePlane(
+        *res, 
+        max_node_size=cfg.fmm.max_leaf_size, tot_npart=part.pos.shape[0], 
+        size_children=len(part.pos), around_com=cfg.fmm.multipoles_around_com
+    )
+    leaves.mass_cent = center_of_mass(leaves.ispl, part, cfg=cfg)
+    
     if cfg.fmm.p > 0:
-        leaves.mp = multipoles_from_particles(leaves, part, cfg=cfg)
+        leaves.mp = multipoles_from_particles(leaves, part, cfg=cfg, xcent=leaves.center())
 
     tree_levels : list[TreePlane] = [leaves]
 
