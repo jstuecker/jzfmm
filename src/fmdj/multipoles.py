@@ -78,6 +78,21 @@ def multipoles_from_particles(tp: TreePlane, part: PosMass, *, cfg: Config,
     return mp
 multipoles_from_particles.jit = jax.jit(multipoles_from_particles, static_argnames=['cfg'])
 
+def build_multipole_hierarchy(th: list[TreePlane], pos: jnp.ndarray, mp: jnp.ndarray, *, cfg: Config
+                              ) -> list[Multipoles]:
+    if len(mp.shape) == 1:
+        mp = mp.reshape(-1,1)
+
+    mp0 = summarize_multipoles(th[0].ispl, th[0].center(), pos, mp, cfg=cfg)
+    mph = [mp0]
+    for i in range(1, len(th)):
+        mp_coarse = summarize_multipoles(
+            th[i].ispl, th[i].center(), th[i-1].center(), mph[-1].values, cfg=cfg
+        )
+        mph.append(mp_coarse)
+    return mph
+build_multipole_hierarchy.jit = jax.jit(build_multipole_hierarchy, static_argnames=['cfg'])
+
 def shift_local_to_children(
         ispl: jnp.array,
         loc: jnp.array,

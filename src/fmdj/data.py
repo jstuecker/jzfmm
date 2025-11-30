@@ -79,8 +79,6 @@ class TreePlane():
     # Optional data:
     mass_cent: PosMass | None = None
 
-    mp: Multipoles = None
-
     def icoarse_of_fine(self) -> jnp.ndarray:
         return inverse_of_splits(self.ispl, self.size_children)
     def size(self) -> int:

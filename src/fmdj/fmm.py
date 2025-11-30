@@ -4,9 +4,9 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 from .config import Config
-from .data import TreePlane, PosMass, InteractionList, dense_interaction_list, LocalExpansion
+from .data import TreePlane, PosMass, InteractionList, dense_interaction_list, LocalExpansion, Multipoles
 from .ztree import pos_zorder_sort, build_tree_hierarchy
-from .multipoles import shift_local_to_children
+from .multipoles import shift_local_to_children, build_multipole_hierarchy
 
 import fmdj_cuda.ffi_fmm as ffi_fmm
 import fmdj_cuda.ffi_forces as ffi_forces
@@ -22,7 +22,8 @@ jax.ffi.register_ffi_target("BwdForceAndPotential", ffi_forces.BwdForceAndPotent
 # ------------------------------------------------------------------------------------------------ #
 
 def evaluate_plane_interactions(
-        plane: TreePlane, 
+        plane: TreePlane,
+        mp: Multipoles,
         plane_lr: TreePlane | None = None,
         ilist_lr: InteractionList | None = None,
         loc_lr: jnp.ndarray | None = None,
@@ -52,10 +53,10 @@ def evaluate_plane_interactions(
     
     nint_out = cfg.fmm.ilist_alloc_fac * plane.size()
 
-    children = jnp.concatenate((plane.mp.center(), plane.lvl.view(jnp.float32)[...,None]), axis=-1)
+    children = jnp.concatenate((plane.center(), plane.lvl.view(jnp.float32)[...,None]), axis=-1)
     
     # Determine output shapes
-    out_loc = jax.ShapeDtypeStruct(plane.mp.values.shape, jnp.float32)
+    out_loc = jax.ShapeDtypeStruct(mp.values.shape, jnp.float32)
     out_interaction_count = jax.ShapeDtypeStruct((plane.size(),), jnp.int32)
     
     # Count opened interactions and evaluate M2L
@@ -63,7 +64,7 @@ def evaluate_plane_interactions(
         "CountInteractionsAndM2L",
         (out_loc, out_interaction_count, )
     )(
-        node_range, spl_nodes, ilist_lr.ispl, ilist_lr.iother, children, plane.mp.values,
+        node_range, spl_nodes, ilist_lr.ispl, ilist_lr.iother, children, mp.values,
         p=np.int32(cfg.fmm.p),
         softening=np.float32(cfg.softening),
         opening_angle=np.float32(cfg.fmm.opening_angle)
@@ -87,16 +88,16 @@ def evaluate_plane_interactions(
     # Evaluate L2L part
     if loc_lr is not None:
         loc = loc + shift_local_to_children(
-            plane_lr.ispl, loc_lr, plane_lr.mp.center(), plane.mp.center(),
+            plane_lr.ispl, loc_lr, plane_lr.center(), plane.center(),
         )
     
     return loc, new_ilist
 evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
 
-def evaluate_interaction_hierarchy(th, cfg):
+def evaluate_interaction_hierarchy(th, mph, cfg):
     ilist, loc, last_plane = None, None, None
     for i in reversed(range(0, len(th))):
-        loc, ilist = evaluate_plane_interactions(th[i], last_plane, ilist, loc, cfg=cfg)
+        loc, ilist = evaluate_plane_interactions(th[i], mph[i], last_plane, ilist, loc, cfg=cfg)
         last_plane = th[i]
     return loc, ilist
 evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, static_argnames=['cfg'])
@@ -204,14 +205,16 @@ def fast_multipole_method(part: PosMass, cfg: Config, pout: int = 1) -> LocalExp
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
 
     posz, isortz = pos_zorder_sort(part.pos)
-    particlesz = PosMass(pos=posz, mass=part.mass[isortz])
+    partz = PosMass(pos=posz, mass=part.mass[isortz])
 
-    th = build_tree_hierarchy(particlesz, cfg)
-    loc, ilist = evaluate_interaction_hierarchy(th, cfg=cfg)
+    th = build_tree_hierarchy(partz, cfg)
+    mph = build_multipole_hierarchy(th, partz.pos, part.mass, cfg=cfg)
 
-    node_node_loc = shift_local_to_children(th[0].ispl, loc, th[0].mp.center(), particlesz.pos, pout=pout)
+    loc, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
 
-    leaf_leaf_loc = grouped_force_and_pot(particlesz, th[0], ilist, cfg=cfg)
+    node_node_loc = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=pout)
+
+    leaf_leaf_loc = grouped_force_and_pot(partz, th[0], ilist, cfg=cfg)
     loc = leaf_leaf_loc + node_node_loc
 
     inv_sort = jnp.zeros_like(isortz).at[isortz].set(jnp.arange(len(isortz), dtype=isortz.dtype))

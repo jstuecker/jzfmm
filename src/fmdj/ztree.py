@@ -4,7 +4,7 @@ import jax.numpy as jnp
 
 from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
-from .data import TreePlane, PosMass
+from .data import TreePlane, PosMass, Multipoles
 from .config import Config
 from .multipoles import multipoles_from_particles, center_of_mass, summarize_multipoles
 
@@ -140,10 +140,6 @@ def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
     )
     coarse.mass_cent = center_of_mass(coarse.ispl, fine.mass_cent, cfg=cfg)
 
-    if fine.mp is not None:
-        coarse.mp = summarize_multipoles(
-            coarse.ispl, coarse.center(), fine.mp.center(), fine.mp.values, cfg=cfg
-        )
 
     return coarse
 coarsen_plane.jit = jax.jit(coarsen_plane, static_argnames=['cfg'])
@@ -159,9 +155,6 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
         size_children=len(part.pos), around_com=cfg.fmm.multipoles_around_com
     )
     leaves.mass_cent = center_of_mass(leaves.ispl, part, cfg=cfg)
-    
-    if cfg.fmm.p > 0:
-        leaves.mp = multipoles_from_particles(leaves, part, cfg=cfg, xcent=leaves.center())
 
     tree_levels : list[TreePlane] = [leaves]
 

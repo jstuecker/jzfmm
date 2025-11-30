@@ -11,11 +11,12 @@ from dataclasses import replace
 def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
     cfg = replace(cfg, fmm=replace(cfg.fmm, coarse_fac=coarsen_fac))
     th = fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg)
+    mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
     
     jb = jax_bench(jit_rounds=100, jit_warmup=50)
 
     jb.measure(fn_jit=fmdj.fmm.evaluate_interaction_hierarchy.jit,
-        th=th, cfg=cfg
+        th=th, mph=mph, cfg=cfg
     )
 
 @pytest.mark.parametrize("max_leaf_size", [16,24,32,48])
@@ -24,9 +25,11 @@ def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
 
     jb = jax_bench(jit_rounds=40, jit_warmup=20)
 
-    th = jax.block_until_ready(fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg))
+    th = fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg)
+    mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
+
     res, (loc, ilist) = jb.measure(fn_jit=fmdj.fmm.evaluate_interaction_hierarchy.jit,
-        th=th, cfg=cfg, tag="node2node"
+        th=th, mph=mph, cfg=cfg, tag="node2node"
     )
 
     jb.measure(fn_jit=fmdj.fmm.grouped_force_and_pot.jit,
@@ -59,7 +62,11 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
     pos_mass_z = fmdj.data.PosMass(pos=posz, mass=pos_mass.mass[isortz])
 
     th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build")[1]
-    loc, ilist = jb.measure(fn_jit=fmdj.fmm.evaluate_interaction_hierarchy.jit, th=th, cfg=cfg, tag="node2node")[1]
+    mph = jb.measure(fn_jit=fmdj.multipoles.build_multipole_hierarchy.jit, 
+                     th=th, part=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg, tag="multipoles")[1]
+
+    loc, ilist = jb.measure(fn_jit=fmdj.fmm.evaluate_interaction_hierarchy.jit, 
+                            th=th, mph=mph, cfg=cfg, tag="node2node")[1]
     parent = th[0].icoarse_of_fine()
     phif = jb.measure(fn_jit=fmdj.fmm.shift_local_to_children.jit, 
                       ispl = th[0].ispl, loc=loc, xnode=th[0].mp.center(), xchild=pos_mass_z.pos,
