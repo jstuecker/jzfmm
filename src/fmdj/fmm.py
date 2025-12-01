@@ -216,11 +216,10 @@ direct_potential_scan_jax.jit = jax.jit(direct_potential_scan_jax, static_argnam
 
 def evaluate_node_node_fmm_fwd(
         partz: PosMass,
-        mpz: Multipoles,
         th: list[TreePlane],
         cfg: Config
 ):
-    mph = build_multipole_hierarchy(th, partz.pos, mpz, cfg=cfg)
+    mph = build_multipole_hierarchy(th, partz.pos, partz.mass, cfg=cfg)
     loc, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
     loc_shifted = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=2)
 
@@ -231,23 +230,23 @@ def evaluate_local_fmm_bwd(cfg, res, grads):
     th, loc_fwd, partz = res
 
     l1 = local_eval_vjp(loc_fwd, gloc)
+    print(l1.shape, loc_fwd.shape)
 
     mph = build_multipole_hierarchy(th, partz.pos, gloc, cfg=cfg)
     loc = evaluate_interaction_hierarchy(th, mph, cfg=cfg)[0]
     l2 = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=1)
 
-    gpm = PosMass(l1 + l2[...,1:4]/partz.mass[:,None], l2[...,0])
+    gpm = PosMass(l1 + l2[...,1:4]*partz.mass[:,None], l2[...,0])
 
-    return gpm, None, None
+    return gpm, None
 
 @partial(jax.custom_vjp, nondiff_argnames=("cfg",))
 def evaluate_node_node_fmm(
         partz: PosMass,
-        mpz: Multipoles,
         th: list[TreePlane],
         cfg: Config
 ) -> Tuple[LocalExpansion, InteractionList]:
-    mph = build_multipole_hierarchy(th, partz.pos, mpz, cfg=cfg)
+    mph = build_multipole_hierarchy(th, partz.pos, partz.mass, cfg=cfg)
     loc, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
     loc_shifted = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=1)
 
@@ -262,7 +261,7 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jnp.ndarray | None = None, c
 
     th = build_tree_hierarchy(jax.lax.stop_gradient(partz), cfg)
 
-    loc_node_node, ilist = evaluate_node_node_fmm(partz, partz.mass, th, cfg=cfg)
+    loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg=cfg)
 
     loc_leaf_leaf = grouped_force_and_pot(partz, th[0], ilist, cfg=cfg)
     loc = loc_leaf_leaf + loc_node_node
