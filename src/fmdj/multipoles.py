@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import fmdj_cuda.ffi_multipoles as ffi_multipoles
-from .data import TreePlane, Multipoles, PosMass
+from .data import TreePlane, PosMass
 from .config import Config
 
 # ------------------------------------------------------------------------------------------------ #
@@ -44,7 +44,7 @@ def summarize_multipoles(
         xchild: jnp.ndarray,
         mp: jnp.ndarray, 
         *, cfg: Config, 
-        block_size=32) -> Multipoles:
+        block_size=32) -> jnp.ndarray:
     """Summarizes multipoles from child nodes to parent nodes"""
     if len(mp.shape) == 1: # probably plain masses corresponding to monopoles
         mp = mp.reshape(-1,1)
@@ -62,11 +62,11 @@ def summarize_multipoles(
         kahan = cfg.fmm.kahan_summation
     )[0]
 
-    return Multipoles(xcent=xnode, values=mpnew)
+    return mpnew
 summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', 'block_size'])
 
 def build_multipole_hierarchy(th: list[TreePlane], pos: jnp.ndarray, mp: jnp.ndarray, *, cfg: Config
-                              ) -> list[Multipoles]:
+                              ) -> list[jnp.ndarray]:
     if len(mp.shape) == 1:
         mp = mp.reshape(-1,1)
 
@@ -74,7 +74,7 @@ def build_multipole_hierarchy(th: list[TreePlane], pos: jnp.ndarray, mp: jnp.nda
     mph = [mp0]
     for i in range(1, len(th)):
         mp_coarse = summarize_multipoles(
-            th[i].ispl, th[i].center(), th[i-1].center(), mph[-1].values, cfg=cfg
+            th[i].ispl, th[i].center(), th[i-1].center(), mph[-1], cfg=cfg
         )
         mph.append(mp_coarse)
     return mph

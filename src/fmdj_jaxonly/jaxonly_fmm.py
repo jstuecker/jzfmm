@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import fmdj
 from fmdj.config import Config
-from fmdj.data import TreePlane, InteractionList, SegmentedNDArray, PosMass, dense_interaction_list, Multipoles
+from fmdj.data import TreePlane, InteractionList, SegmentedNDArray, PosMass, dense_interaction_list
 from fmdj.tools import conditional_callback, cumsum_starting_with_zero, fori_dynamic_over_static, inverse_of_splits
 from .jaxonly_multipoles import ilist_node_to_node, shift_local_to_local_jax
 
@@ -79,7 +79,7 @@ def opening_criterion_bnh(plane: TreePlane, i0: jnp.ndarray, i1: jnp.ndarray, cf
     return need_open
 
 def jaxonly_evaluate_plane_interactions(plane: TreePlane,
-                                mp: Multipoles,
+                                mp: jnp.ndarray,
                                 plane_lr: TreePlane | None = None,
                                 ilist_lr: InteractionList | None = None,
                                 loc_lr: jnp.ndarray | None = None,
@@ -105,7 +105,7 @@ def jaxonly_evaluate_plane_interactions(plane: TreePlane,
     interactions = jnp.stack(ilist_eval.get_interactions(get_valid=False), axis=-1)
     irange = jnp.stack([0, ilist_eval.nfilled])
 
-    loc = ilist_node_to_node(plane.center(), mp.values, interactions, irange, cfg=cfg)
+    loc = ilist_node_to_node(plane.center(), mp, interactions, irange, cfg=cfg)
     if loc_lr is not None:
         ipar = plane_lr.icoarse_of_fine()
         loc = loc + shift_local_to_local_jax(loc_lr[ipar], plane.center() - plane_lr.center()[ipar])
@@ -126,7 +126,7 @@ jaxonly_evaluate_plane_interactions.jit = jax.jit(jaxonly_evaluate_plane_interac
 
 def new_eval(
         plane: TreePlane,
-        mp: Multipoles,
+        mp: jnp.ndarray,
         plane_lr: TreePlane | None = None,
         ilist_lr: InteractionList | None = None,
         loc_lr: jnp.ndarray | None = None,
@@ -172,13 +172,13 @@ def new_eval(
 
         # Evaluate M2L for unopened nodes
         interactions = jnp.stack((i0, i1), axis=-1)
-        Loc_new = ilist_node_to_node(plane.center(), mp.values, interactions, irange, cfg=cfg)
+        Loc_new = ilist_node_to_node(plane.center(), mp, interactions, irange, cfg=cfg)
         Loc = Loc + Loc_new * (valid & ~need_open)[:,None]
 
         return nopen, Loc, iint, isub
 
     nopen = jnp.zeros(plane.size(), dtype=jnp.int32)
-    Loc = jnp.zeros_like(mp.values)
+    Loc = jnp.zeros_like(mp)
 
     nopen, Loc = fori_dynamic_over_static(
         0, jnp.max(nint),

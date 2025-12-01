@@ -4,7 +4,7 @@ import jax.numpy as jnp
 
 from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
-from .data import TreePlane, PosMass, Multipoles
+from .data import TreePlane, PosMass
 from .config import Config
 from .multipoles import center_of_mass
 

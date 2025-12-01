@@ -48,15 +48,6 @@ class Particles(PosMass):
 
 @jax.tree_util.register_dataclass
 @dataclass
-class Multipoles:
-    xcent : jnp.ndarray
-    values: jnp.ndarray
-
-    def center(self):
-        return self.xcent
-
-@jax.tree_util.register_dataclass
-@dataclass
 class TreePlane():
     # Defined per node:
     ispl: jnp.ndarray # relation to children

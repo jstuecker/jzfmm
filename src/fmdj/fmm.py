@@ -4,7 +4,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 from .config import Config
-from .data import TreePlane, PosMass, InteractionList, dense_interaction_list, LocalExpansion, Multipoles
+from .data import TreePlane, PosMass, InteractionList, dense_interaction_list, LocalExpansion
 from .ztree import pos_zorder_sort, build_tree_hierarchy
 from .multipoles import shift_local_to_children, build_multipole_hierarchy, local_eval_vjp
 
@@ -23,7 +23,7 @@ jax.ffi.register_ffi_target("BwdForceAndPotential", ffi_forces.BwdForceAndPotent
 
 def evaluate_plane_interactions(
         plane: TreePlane,
-        mp: Multipoles,
+        mp: jnp.ndarray,
         plane_lr: TreePlane | None = None,
         ilist_lr: InteractionList | None = None,
         loc_lr: jnp.ndarray | None = None,
@@ -56,7 +56,7 @@ def evaluate_plane_interactions(
     children = jnp.concatenate((plane.center(), plane.lvl.view(jnp.float32)[...,None]), axis=-1)
     
     # Determine output shapes
-    out_loc = jax.ShapeDtypeStruct(mp.values.shape, jnp.float32)
+    out_loc = jax.ShapeDtypeStruct(mp.shape, jnp.float32)
     out_interaction_count = jax.ShapeDtypeStruct((plane.size(),), jnp.int32)
     
     # Count opened interactions and evaluate M2L
@@ -64,7 +64,7 @@ def evaluate_plane_interactions(
         "CountInteractionsAndM2L",
         (out_loc, out_interaction_count, )
     )(
-        node_range, spl_nodes, ilist_lr.ispl, ilist_lr.iother, children, mp.values,
+        node_range, spl_nodes, ilist_lr.ispl, ilist_lr.iother, children, mp,
         p=np.int32(cfg.fmm.p),
         softening=np.float32(cfg.softening),
         opening_angle=np.float32(cfg.fmm.opening_angle)

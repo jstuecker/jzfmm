@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import fmdj
 from fmdj.config import Config
-from fmdj.data import TreePlane, Multipoles, PosMass
+from fmdj.data import TreePlane, PosMass
 from fmdj.multipoles import num_multi, p_of_num_multi
 
 # ------------------------------------------------------------------------------------------------ #
@@ -80,7 +80,7 @@ def shift_multipoles(m, x0):
 def x_moment(x, c):
     return x[...,0]**c[0] * x[...,1]**c[1] * x[...,2]**c[2]
 
-def coarsen_multipoles_jax(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Multipoles:
+def coarsen_multipoles_jax(mp: jnp.ndarray, tp: TreePlane, *, cfg: Config) -> jnp.ndarray:
     """Determines the multipoles at the next coarser tree plane"""
     parent = tp.icoarse_of_fine()
     kwargs = dict(
@@ -90,10 +90,10 @@ def coarsen_multipoles_jax(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Mul
     )
 
     # Compute the center of mass
-    mnode = jax.ops.segment_sum(mp.values[0], **kwargs)
+    mnode = jax.ops.segment_sum(mp[0], **kwargs)
 
     dx = mp.center() - tp.geom_cent[parent]
-    mxnode = [jax.ops.segment_sum(dx[...,d]*mp.values[0], **kwargs) for d in range(3)]
+    mxnode = [jax.ops.segment_sum(dx[...,d]*mp[0], **kwargs) for d in range(3)]
     
     if cfg.fmm.multipoles_around_com:
         xcent = jnp.stack([mxnode[d]/mnode for d in range(3)], axis=-1) + tp.geom_cent
@@ -102,17 +102,14 @@ def coarsen_multipoles_jax(mp: Multipoles, tp: TreePlane, *, cfg: Config) -> Mul
     
     dx = xcent[parent] - mp.center()
     
-    mpshift = shift_multipoles(mp.values, dx)
+    mpshift = shift_multipoles(mp, dx)
 
     mp_coarse = [jax.ops.segment_sum(mpshift[...,k], **kwargs) for k in range(mpshift.shape[-1])]
 
-    return Multipoles(
-        xcent=xcent,
-        values=jnp.stack(mp_coarse, axis=-1)
-    )
+    return jnp.stack(mp_coarse, axis=-1)
 coarsen_multipoles_jax.jit = jax.jit(coarsen_multipoles_jax, static_argnames=['cfg'])
 
-def multipoles_from_particles_jax(tp: TreePlane, part: PosMass, *, cfg: Config) -> Multipoles:
+def multipoles_from_particles_jax(tp: TreePlane, part: PosMass, *, cfg: Config) -> jnp.ndarray:
     dtype = part.mass.dtype
 
     parent = tp.icoarse_of_fine()
@@ -142,10 +139,7 @@ def multipoles_from_particles_jax(tp: TreePlane, part: PosMass, *, cfg: Config) 
     for nvec in iter_multi(cfg.fmm.p, istart=4):
         mp.append(jax.ops.segment_sum(x_moment(dx, nvec) * part.mass, **kwargs))
 
-    return Multipoles(
-        xcent=xcent,
-        values=jnp.stack(mp, axis=-1)
-    )
+    return np.stack(mp, axis=-1)
 multipoles_from_particles_jax.jit = jax.jit(multipoles_from_particles_jax, static_argnames=['cfg'])
 
 # ------------------------------------------------------------------------------------------------ #
