@@ -38,13 +38,7 @@ def center_of_mass(ispl: jnp.ndarray, part: PosMass, *, cfg: Config, block_size=
     return PosMass(pos=xm[...,0:3], mass=xm[...,4])
 center_of_mass.jit = jax.jit(center_of_mass, static_argnames=['cfg', 'block_size'])
 
-def summarize_multipoles(
-        ispl: jnp.ndarray,
-        xnode: jnp.ndarray,
-        xchild: jnp.ndarray,
-        mp: jnp.ndarray, 
-        *, cfg: Config, 
-        block_size=32) -> jnp.ndarray:
+def _summarize_multipoles_impl(ispl, xnode, xchild, mp, *, cfg, block_size=32) -> jnp.ndarray:
     """Summarizes multipoles from child nodes to parent nodes"""
     if len(mp.shape) == 1: # probably plain masses corresponding to monopoles
         mp = mp.reshape(-1,1)
@@ -63,6 +57,35 @@ def summarize_multipoles(
     )[0]
 
     return mpnew
+
+def summarize_multipoles(
+        ispl: jnp.ndarray,
+        xnode: jnp.ndarray,
+        xchild: jnp.ndarray,
+        mp: jnp.ndarray, 
+        *, cfg: Config, 
+        block_size=32
+    ) -> jnp.ndarray:
+
+    pin = p_of_num_multi(mp.shape[-1])
+
+    if mp.ndim == 1:
+        mp = mp.reshape(-1,1)
+
+    @jax.custom_gradient
+    def inner(xchild, mp):
+
+        val = _summarize_multipoles_impl(ispl, xnode, xchild, mp, cfg=cfg, block_size=block_size)
+
+        def grad(gmp):
+            gmp = shift_local_to_children(ispl, gmp, xnode, xchild, pout=max(pin, 1), block_size=block_size)
+            gx = gmp[..., 1:4] * mp[..., 0:1]
+
+            return gx, gmp[:,:num_multi(pin)]
+        
+        return val, grad
+    
+    return inner(xchild, mp)
 summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', 'block_size'])
 
 def build_multipole_hierarchy(th: list[TreePlane], pos: jnp.ndarray, mp: jnp.ndarray, *, cfg: Config
