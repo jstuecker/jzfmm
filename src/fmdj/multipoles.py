@@ -15,6 +15,19 @@ def num_multi(p):
 def p_of_num_multi(ncomp):
     return [num_multi(p) for p in range(20)].index(ncomp)
 
+def iter_multi(p, istart=0):
+    i = 0
+    for n in range(p+1):
+        for nz in range(n+1):
+            for ny in range(n - nz +1):
+                nx = n - ny - nz
+                if i >= istart:
+                    yield nx, ny, nz
+                i += 1
+
+def get_index_map(p):
+    return {c: i for i,c in enumerate(iter_multi(p))}
+
 # ------------------------------------------------------------------------------------------------ #
 #                                             FFI Calls                                            #
 # ------------------------------------------------------------------------------------------------ #
@@ -38,7 +51,7 @@ def center_of_mass(ispl: jnp.ndarray, part: PosMass, *, cfg: Config, block_size=
     return PosMass(pos=xm[...,0:3], mass=xm[...,4])
 center_of_mass.jit = jax.jit(center_of_mass, static_argnames=['cfg', 'block_size'])
 
-def _summarize_multipoles_impl(ispl, xnode, xchild, mp, *, cfg, block_size=32):
+def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg, block_size=32):
     """Summarizes multipoles from child nodes to parent nodes"""
     if len(mp.shape) == 1: # probably plain masses corresponding to monopoles
         mp = mp.reshape(-1,1)
@@ -63,8 +76,7 @@ def summarize_multipoles(
         mp: jnp.ndarray,
         xnode: jnp.ndarray,
         xchild: jnp.ndarray,
-        *, cfg: Config,
-        block_size=32
+        *, cfg: Config
     ) -> jnp.ndarray:
 
     if mp.ndim == 1:
@@ -74,18 +86,18 @@ def summarize_multipoles(
     @jax.custom_gradient
     def inner(xchild, mp):
 
-        val = _summarize_multipoles_impl(ispl, xnode, xchild, mp, cfg=cfg, block_size=block_size)
+        mp_n = _summarize_multipoles_impl(ispl, mp, xnode, xchild, cfg=cfg)
 
-        def grad(gmp):
-            gmp = shift_local_to_children(ispl, gmp, xnode, xchild, pout=max(pin, 1), block_size=block_size)
+        def grad(gmp_n):
+            gmp = shift_local_to_children(ispl, gmp_n, xnode, xchild, cfg=cfg, pout=max(pin, 1))
             gx = gmp[..., 1:4] * mp[..., 0:1]
 
             return gx, gmp[:,:num_multi(pin)]
         
-        return val, grad
+        return mp_n, grad
     
     return inner(xchild, mp)
-summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', 'block_size'])
+summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', ])
 
 def build_multipole_hierarchy(th: list[TreePlane], pos: jnp.ndarray, mp: jnp.ndarray, *, cfg: Config
                               ) -> list[jnp.ndarray]:
@@ -102,7 +114,7 @@ def build_multipole_hierarchy(th: list[TreePlane], pos: jnp.ndarray, mp: jnp.nda
     return mph
 build_multipole_hierarchy.jit = jax.jit(build_multipole_hierarchy, static_argnames=['cfg'])
 
-def shift_local_to_children(
+def _shift_local_to_children_impl(
         ispl: jnp.array,
         loc: jnp.array,
         xnode: jnp.array,
@@ -129,24 +141,56 @@ def shift_local_to_children(
         p=np.int32(p), pout=np.int32(pout), block_size=np.uint64(block_size)
     )[0]
     return locnew
-shift_local_to_children.jit = jax.jit(shift_local_to_children, static_argnames=['pout', 'block_size'])
 
-from fmdj_jaxonly.jaxonly_multipoles import get_index_map, iter_multi
+def shift_local_to_children(
+        ispl: jnp.array,
+        loc: jnp.array,
+        xnode: jnp.array,
+        xchild: jnp.array,
+        cfg: Config,
+        pout: int = None
+    ) -> jnp.ndarray:
+
+    if loc.ndim == 1:
+        loc = loc.reshape(-1,1)
+    p = p_of_num_multi(loc.shape[-1])
+    if pout is None:
+        pout = p_of_num_multi(loc.shape[-1])
+
+    @jax.custom_gradient
+    def inner(xchild, loc):
+        
+        loc_c = _shift_local_to_children_impl(ispl, loc, xnode, xchild, pout=min(pout+1,p))
+
+        def grad(gloc_c):
+            gloc = summarize_multipoles(ispl, gloc_c, xnode, xchild, cfg=cfg)
+
+            gx = local_eval_vjp(loc_c, gloc_c)
+
+            return gx, gloc
+        
+        return loc_c[...,:num_multi(pout)], grad
+    
+    return inner(xchild, loc)
+shift_local_to_children.jit = jax.jit(shift_local_to_children, static_argnames=["cfg", "pout"])
 
 def local_eval_vjp(loc: jnp.ndarray, gloc: jnp.ndarray):
     p_loc, p_gloc = p_of_num_multi(loc.shape[1]), p_of_num_multi(gloc.shape[1])
 
     assert p_loc == p_gloc + 1
 
-    imap_a, imap_b = get_index_map(p_loc), get_index_map(p_gloc)
+    imap = get_index_map(p_loc)
     
     out = []
-    for a1,a2,a3 in ((1,0,0),(0,1,0),(0,0,1)):
+    for a in range(3):
+        avec = [0,0,0]
+        avec[a] = 1
         onew = jnp.zeros_like(gloc[:,0])
-        for m1, m2, m3 in iter_multi(p_gloc):
-            if m1 + a1 + m2 + a2 + m3 + a3 > p_loc:
+        for m in iter_multi(p_gloc):
+            if sum(m) + sum(avec) > p_loc:
                 continue
-            onew += gloc[:,imap_b[m1,m2,m3]] * loc[:,imap_a[m1+a1,m2+a2,m3+a3]]
+            b = (m[0]+avec[0], m[1]+avec[1], m[2]+avec[2])
+            onew +=  (m[a] + 1) * gloc[:,imap[m]] * loc[:,imap[b]]
         out.append(onew)
     
     return jnp.stack(out, axis=-1)

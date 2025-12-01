@@ -5,24 +5,11 @@ import jax.numpy as jnp
 import fmdj
 from fmdj.config import Config
 from fmdj.data import TreePlane, PosMass
-from fmdj.multipoles import num_multi, p_of_num_multi
+from fmdj.multipoles import num_multi, p_of_num_multi, iter_multi, get_index_map
 
 # ------------------------------------------------------------------------------------------------ #
 #                                        Some Combinatorics                                        #
 # ------------------------------------------------------------------------------------------------ #
-
-def iter_multi(p, istart=0):
-    i = 0
-    for n in range(p+1):
-        for nz in range(n+1):
-            for ny in range(n - nz +1):
-                nx = n - ny - nz
-                if i >= istart:
-                    yield nx, ny, nz
-                i += 1
-
-def get_index_map(p):
-    return {c: i for i,c in enumerate(iter_multi(p))}
 
 def multi_to_flat(kx, ky, kz):
     p = kx + ky + kz

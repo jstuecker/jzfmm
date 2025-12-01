@@ -6,16 +6,43 @@ from dataclasses import replace
 
 from jax.test_util import check_grads
 
-def test_fmm_gradients(pos_mass_z, tree_hierarchy, cfg):
+def my_check_gradient(f, x, epsrel=1e-4, rtol=1e-3, atol=0.):
+    dx = jnp.std(x, axis=0, keepdims=True) * epsrel
+    dx = dx * jax.random.normal(jax.random.PRNGKey(0), x.shape)
+    
+    df1 = f(x + dx) - f(x)
+    df2 = jnp.sum(jax.grad(f)(x) * dx)
+
+    # print("Finite diff:", df1)
+    # print("JAX grad  :", df2)
+    # print(f"Relative diff: {jnp.abs(df1 - df2) / (jnp.abs(df1) + jnp.abs(df2) + 1e-30):.2e}")
+
+    assert df1 == pytest.approx(df2, rel=rtol, abs=atol)
+
+def test_m2m_gradients(pos_mass_z, tree_hierarchy, cfg):
     th = tree_hierarchy
     # mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg)
 
-    def mp(x,m):
+    def m2m(x,m):
         return fmdj.multipoles.summarize_multipoles(th[0].ispl, m, th[0].center(), x, cfg=cfg)
 
-    check_grads(lambda m: mp(pos_mass_z.pos, m), (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-3)
-    check_grads(lambda x: mp(x, pos_mass_z.mass), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-3)
-    check_grads(mp, (pos_mass_z.pos, pos_mass_z.mass), order=1, modes=("rev",), eps=1e-3)
+    check_grads(lambda m: m2m(pos_mass_z.pos, m), (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-3)
+    check_grads(lambda x: m2m(x, pos_mass_z.mass), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-3)
+    check_grads(m2m, (pos_mass_z.pos, pos_mass_z.mass), order=1, modes=("rev",), eps=1e-3)
+
+def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
+    th = tree_hierarchy
+    cfg = replace(cfg, softening=1e-1)
+    mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
+    loc, ilist = fmdj.fmm.evaluate_interaction_hierarchy.jit(th, mph, cfg)
+
+    def l2l(x,loc):
+        return fmdj.multipoles.shift_local_to_children(th[0].ispl, loc, th[0].center(), x, cfg=cfg, pout=1)
+
+    loc = loc.at[:,1:4].set(0.)
+    check_grads(lambda x: l2l(x, loc), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-2)
+    # For multipole gradients we need to use smarter finit difference steps than jax's default:
+    my_check_gradient(lambda l: l2l(pos_mass_z.pos, l).sum(), loc, epsrel=5e-2)
 
 @pytest.mark.parametrize("npart", [1024], indirect=True)
 def test_direct_sum_gradient(pos_mass_z: fmdj.data.PosMass):

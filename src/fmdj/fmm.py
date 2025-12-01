@@ -88,7 +88,7 @@ def evaluate_plane_interactions(
     # Evaluate L2L part
     if loc_lr is not None:
         loc = loc + shift_local_to_children(
-            plane_lr.ispl, loc_lr, plane_lr.center(), plane.center(),
+            plane_lr.ispl, loc_lr, plane_lr.center(), plane.center(), cfg=cfg
         )
     
     return loc, new_ilist
@@ -221,7 +221,7 @@ def evaluate_node_node_fmm_fwd(
 ):
     mph = build_multipole_hierarchy(th, partz.pos, partz.mass, cfg=cfg)
     loc, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
-    loc_shifted = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=2)
+    loc_shifted = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=2, cfg=cfg)
 
     return (loc_shifted[...,0:4], ilist), (th, loc_shifted, partz)
 
@@ -234,7 +234,7 @@ def evaluate_local_fmm_bwd(cfg, res, grads):
 
     mph = build_multipole_hierarchy(th, partz.pos, gloc, cfg=cfg)
     loc = evaluate_interaction_hierarchy(th, mph, cfg=cfg)[0]
-    l2 = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=1)
+    l2 = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=1, cfg=cfg)
 
     gpm = PosMass(l1 + l2[...,1:4]*partz.mass[:,None], l2[...,0])
 
@@ -248,7 +248,7 @@ def evaluate_node_node_fmm(
 ) -> Tuple[LocalExpansion, InteractionList]:
     mph = build_multipole_hierarchy(th, partz.pos, partz.mass, cfg=cfg)
     loc, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
-    loc_shifted = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=1)
+    loc_shifted = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=1, cfg=cfg)
 
     return loc_shifted, ilist
 evaluate_node_node_fmm.defvjp(evaluate_node_node_fmm_fwd, evaluate_local_fmm_bwd)
