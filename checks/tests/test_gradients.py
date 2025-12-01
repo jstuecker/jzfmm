@@ -4,6 +4,19 @@ import jax
 import pytest
 from dataclasses import replace
 
+from jax.test_util import check_grads
+
+def test_fmm_gradients(pos_mass_z, tree_hierarchy, cfg):
+    th = tree_hierarchy
+    # mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg)
+
+    def mp(x,m):
+        return fmdj.multipoles.summarize_multipoles(th[0].ispl, m, th[0].center(), x, cfg=cfg)
+
+    check_grads(lambda m: mp(pos_mass_z.pos, m), (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-3)
+    check_grads(lambda x: mp(x, pos_mass_z.mass), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-3)
+    check_grads(mp, (pos_mass_z.pos, pos_mass_z.mass), order=1, modes=("rev",), eps=1e-3)
+
 @pytest.mark.parametrize("npart", [1024], indirect=True)
 def test_direct_sum_gradient(pos_mass_z: fmdj.data.PosMass):
     loc = fmdj.fmm.direct_force_and_potential.jit(pos_mass_z.posm(), softening=1e-2, kahan=True)

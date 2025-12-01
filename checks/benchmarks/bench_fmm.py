@@ -84,7 +84,7 @@ def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_hierarchy):
 
     jb.measure(
         fn_jit = fmdj.multipoles.summarize_multipoles.jit,
-        ispl=th[0].ispl, xnode=th[0].center(), xchild=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg,
+        ispl=th[0].ispl, mp=pos_mass_z.mass, xnode=th[0].center(), xchild=pos_mass_z.pos, cfg=cfg,
         tag="part2mp"
     )
     

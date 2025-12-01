@@ -38,7 +38,7 @@ def center_of_mass(ispl: jnp.ndarray, part: PosMass, *, cfg: Config, block_size=
     return PosMass(pos=xm[...,0:3], mass=xm[...,4])
 center_of_mass.jit = jax.jit(center_of_mass, static_argnames=['cfg', 'block_size'])
 
-def _summarize_multipoles_impl(ispl, xnode, xchild, mp, *, cfg, block_size=32) -> jnp.ndarray:
+def _summarize_multipoles_impl(ispl, xnode, xchild, mp, *, cfg, block_size=32):
     """Summarizes multipoles from child nodes to parent nodes"""
     if len(mp.shape) == 1: # probably plain masses corresponding to monopoles
         mp = mp.reshape(-1,1)
@@ -49,7 +49,7 @@ def _summarize_multipoles_impl(ispl, xnode, xchild, mp, *, cfg, block_size=32) -
     p_in = p_of_num_multi(mp.shape[1])
     out_mp = jax.ShapeDtypeStruct((ispl.size-1, num_multi(cfg.fmm.p)), dtype)
     mpnew = jax.ffi.ffi_call("SummarizeMultipoles", (out_mp,))(
-        ispl, xnode, xchild, mp,
+        ispl, mp, xnode, xchild,
         p_in=np.int32(p_in),
         p=np.int32(cfg.fmm.p),
         block_size=np.uint64(block_size),
@@ -60,17 +60,16 @@ def _summarize_multipoles_impl(ispl, xnode, xchild, mp, *, cfg, block_size=32) -
 
 def summarize_multipoles(
         ispl: jnp.ndarray,
+        mp: jnp.ndarray,
         xnode: jnp.ndarray,
         xchild: jnp.ndarray,
-        mp: jnp.ndarray, 
-        *, cfg: Config, 
+        *, cfg: Config,
         block_size=32
     ) -> jnp.ndarray:
 
-    pin = p_of_num_multi(mp.shape[-1])
-
     if mp.ndim == 1:
         mp = mp.reshape(-1,1)
+    pin = p_of_num_multi(mp.shape[-1])
 
     @jax.custom_gradient
     def inner(xchild, mp):
@@ -93,11 +92,11 @@ def build_multipole_hierarchy(th: list[TreePlane], pos: jnp.ndarray, mp: jnp.nda
     if len(mp.shape) == 1:
         mp = mp.reshape(-1,1)
 
-    mp0 = summarize_multipoles(th[0].ispl, th[0].center(), pos, mp, cfg=cfg)
+    mp0 = summarize_multipoles(th[0].ispl, mp, th[0].center(), pos, cfg=cfg)
     mph = [mp0]
     for i in range(1, len(th)):
         mp_coarse = summarize_multipoles(
-            th[i].ispl, th[i].center(), th[i-1].center(), mph[-1], cfg=cfg
+            th[i].ispl, mph[-1], th[i].center(), th[i-1].center(), cfg=cfg
         )
         mph.append(mp_coarse)
     return mph

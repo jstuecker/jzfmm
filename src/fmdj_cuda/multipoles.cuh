@@ -207,9 +207,9 @@ __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const
 template<int p>
 __global__ void SummarizeMultipoles(
     const int* __restrict__ isplit,
+    const float* __restrict__ mp_in,
     const float3* __restrict__ xnode,
     const float3* __restrict__ xchild,
-    const float* __restrict__ mp_in,
     float* __restrict__ mp_out,
     int nnodes,
     int p_in,

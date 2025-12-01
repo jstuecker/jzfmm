@@ -83,9 +83,9 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 ffi::Error SummarizeMultipolesFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer isplit,
+    ffi::AnyBuffer mp_in,
     ffi::AnyBuffer xnode,
     ffi::AnyBuffer xchild,
-    ffi::AnyBuffer mp_in,
     ffi::Result<ffi::AnyBuffer> mp_out,
     int p_in,
     bool kahan,
@@ -100,16 +100,16 @@ ffi::Error SummarizeMultipolesFFIHost(
     // Build a bundled argument list for cudaLaunchKernel
     // For pointers we need to create a pointer to the pointer
     int* isplit_val = reinterpret_cast<int*>(isplit.untyped_data());
+    float* mp_in_val = reinterpret_cast<float*>(mp_in.untyped_data());
     float3* xnode_val = reinterpret_cast<float3*>(xnode.untyped_data());
     float3* xchild_val = reinterpret_cast<float3*>(xchild.untyped_data());
-    float* mp_in_val = reinterpret_cast<float*>(mp_in.untyped_data());
     float* mp_out_val = reinterpret_cast<float*>(mp_out->untyped_data());
 
     void* args[] = {
         &isplit_val,
+        &mp_in_val,
         &xnode_val,
         &xchild_val,
-        &mp_in_val,
         &mp_out_val,
         &nnodes,
         &p_in,
@@ -154,9 +154,9 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // isplit
+        .Arg<ffi::AnyBuffer>() // mp_in
         .Arg<ffi::AnyBuffer>() // xnode
         .Arg<ffi::AnyBuffer>() // xchild
-        .Arg<ffi::AnyBuffer>() // mp_in
         .Ret<ffi::AnyBuffer>() // mp_out
         .Attr<int>("p_in")
         .Attr<bool>("kahan")
