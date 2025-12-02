@@ -222,7 +222,7 @@ def evaluate_node_node_fmm(partz: PosMass, th: list[TreePlane], *, cfg: Config) 
         loc_part = shift_local_to_children(th[0].ispl, loc_node, th[0].center(), pos, pout=pout, cfg=cfg)
         return (loc_part, ilist), (pos, mp, th, loc_node)
     
-    def eval_bwd(res, grads):
+    def eval_bwd(pout, res, grads):
         pos, mp, th, loc_node = res
         gloc = grads[0]
 
@@ -235,9 +235,9 @@ def evaluate_node_node_fmm(partz: PosMass, th: list[TreePlane], *, cfg: Config) 
 
         gx2 = shift_local_to_children_vjp_x(th[0].ispl, gmp_node, th[0].center(), pos, mp)
         
-        return gx1 + gx2, gmp, None
+        return gx1 + gx2, gmp
     
-    @jax.custom_vjp
+    @partial(jax.custom_vjp, nondiff_argnames=['pout'])
     def eval(pos, mp, pout=1):
         return eval_fwd(pos, mp, pout=pout)[0]
     
