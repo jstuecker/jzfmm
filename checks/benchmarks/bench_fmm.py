@@ -33,7 +33,7 @@ def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
     )
 
     jb.measure(fn_jit=fmdj.fmm.grouped_force_and_pot.jit,
-        particles=pos_mass_z, plane=th[0].ispl, ilist=ilist, cfg=cfg,
+        particles=pos_mass_z, ispl=th[0].ispl, ilist=ilist, cfg=cfg,
         tag="leaf2leaf"
     )
 
@@ -69,10 +69,10 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
                             th=th, mph=mph, cfg=cfg, tag="node2node")[1]
     parent = th[0].icoarse_of_fine()
     phif = jb.measure(fn_jit=fmdj.fmm.shift_local_to_children.jit, 
-                      ispl = th[0].ispl, loc=loc, xnode=th[0].center(), xchild=pos_mass_z.pos,
+                      ispl=th[0].ispl, loc=loc, xnode=th[0].center(), xchild=pos_mass_z.pos,
                       cfg=cfg, pout=1,tag="loc2loc")[1]
     fphi = jb.measure(fn_jit=fmdj.fmm.grouped_force_and_pot.jit,
-                      particles=pos_mass_z, plane=th[0].ispl, ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]
+                      particles=pos_mass_z, ispl=th[0].ispl, ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]
 
 @pytest.mark.parametrize("p", [3,4,5])
 def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_hierarchy):

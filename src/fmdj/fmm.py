@@ -145,29 +145,28 @@ grouped_force_and_pot.jit = jax.jit(grouped_force_and_pot, static_argnames=['cfg
 #                                      Direct Summation Forces                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def direct_force_and_potential_fwd(xm, block_size=64, softening=1e-2, kahan=False):
-    assert xm.dtype == jnp.float32
-    assert xm.shape[-1] == 4
-    assert xm.ndim >= 2
+def direct_force_and_potential(posm: PosMass, softening: float = 1e-2, kahan: bool = False
+                               ) -> jnp.ndarray:
+    block_size = 64
+    out_type = jax.ShapeDtypeStruct(posm.posm().shape, posm.posm().dtype)
     
-    assert softening > 0, "Epsilon must be positive to deal with self-interaction."
-
-    out_type = jax.ShapeDtypeStruct(xm.shape, xm.dtype)
-    loc = jax.ffi.ffi_call("ForceAndPotential", (out_type,))(
+    @jax.custom_vjp
+    def eval(xm):
+        loc = jax.ffi.ffi_call("ForceAndPotential", (out_type,))(
         xm, block_size=np.uint64(block_size), epsilon=np.float32(softening), kahan=kahan)[0]
-    return loc, xm
+        return loc
+    def eval_fwd(xm):
+        return eval(xm), xm
+    def eval_bwd(xm, gloc):
+        gxm = jax.ffi.ffi_call("BwdForceAndPotential", (out_type,))(
+            gloc, xm, block_size=np.uint64(block_size), epsilon=np.float32(softening), kahan=kahan
+        )[0]
+        return gxm,
+    
+    eval.defvjp(eval_fwd, eval_bwd)
 
-def force_and_potential_bwd(block_size, softening, kahan, xm, gloc):
-    out_type = jax.ShapeDtypeStruct(xm.shape, xm.dtype)
-    gxm = jax.ffi.ffi_call("BwdForceAndPotential", (out_type,))(
-        gloc, xm, block_size=np.uint64(block_size), epsilon=np.float32(softening), kahan=kahan)[0]
-    return gxm,
-
-@partial(jax.custom_vjp, nondiff_argnames=("block_size", "softening", "kahan"))
-def direct_force_and_potential(xm, block_size=64, softening=1e-2, kahan=False):
-    return direct_force_and_potential_fwd(xm, block_size, softening, kahan)[0]
-direct_force_and_potential.defvjp(direct_force_and_potential_fwd, force_and_potential_bwd)
-direct_force_and_potential.jit = jax.jit(direct_force_and_potential, static_argnames=("block_size", "softening", "kahan"))
+    return eval(posm.posm())
+direct_force_and_potential.jit = jax.jit(direct_force_and_potential, static_argnames=['softening', 'kahan'])
 
 def direct_potential_jax(x, m=1., softening=1e-2):
     rij2 = jnp.sum((x[:, None, :] - x[None, :, :]) ** 2, axis=-1)
@@ -281,7 +280,7 @@ fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg
 
 def force_and_potential(p: PosMass, cfg : Config) -> LocalExpansion:
     if cfg.fmm is None:
-        loc = direct_force_and_potential(p.posm(), softening=cfg.softening, kahan=True) * cfg.G()
+        loc = direct_force_and_potential(p, softening=cfg.softening, kahan=True) * cfg.G()
         return LocalExpansion(loc)
     else:
         return fast_multipole_method(p, cfg=cfg, pout=1)

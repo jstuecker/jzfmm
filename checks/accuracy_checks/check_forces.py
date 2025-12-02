@@ -20,7 +20,7 @@ cfg = fmdj.Config(softening=eps)
 cfg.fmm.kahan_summation = True
 cfg.fmm.multipoles_around_com = True
 
-loc = fmdj.fmm.direct_force_and_potential.jit(part.posm(), softening=eps, kahan=True) * cfg.G()
+loc = fmdj.fmm.direct_force_and_potential.jit(part, softening=eps, kahan=True) * cfg.G()
 loc_ref = fmdj.data.LocalExpansion(loc)
 
 print(f"Direct sum. done, {time.time() - t0:.2f}s")

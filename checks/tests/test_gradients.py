@@ -60,7 +60,7 @@ def test_fmm_node_gradients(pos_mass_z, tree_hierarchy, cfg):
 
 @pytest.mark.parametrize("npart", [1024], indirect=True)
 def test_direct_sum_gradient(pos_mass_z: fmdj.data.PosMass):
-    loc = fmdj.fmm.direct_force_and_potential.jit(pos_mass_z.posm(), softening=1e-2, kahan=True)
+    loc = fmdj.fmm.direct_force_and_potential.jit(pos_mass_z, softening=1e-2, kahan=True)
     loc = fmdj.data.LocalExpansion(loc)
     fphi_jax = fmdj.fmm.direct_force_and_potential_jax.jit(pos_mass_z.pos, pos_mass_z.mass, softening=1e-2)
 
@@ -74,7 +74,7 @@ def test_direct_sum_gradient(pos_mass_z: fmdj.data.PosMass):
     def loss_jax(xm):
         return jnp.sum(fmdj.fmm.direct_force_and_potential_jax.jit(xm[:,0:3], xm[:,3], softening=1e-2))
 
-    gx1 = jax.grad(loss)(pos_mass_z.posm())
+    gx1 = jax.grad(loss)(pos_mass_z).posm()
     gx2 = jax.grad(loss_jax)(pos_mass_z.posm())
     
     assert gx1 == pytest.approx(gx2, rel=1e-3, abs=1e-5)
