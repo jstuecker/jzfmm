@@ -14,6 +14,7 @@ import fmdj_cuda.ffi_forces as ffi_forces
 jax.ffi.register_ffi_target("CountInteractionsAndM2L", ffi_fmm.CountInteractionsAndM2L(), platform="CUDA")
 jax.ffi.register_ffi_target("InsertInteractions", ffi_fmm.InsertInteractions(), platform="CUDA")
 jax.ffi.register_ffi_target("GroupedForceAndPot", ffi_forces.GroupedForceAndPot(), platform="CUDA")
+jax.ffi.register_ffi_target("BwdGroupedForceAndPot", ffi_forces.BwdGroupedForceAndPot(), platform="CUDA")
 jax.ffi.register_ffi_target("ForceAndPotential", ffi_forces.ForceAndPotential(), platform="CUDA")
 jax.ffi.register_ffi_target("BwdForceAndPotential", ffi_forces.BwdForceAndPotential(), platform="CUDA")
 
@@ -106,17 +107,17 @@ evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, sta
 #                           Leaf-Leaf (Particle to Particle) Interactions                          #
 # ------------------------------------------------------------------------------------------------ #
 
-def grouped_force_and_pot(particles: PosMass, plane: TreePlane, ilist: InteractionList,
+def grouped_force_and_pot(particles: PosMass, ispl: jnp.ndarray, ilist: InteractionList,
                           cfg: Config = None) -> jnp.ndarray:
     block_size = 128
     assert cfg.fmm.max_leaf_size <= block_size
-    node_range = jnp.array([0, plane.nnodes], dtype=jnp.int32)
+    node_range = jnp.array([0, ispl.size-1], dtype=jnp.int32)
     out_type = jax.ShapeDtypeStruct((particles.pos.shape[0], 4), jnp.float32)
 
     @jax.custom_vjp
     def eval(particles):
         loc = jax.ffi.ffi_call("GroupedForceAndPot", (out_type,))(
-            node_range, plane.ispl, ilist.ispl, ilist.iother, particles.posm(),
+            node_range, ispl, ilist.ispl, ilist.iother, particles.posm(),
             softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
@@ -128,7 +129,7 @@ def grouped_force_and_pot(particles: PosMass, plane: TreePlane, ilist: Interacti
     
     def eval_bwd(particles, gloc):
         gposm = jax.ffi.ffi_call("BwdGroupedForceAndPot", (out_type,))(
-            node_range, plane.ispl, ilist.ispl, ilist.iother, particles.posm(), gloc,
+            node_range, ispl, ilist.ispl, ilist.iother, particles.posm(), gloc,
             softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
@@ -259,7 +260,7 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jnp.ndarray | None = None, c
 
     loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg=cfg)
 
-    loc_leaf_leaf = grouped_force_and_pot(partz, th[0], ilist, cfg=cfg)
+    loc_leaf_leaf = grouped_force_and_pot(partz, th[0].ispl, ilist, cfg=cfg)
     loc = loc_leaf_leaf + loc_node_node
 
     return LocalExpansion(loc * cfg.G())
