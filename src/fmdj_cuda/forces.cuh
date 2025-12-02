@@ -246,4 +246,85 @@ __global__ void GroupedForceAndPot(
     }
 }
 
+template <bool kahan>
+__global__ void BwdGroupedForceAndPot(
+    // inputs:
+    const int2* node_range,
+    const int* spl_nodes,
+    const int* spl_ilist,
+    const int* ilist_nodes,
+    const PosMass* posm,
+    const LocalExp *gloc,
+    // outputs:
+    PosMass* gposm_out,
+    // attributes:
+    float softening
+) {
+    float softening2 = softening * softening;
+
+    int2 nrange = node_range[0];
+    int nodeid = nrange.x + blockIdx.x;
+    if (nodeid >= nrange.y)
+        return;
+    
+    int2 prange = {spl_nodes[nodeid], spl_nodes[nodeid + 1]};
+
+    int num = prange.y-prange.x;
+
+    // See comment in GroupedForceAndPot for explanation
+    int n_write = blockDim.x / num;
+    int a_write = threadIdx.x % num;   
+    int read_b_offset = threadIdx.x / num;
+    int valid = threadIdx.x < num * n_write;
+
+    PosMass xm_a = posm[prange.x + a_write];
+    LocalExp gloc_a = gloc[prange.x + a_write];
+
+    __shared__ int2 segments[32];
+    SegmentManager seg_mgr(
+        ilist_nodes,
+        spl_nodes,
+        segments,
+        spl_ilist[nodeid],
+        spl_ilist[nodeid + 1],
+        32
+    );
+
+    PosMass gxm_a = {0.f,0.f,0.f,0.f};
+    PosMass gxm_a_kahan = {0.f,0.f,0.f,0.f};
+
+    extern __shared__ PosMass xm_b[];
+    LocalExp* gloc_b = (LocalExp*) &xm_b[blockDim.x];
+
+    while(!seg_mgr.finished()) {
+        int id = seg_mgr.next();
+        
+        if(id >= 0) {
+            xm_b[threadIdx.x] = posm[id];
+            gloc_b[threadIdx.x] = gloc[id];
+        }
+        __syncthreads();
+
+        for(int ib=read_b_offset; ib < seg_mgr.num_loaded; ib += n_write) {
+            PosMass gxm_inc = VJP_GFPhiToGXM(xm_a, xm_b[ib], gloc_a, gloc_b[ib], softening2);
+            add_f4<kahan>(gxm_a.f4, gxm_inc.f4, gxm_a_kahan.f4);
+        }
+        __syncthreads();
+    }
+
+    // Now sum over all contributions to the same write position in shared memory
+    PosMass* gxm_shared = &xm_b[0];
+    gxm_shared[threadIdx.x] = gxm_a;
+    __syncthreads();
+
+    if(read_b_offset == 0) {
+        PosMass gxm_cum = {0.f,0.f,0.f,0.f};
+        
+        for(int i=0; i < n_write; i++)
+            add_f4<kahan>(gxm_cum.f4, gxm_shared[i*num + a_write].f4, gxm_a_kahan.f4);
+
+        gposm_out[prange.x + a_write] = gxm_cum;
+    }
+}
+
 #endif

@@ -253,6 +253,95 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
+/*                             FFI call to CUDA kernel: BwdGroupedForceAndPot                     */
+/* ---------------------------------------------------------------------------------------------- */
+
+ffi::Error BwdGroupedForceAndPotFFIHost(
+    cudaStream_t stream,
+    ffi::AnyBuffer node_range,
+    ffi::AnyBuffer spl_nodes,
+    ffi::AnyBuffer spl_ilist,
+    ffi::AnyBuffer ilist_nodes,
+    ffi::AnyBuffer posm,
+    ffi::AnyBuffer gloc,
+    ffi::Result<ffi::AnyBuffer> gposm_out,
+    float softening,
+    bool kahan,
+    size_t block_size
+) {
+    dim3 blockDim(block_size);
+    dim3 gridDim(spl_nodes.element_count() - 1);
+    size_t smem = 2 * blockDim.x * sizeof(float4);
+    
+    // Build a bundled argument list for cudaLaunchKernel
+    // For pointers we need to create a pointer to the pointer
+    int2* node_range_val = reinterpret_cast<int2*>(node_range.untyped_data());
+    int* spl_nodes_val = reinterpret_cast<int*>(spl_nodes.untyped_data());
+    int* spl_ilist_val = reinterpret_cast<int*>(spl_ilist.untyped_data());
+    int* ilist_nodes_val = reinterpret_cast<int*>(ilist_nodes.untyped_data());
+    PosMass* posm_val = reinterpret_cast<PosMass*>(posm.untyped_data());
+    LocalExp* gloc_val = reinterpret_cast<LocalExp*>(gloc.untyped_data());
+    PosMass* gposm_out_val = reinterpret_cast<PosMass*>(gposm_out->untyped_data());
+
+    void* args[] = {
+        &node_range_val,
+        &spl_nodes_val,
+        &spl_ilist_val,
+        &ilist_nodes_val,
+        &posm_val,
+        &gloc_val,
+        &gposm_out_val,
+        &softening
+    };
+    
+    // We have template parameters, so we need to instantiate all valid templates
+    // For this we select a function pointer through a map
+    using TTuple = std::tuple<bool>;
+    using TFunctionType = decltype(BwdGroupedForceAndPot<true>);
+
+    std::map<TTuple, TFunctionType*> instance_map;
+    instance_map[{true}] = BwdGroupedForceAndPot<true>;
+    instance_map[{false}] = BwdGroupedForceAndPot<false>;
+
+    auto it = instance_map.find({kahan});
+
+    if(it == instance_map.end()) {
+        return ffi::Error::Internal(
+            "\nUnsupported template parameter combination for (kahan)"\
+            " in BwdGroupedForceAndPotFFIHost -- Only supporting:\n"\
+            "(true), (false)"
+        );
+    }
+
+    TFunctionType* instance = it->second;
+    
+    cudaLaunchKernel((const void*)instance, gridDim, blockDim, args, smem, stream);
+
+    cudaError_t last_error = cudaGetLastError();
+    if (last_error != cudaSuccess) {
+        return ffi::Error::Internal(std::string("CUDA error: ") + cudaGetErrorString(last_error));
+    }
+    return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    BwdGroupedForceAndPotFFI, BwdGroupedForceAndPotFFIHost,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<cudaStream_t>>()
+        .Arg<ffi::AnyBuffer>() // node_range
+        .Arg<ffi::AnyBuffer>() // spl_nodes
+        .Arg<ffi::AnyBuffer>() // spl_ilist
+        .Arg<ffi::AnyBuffer>() // ilist_nodes
+        .Arg<ffi::AnyBuffer>() // posm
+        .Arg<ffi::AnyBuffer>() // gloc
+        .Ret<ffi::AnyBuffer>() // gposm_out
+        .Attr<float>("softening")
+        .Attr<bool>("kahan")
+        .Attr<size_t>("block_size"),
+    {xla::ffi::Traits::kCmdBufferCompatible}
+);
+
+/* ---------------------------------------------------------------------------------------------- */
 /*                               Module declaration through nanobind                              */
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -260,4 +349,5 @@ NB_MODULE(ffi_forces, m) {
     m.def("ForceAndPotential", []() { return EncapsulateFfiCall(&ForceAndPotentialFFI); });
     m.def("BwdForceAndPotential", []() { return EncapsulateFfiCall(&BwdForceAndPotentialFFI); });
     m.def("GroupedForceAndPot", []() { return EncapsulateFfiCall(&GroupedForceAndPotFFI); });
+    m.def("BwdGroupedForceAndPot", []() { return EncapsulateFfiCall(&BwdGroupedForceAndPotFFI); });
 }
