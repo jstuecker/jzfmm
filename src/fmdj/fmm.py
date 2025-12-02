@@ -106,39 +106,39 @@ evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, sta
 #                           Leaf-Leaf (Particle to Particle) Interactions                          #
 # ------------------------------------------------------------------------------------------------ #
 
-@partial(jax.custom_vjp, nondiff_argnames=['cfg'])
-def grouped_force_and_pot(particles: PosMass, 
-                         plane: TreePlane, 
-                         ilist: InteractionList,
-                         cfg: Config = None) -> jnp.ndarray:
-    node_range = jnp.array([0, plane.nnodes], dtype=jnp.int32)
-
+def grouped_force_and_pot(particles: PosMass, plane: TreePlane, ilist: InteractionList,
+                          cfg: Config = None) -> jnp.ndarray:
     block_size = 128
     assert cfg.fmm.max_leaf_size <= block_size
+    node_range = jnp.array([0, plane.nnodes], dtype=jnp.int32)
+    out_type = jax.ShapeDtypeStruct((particles.pos.shape[0], 4), jnp.float32)
+
+    @jax.custom_vjp
+    def eval(particles):
+        loc = jax.ffi.ffi_call("GroupedForceAndPot", (out_type,))(
+            node_range, plane.ispl, ilist.ispl, ilist.iother, particles.posm(),
+            softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
+            kahan=bool(cfg.fmm.kahan_summation)
+        )[0]
+        loc = loc.at[...,0].add(particles.mass/cfg.softening) # Remove self-interaction from potential
+        return loc
     
-    loc = jax.ffi.ffi_call("GroupedForceAndPot", (
-        jax.ShapeDtypeStruct((particles.pos.shape[0], 4), jnp.float32),
-    ))(
-        node_range, plane.ispl, ilist.ispl, ilist.iother, particles.posm(),
-        softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
-        kahan=bool(cfg.fmm.kahan_summation)
-    )[0]
-
-    loc = loc.at[...,0].add(particles.mass/cfg.softening) # Remove self-interaction from potential
-
-    return loc
-
-def grouped_force_and_pot_fwd(particles, plane, ilist, cfg=None):
-    loc = grouped_force_and_pot(particles, plane, ilist, cfg=cfg)
-    return loc, (particles, )
-
-def grouped_force_and_pot_bwd(cfg, res, gloc):
-    particles, = res
+    def eval_fwd(particles):
+        return eval(particles), particles
     
-    return PosMass(jnp.zeros_like(particles.pos), jnp.zeros_like(particles.mass)), None, None
+    def eval_bwd(particles, gloc):
+        gposm = jax.ffi.ffi_call("BwdGroupedForceAndPot", (out_type,))(
+            node_range, plane.ispl, ilist.ispl, ilist.iother, particles.posm(), gloc,
+            softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
+            kahan=bool(cfg.fmm.kahan_summation)
+        )[0]
+        return (PosMass(gposm[:,0:3], gposm[:,3]),)
+    
+    eval.defvjp(eval_fwd, eval_bwd)
 
-grouped_force_and_pot.defvjp(grouped_force_and_pot_fwd, grouped_force_and_pot_bwd)
+    return eval(particles)
 grouped_force_and_pot.jit = jax.jit(grouped_force_and_pot, static_argnames=['cfg'])
+
 
 # ------------------------------------------------------------------------------------------------ #
 #                                      Direct Summation Forces                                     #
