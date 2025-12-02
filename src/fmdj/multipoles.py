@@ -83,20 +83,25 @@ def summarize_multipoles(
         mp = mp.reshape(-1,1)
     pin = p_of_num_multi(mp.shape[-1])
 
-    @jax.custom_gradient
-    def inner(xchild, mp):
-
-        mp_n = _summarize_multipoles_impl(ispl, mp, xnode, xchild, cfg=cfg)
-
-        def grad(gmp_n):
-            gmp = shift_local_to_children(ispl, gmp_n, xnode, xchild, cfg=cfg, pout=max(pin, 1))
-            gx = gmp[..., 1:4] * mp[..., 0:1]
-
-            return gx, gmp[:,:num_multi(pin)]
-        
-        return mp_n, grad
+    @jax.custom_vjp
+    def eval(xchild, mp):
+        return _summarize_multipoles_impl(ispl, mp, xnode, xchild, cfg=cfg)
     
-    return inner(xchild, mp)
+    def eval_fwd(xchild, mp):
+        mp_n = _summarize_multipoles_impl(ispl, mp, xnode, xchild, cfg=cfg)
+        return mp_n, (mp, xchild)
+    
+    def eval_bwd(res, gmp_n):
+        mp, xchild = res
+        gmp = shift_local_to_children(ispl, gmp_n, xnode, xchild, cfg=cfg, pout=max(pin, 1))
+
+        gx = multipole_readout_pos_vjp(mp, gmp)
+
+        return gx, gmp[:,:num_multi(pin)]
+    
+    eval.defvjp(eval_fwd, eval_bwd)
+    
+    return eval(xchild, mp)
 summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', ])
 
 def build_multipole_hierarchy(th: list[TreePlane], pos: jnp.ndarray, mp: jnp.ndarray, *, cfg: Config
@@ -162,14 +167,13 @@ def shift_local_to_children(
         return _shift_local_to_children_impl(ispl, loc, xnode, xchild, pout=min(pout,p))
     
     def eval_fwd(xchild, loc): # save higher order local expansion for the backward pass
-        assert pout + 1 <= p, "have not implemented this scenario yet"
         loc_c = _shift_local_to_children_impl(ispl, loc, xnode, xchild, pout=min(pout+1,p))
         return loc_c[...,:num_multi(pout)], (loc_c, xchild)
     
     def eval_bwd(res, gloc_c): # the adjoint of the l2l operator is an m2m operator
         loc_c, xchild = res
         gloc = summarize_multipoles(ispl, gloc_c, xnode, xchild, cfg=cfg)
-        gx = local_eval_vjp(loc_c, gloc_c)
+        gx = local_readout_pos_vjp(loc_c, gloc_c)
         return gx, gloc
     
     eval.defvjp(eval_fwd, eval_bwd)
@@ -177,23 +181,24 @@ def shift_local_to_children(
     return eval(xchild, loc)
 shift_local_to_children.jit = jax.jit(shift_local_to_children, static_argnames=["cfg", "pout"])
 
-def local_eval_vjp(loc: jnp.ndarray, gloc: jnp.ndarray):
-    p_loc, p_gloc = p_of_num_multi(loc.shape[1]), p_of_num_multi(gloc.shape[1])
+def multipole_readout_pos_vjp(mp: jnp.ndarray, gmp: jnp.ndarray):
+    return local_readout_pos_vjp(gmp, mp) # turns out, math is identical with transposed inputs
 
-    assert p_loc == p_gloc + 1
+def local_readout_pos_vjp(loc: jnp.ndarray, gloc: jnp.ndarray):
+    p_loc, p_glocx = p_of_num_multi(loc.shape[1]), p_of_num_multi(gloc.shape[1])
 
     imap = get_index_map(p_loc)
     
-    out = []
+    gx = []
     for a in range(3):
         avec = [0,0,0]
         avec[a] = 1
         onew = jnp.zeros_like(gloc[:,0])
-        for m in iter_multi(p_gloc):
-            if sum(m) + sum(avec) > p_loc:
+        for m in iter_multi(p_glocx):
+            if (sum(m) > p_glocx) or (sum(m) + sum(avec) > p_loc):
                 continue
             b = (m[0]+avec[0], m[1]+avec[1], m[2]+avec[2])
             onew +=  (m[a] + 1) * gloc[:,imap[m]] * loc[:,imap[b]]
-        out.append(onew)
+        gx.append(onew)
     
-    return jnp.stack(out, axis=-1)
+    return jnp.stack(gx, axis=-1)

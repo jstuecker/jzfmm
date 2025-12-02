@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from .config import Config
 from .data import TreePlane, PosMass, InteractionList, dense_interaction_list, LocalExpansion
 from .ztree import pos_zorder_sort, build_tree_hierarchy
-from .multipoles import shift_local_to_children, build_multipole_hierarchy, local_eval_vjp
+from .multipoles import shift_local_to_children, build_multipole_hierarchy, local_readout_pos_vjp
 
 import fmdj_cuda.ffi_fmm as ffi_fmm
 import fmdj_cuda.ffi_forces as ffi_forces
@@ -229,7 +229,7 @@ def evaluate_local_fmm_bwd(cfg, res, grads):
     gloc, gilist = grads
     th, loc_fwd, partz = res
 
-    l1 = local_eval_vjp(loc_fwd, gloc)
+    l1 = local_readout_pos_vjp(loc_fwd, gloc)
     print(l1.shape, loc_fwd.shape)
 
     mph = build_multipole_hierarchy(th, partz.pos, gloc, cfg=cfg)
