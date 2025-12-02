@@ -35,6 +35,7 @@ def get_index_map(p):
 jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLocalToLocal(), platform="CUDA")
 jax.ffi.register_ffi_target("CenterOfMass", ffi_multipoles.CenterOfMass(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeMultipoles", ffi_multipoles.SummarizeMultipoles(), platform="CUDA")
+jax.ffi.register_ffi_target("TranslateLocalToLocal_XVJP", ffi_multipoles.TranslateLocalToLocal_XVJP(), platform="CUDA")
 
 def center_of_mass(ispl: jnp.ndarray, part: PosMass, *, cfg: Config, block_size=32) -> PosMass:
     """Computes the center of mass of the nodes in the tree plane"""
@@ -93,11 +94,10 @@ def summarize_multipoles(
     
     def eval_bwd(res, gmp_n):
         mp, xchild = res
-        gmp = shift_local_to_children(ispl, gmp_n, xnode, xchild, cfg=cfg, pout=max(pin, 1))
+        gmp = shift_local_to_children(ispl, gmp_n, xnode, xchild, cfg=cfg, pout=pin)
+        gx = shift_local_to_children_vjp_x(ispl, gmp_n, xnode, xchild, mp, block_size=32)
 
-        gx = multipole_readout_pos_vjp(mp, gmp)
-
-        return gx, gmp[:,:num_multi(pin)]
+        return gx, gmp
     
     eval.defvjp(eval_fwd, eval_bwd)
     
@@ -147,6 +147,30 @@ def _shift_local_to_children_impl(
     )[0]
     return locnew
 
+def shift_local_to_children_vjp_x(
+        ispl: jnp.array,
+        loc: jnp.array,
+        xnode: jnp.array,
+        xchild: jnp.array,
+        gloc_child: jnp.array,
+        block_size=32
+    ) -> jnp.array:
+    """Shifts local expansions to child nodes"""
+    dtype = loc.dtype
+
+    pout = p_of_num_multi(gloc_child.shape[1])
+    p = p_of_num_multi(loc.shape[1])
+
+    assert p >= pout
+
+    out_loc = jax.ShapeDtypeStruct(xchild.shape, dtype)
+
+    locnew = jax.ffi.ffi_call("TranslateLocalToLocal_XVJP", (out_loc,))(
+        ispl, loc, xnode, xchild, gloc_child,
+        p=np.int32(p), pout=np.int32(pout), block_size=np.uint64(block_size)
+    )[0]
+    return locnew
+
 def shift_local_to_children(
         ispl: jnp.array,
         loc: jnp.array,
@@ -167,13 +191,13 @@ def shift_local_to_children(
         return _shift_local_to_children_impl(ispl, loc, xnode, xchild, pout=min(pout,p))
     
     def eval_fwd(xchild, loc): # save higher order local expansion for the backward pass
-        loc_c = _shift_local_to_children_impl(ispl, loc, xnode, xchild, pout=min(pout+1,p))
-        return loc_c[...,:num_multi(pout)], (loc_c, xchild)
+        loc_c = _shift_local_to_children_impl(ispl, loc, xnode, xchild, pout=min(pout,p))
+        return loc_c, (loc, xchild)
     
     def eval_bwd(res, gloc_c): # the adjoint of the l2l operator is an m2m operator
-        loc_c, xchild = res
+        loc, xchild = res
         gloc = summarize_multipoles(ispl, gloc_c, xnode, xchild, cfg=cfg)
-        gx = local_readout_pos_vjp(loc_c, gloc_c)
+        gx = shift_local_to_children_vjp_x(ispl, loc, xnode, xchild, gloc_c)
         return gx, gloc
     
     eval.defvjp(eval_fwd, eval_bwd)
@@ -202,3 +226,4 @@ def local_readout_pos_vjp(loc: jnp.ndarray, gloc: jnp.ndarray):
         gx.append(onew)
     
     return jnp.stack(gx, axis=-1)
+

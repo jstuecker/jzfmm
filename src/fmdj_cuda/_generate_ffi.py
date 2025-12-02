@@ -71,13 +71,13 @@ kernels = parse.get_functions_from_file(
     only_kernels=True
 )
 
-for kname in ("TranslateLocalToLocal", "SummarizeMultipoles"):
+for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
     kernels[kname].template_par["p"].instances = p_instance_values
 
 for kname in ("TranslateLocalToLocal",):
     kernels[kname].init_outputs_zero = True
 
-for kname in ("TranslateLocalToLocal", "CenterOfMass", "SummarizeMultipoles"):
+for kname in ("TranslateLocalToLocal", "CenterOfMass", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
     kernels[kname].grid_size_expression = "div_ceil(isplit.element_count() - 1, block_size)"
     kernels[kname].par["nnodes"].expression = "isplit.element_count() - 1"
 

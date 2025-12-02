@@ -385,15 +385,93 @@ __global__ void TranslateLocalToLocal(
 
         shift_local_to_local<p>(loc_src, loc_out, dpos);
 
-        // write output local expansion
-        // we allow to write only a subset of the components
-        // for example:
-        // p=0 will output only the potential
-        // p=1 potential and force and
-        // p=2 potential, force and hessian
         #pragma unroll
         for (int iM = 0; iM < min(ncomb, NCOMB(pout)); iM++) {
             loc_child[ichild * NCOMB(pout) + iM] = loc_out[iM];
+        }
+    }
+}
+
+template<int p>
+__global__ void TranslateLocalToLocal_XVJP(
+    const int* __restrict__ isplit,
+    const float* __restrict__ loc_node,
+    const float3* __restrict__ xnode,
+    const float3* __restrict__ xchild,
+    const float* __restrict__ g_loc_child,
+    float3* __restrict__ g_xchild,
+    const int nnodes,
+    const int pout
+) {
+    constexpr int ncomb = NCOMB(p);
+    
+    int inode = blockIdx.x * blockDim.x + threadIdx.x;
+    if (inode >= nnodes)
+        return;
+    
+    int istart = isplit[inode], iend = isplit[inode + 1];
+    if (istart >= iend)
+        return;
+    
+    float3 xn = xnode[inode];
+    float loc_in[ncomb];
+    #pragma unroll
+    for (int iM = 0; iM < ncomb; iM++) {
+        loc_in[iM] = loc_node[inode * ncomb + iM];
+    }
+    
+    for(int ichild = istart; ichild < iend; ichild++) {
+        float3 dpos = xchild[ichild] - xn;
+
+        float loc_child[ncomb];
+
+        float loc_src[ncomb];
+        #pragma unroll
+        for (int i = 0; i < ncomb; i++) {
+            loc_src[i] = loc_in[i];
+        }
+
+        shift_local_to_local<p>(loc_src, loc_child, dpos);
+
+        float gloc_child[ncomb];
+        #pragma unroll
+        for (int iM = 0; iM < NCOMB(pout); iM++) {
+            gloc_child[iM] = g_loc_child[ichild * NCOMB(pout) + iM];
+        }
+
+        #pragma unroll
+        for (int a=0; a < 3; a++) {
+            float gxa = 0.f;
+            #pragma unroll
+            for(int msum = 0; msum <= p; msum++) {
+                #pragma unroll
+                for(int mz = 0; mz <= msum; mz++) {
+                    #pragma unroll
+                    for(int my = 0; my <= msum - mz; my++) {
+                        const int mx = msum - my - mz;
+
+                        const int ma = a == 0 ? mx : (a == 1 ? my : mz);
+
+                        const int bx = mx + (a == 0 ? 1 : 0);
+                        const int by = my + (a == 1 ? 1 : 0);
+                        const int bz = mz + (a == 2 ? 1 : 0);
+
+                        if((mx + my + mz > pout) || (bx + by + bz > p))
+                            continue;
+
+                        int im = multi_to_flat(mx, my, mz), ib = multi_to_flat(bx, by, bz);
+                            
+                        gxa += gloc_child[im] * loc_child[ib] * (ma + 1);
+                    }
+                }
+            }
+
+            if(a == 0)
+                g_xchild[ichild].x = gxa;
+            else if(a == 1)
+                g_xchild[ichild].y = gxa;
+            else
+                g_xchild[ichild].z = gxa;
         }
     }
 }
