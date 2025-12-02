@@ -157,21 +157,24 @@ def shift_local_to_children(
     if pout is None:
         pout = p_of_num_multi(loc.shape[-1])
 
-    @jax.custom_gradient
-    def inner(xchild, loc):
-        
-        loc_c = _shift_local_to_children_impl(ispl, loc, xnode, xchild, pout=min(pout+1,p))
-
-        def grad(gloc_c):
-            gloc = summarize_multipoles(ispl, gloc_c, xnode, xchild, cfg=cfg)
-
-            gx = local_eval_vjp(loc_c, gloc_c)
-
-            return gx, gloc
-        
-        return loc_c[...,:num_multi(pout)], grad
+    @jax.custom_vjp
+    def eval(xchild, loc):
+        return _shift_local_to_children_impl(ispl, loc, xnode, xchild, pout=min(pout,p))
     
-    return inner(xchild, loc)
+    def eval_fwd(xchild, loc): # save higher order local expansion for the backward pass
+        assert pout + 1 <= p, "have not implemented this scenario yet"
+        loc_c = _shift_local_to_children_impl(ispl, loc, xnode, xchild, pout=min(pout+1,p))
+        return loc_c[...,:num_multi(pout)], (loc_c, xchild)
+    
+    def eval_bwd(res, gloc_c): # the adjoint of the l2l operator is an m2m operator
+        loc_c, xchild = res
+        gloc = summarize_multipoles(ispl, gloc_c, xnode, xchild, cfg=cfg)
+        gx = local_eval_vjp(loc_c, gloc_c)
+        return gx, gloc
+    
+    eval.defvjp(eval_fwd, eval_bwd)
+    
+    return eval(xchild, loc)
 shift_local_to_children.jit = jax.jit(shift_local_to_children, static_argnames=["cfg", "pout"])
 
 def local_eval_vjp(loc: jnp.ndarray, gloc: jnp.ndarray):

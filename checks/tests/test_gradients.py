@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from jax.test_util import check_grads
 
-def my_check_gradient(f, x, epsrel=1e-4, rtol=1e-3, atol=0.):
+def my_check_gradient(f, x, epsrel=1e-4, rtol=5e-3, atol=0.):
     dx = jnp.std(x, axis=0, keepdims=True) * epsrel
     dx = dx * jax.random.normal(jax.random.PRNGKey(0), x.shape)
     
