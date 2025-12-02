@@ -99,10 +99,7 @@ __global__ void ForceAndPotential(
 
         for (int j = 0; j < num; j++) {
             LocalExp loc_new = GetForceAndPot(xmi, xmj_shared[j], epsilon2);
-            if(kahan)
-                kahan_add_f4(loc_i.f4, loc_new.f4, loc_kahan.f4);
-            else
-                loc_i.f4 = loc_i.f4 + loc_new.f4;
+            add_f4<kahan>(loc_i.f4, loc_new.f4, loc_kahan.f4);
         }
     }
 
@@ -154,10 +151,7 @@ __global__ void BwdForceAndPotential(
                 gloc_i, gloc_j_shared[j],
                 epsilon2
             );
-            if(kahan)
-                kahan_add_f4(gxm_i.f4, gxm_inc.f4, gxm_i_kahan.f4);
-            else
-                gxm_i.f4 = gxm_i.f4 + gxm_inc.f4;
+            add_f4<kahan>(gxm_i.f4, gxm_inc.f4, gxm_i_kahan.f4);
         }
     }
 
@@ -234,21 +228,27 @@ __global__ void GroupedForceAndPot(
         // Now compute interactions
         for(int ib=read_b_offset; ib < seg_mgr.num_loaded; ib += n_write) {
             LocalExp loc_new = GetForceAndPot(xaWrite, xm_b[ib], softening2);
-            if(kahan)
-                kahan_add_f4(loc_a.f4, loc_new.f4, loc_a_kahan.f4);
-            else
-                loc_a.f4 = loc_a.f4 + loc_new.f4;
+            add_f4<kahan>(loc_a.f4, loc_new.f4, loc_a_kahan.f4);
         }
 
         __syncthreads();
     }
 
-    if(valid) {
-        int iout = prange.x + a_write;
-        atomicAdd(&loc_out[iout].pot, loc_a.pot);
-        atomicAdd(&loc_out[iout].grad.x, loc_a.grad.x);
-        atomicAdd(&loc_out[iout].grad.y, loc_a.grad.y);
-        atomicAdd(&loc_out[iout].grad.z, loc_a.grad.z);
+    // Now sum over all contributions to the same write position in shared memory
+    LocalExp* loc_shared = (LocalExp*) &xm_b[0];
+    loc_shared[threadIdx.x] = loc_a;
+    __syncthreads();
+
+    if(read_b_offset == 0) {
+        LocalExp loc_cum = {0.f,0.f,0.f,0.f};
+        
+        for(int i=0; i < n_write; i++) {
+            int idx = i * num + a_write;
+            
+            add_f4<kahan>(loc_cum.f4, loc_shared[idx].f4, loc_a_kahan.f4);
+        }
+
+        loc_out[prange.x + a_write] = loc_cum;
     }
 }
 

@@ -73,6 +73,14 @@ __forceinline__ __device__ void kahan_add_array(float *sum, float *add, float *c
     }
 }
 
+template <bool kahan>
+__forceinline__ __device__ void add_f4(float4 &sum, float4 add, float4 &c) {
+    if(kahan)
+        kahan_add_f4(sum, add, c);
+    else
+        sum = sum + add;
+}
+
 /* ---------------------------------------------------------------------------------------------- */
 /*                                          Integer Math                                          */
 /* ---------------------------------------------------------------------------------------------- */
