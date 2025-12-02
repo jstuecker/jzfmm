@@ -95,7 +95,7 @@ def summarize_multipoles(
     def eval_bwd(res, gmp_n):
         mp, xchild = res
         gmp = shift_local_to_children(ispl, gmp_n, xnode, xchild, cfg=cfg, pout=pin)
-        gx = shift_local_to_children_vjp_x(ispl, gmp_n, xnode, xchild, mp, block_size=32)
+        gx = shift_local_to_children_vjp_x(ispl, gmp_n, xnode, xchild, mp)
 
         return gx, gmp
     

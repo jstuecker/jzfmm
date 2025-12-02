@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from .config import Config
 from .data import TreePlane, PosMass, InteractionList, dense_interaction_list, LocalExpansion
 from .ztree import pos_zorder_sort, build_tree_hierarchy
-from .multipoles import shift_local_to_children, build_multipole_hierarchy, local_readout_pos_vjp
+from .multipoles import shift_local_to_children, build_multipole_hierarchy, local_readout_pos_vjp, p_of_num_multi, shift_local_to_children_vjp_x
 
 import fmdj_cuda.ffi_fmm as ffi_fmm
 import fmdj_cuda.ffi_forces as ffi_forces
@@ -214,44 +214,37 @@ direct_potential_scan_jax.jit = jax.jit(direct_potential_scan_jax, static_argnam
 # ------------------------------------------------------------------------------------------------ #
 
 
-def evaluate_node_node_fmm_fwd(
-        partz: PosMass,
-        th: list[TreePlane],
-        cfg: Config
-):
-    mph = build_multipole_hierarchy(th, partz.pos, partz.mass, cfg=cfg)
-    loc, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
-    loc_shifted = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=2, cfg=cfg)
+def evaluate_node_node_fmm(partz: PosMass, th: list[TreePlane], *, cfg: Config) -> Tuple[jnp.ndarray, InteractionList]:
+    
+    def eval_fwd(pos, mp, pout=1):
+        mph = build_multipole_hierarchy(th, pos, mp, cfg=cfg)
+        loc_node, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
+        loc_part = shift_local_to_children(th[0].ispl, loc_node, th[0].center(), pos, pout=pout, cfg=cfg)
+        return (loc_part, ilist), (pos, mp, th, loc_node)
+    
+    def eval_bwd(res, grads):
+        pos, mp, th, loc_node = res
+        gloc = grads[0]
 
-    return (loc_shifted[...,0:4], ilist), (th, loc_shifted, partz)
+        # Backwards pass = FMM with gloc as multipole weights
+        # plus the position derivatives of the shifting operators
 
-def evaluate_local_fmm_bwd(cfg, res, grads):
-    gloc, gilist = grads
-    th, loc_fwd, partz = res
+        gx1 = shift_local_to_children_vjp_x(th[0].ispl, loc_node, th[0].center(), pos, gloc)
+        
+        (gmp, _), (_, _, _, gmp_node) = eval_fwd(pos, gloc, pout=p_of_num_multi(mp.shape[-1]))
 
-    l1 = local_readout_pos_vjp(loc_fwd, gloc)
-    print(l1.shape, loc_fwd.shape)
+        gx2 = shift_local_to_children_vjp_x(th[0].ispl, gmp_node, th[0].center(), pos, mp)
+        
+        return gx1 + gx2, gmp, None
+    
+    @jax.custom_vjp
+    def eval(pos, mp, pout=1):
+        return eval_fwd(pos, mp, pout=pout)[0]
+    
+    eval.defvjp(eval_fwd, eval_bwd)
 
-    mph = build_multipole_hierarchy(th, partz.pos, gloc, cfg=cfg)
-    loc = evaluate_interaction_hierarchy(th, mph, cfg=cfg)[0]
-    l2 = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=1, cfg=cfg)
-
-    gpm = PosMass(l1 + l2[...,1:4]*partz.mass[:,None], l2[...,0])
-
-    return gpm, None
-
-@partial(jax.custom_vjp, nondiff_argnames=("cfg",))
-def evaluate_node_node_fmm(
-        partz: PosMass,
-        th: list[TreePlane],
-        cfg: Config
-) -> Tuple[LocalExpansion, InteractionList]:
-    mph = build_multipole_hierarchy(th, partz.pos, partz.mass, cfg=cfg)
-    loc, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
-    loc_shifted = shift_local_to_children(th[0].ispl, loc, th[0].center(), partz.pos, pout=1, cfg=cfg)
-
-    return loc_shifted, ilist
-evaluate_node_node_fmm.defvjp(evaluate_node_node_fmm_fwd, evaluate_local_fmm_bwd)
+    return eval(partz.pos, partz.mass.reshape(-1,1))
+evaluate_node_node_fmm.jit = jax.jit(evaluate_node_node_fmm, static_argnames=['cfg', ])
 
 def fast_multipole_method_z(partz: PosMass, *, mpz: jnp.ndarray | None = None, cfg: Config, pout: int = 1) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
