@@ -19,9 +19,7 @@ kernels = parse.get_functions_from_file(
 )
 
 kernels["GroupedForceAndPot"].grid_size_expression = "spl_nodes.element_count() - 1"
-kernels["GroupedForceAndPot"].block_size_expression = "128" #"max_leaf_size"
 kernels["GroupedForceAndPot"].smem_size_expression = "blockDim.x * sizeof(float4)"
-kernels["GroupedForceAndPot"].init_outputs_zero = True
 
 kernels["ForceAndPotential"].grid_size_expression = "div_ceil(xm.element_count()/4, block_size)"
 kernels["ForceAndPotential"].smem_size_expression = "blockDim.x * sizeof(float4)"

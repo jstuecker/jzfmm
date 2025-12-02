@@ -112,12 +112,15 @@ def grouped_force_and_pot(particles: PosMass,
                          ilist: InteractionList,
                          cfg: Config = None) -> jnp.ndarray:
     node_range = jnp.array([0, plane.nnodes], dtype=jnp.int32)
+
+    block_size = 128
+    assert cfg.fmm.max_leaf_size <= block_size
     
     loc = jax.ffi.ffi_call("GroupedForceAndPot", (
         jax.ShapeDtypeStruct((particles.pos.shape[0], 4), jnp.float32),
     ))(
         node_range, plane.ispl, ilist.ispl, ilist.iother, particles.posm(),
-        softening=np.float32(cfg.softening), max_leaf_size=np.int32(cfg.fmm.max_leaf_size),
+        softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
         kahan=bool(cfg.fmm.kahan_summation)
     )[0]
 

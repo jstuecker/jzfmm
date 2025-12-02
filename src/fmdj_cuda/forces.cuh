@@ -174,8 +174,7 @@ __global__ void GroupedForceAndPot(
     // outputs:
     LocalExp* loc_out,
     // attributes:
-    float softening,
-    int max_leaf_size
+    float softening
 ) {
     float softening2 = softening * softening;
 
@@ -220,9 +219,8 @@ __global__ void GroupedForceAndPot(
         int id = seg_mgr.next();
 
         // Each thread loads one other particle B
-        if(id >= 0) {
+        if(id >= 0)
             xm_b[threadIdx.x] = posm[id];
-        }
         __syncthreads();
 
         // Now compute interactions
@@ -230,7 +228,6 @@ __global__ void GroupedForceAndPot(
             LocalExp loc_new = GetForceAndPot(xaWrite, xm_b[ib], softening2);
             add_f4<kahan>(loc_a.f4, loc_new.f4, loc_a_kahan.f4);
         }
-
         __syncthreads();
     }
 
@@ -242,11 +239,8 @@ __global__ void GroupedForceAndPot(
     if(read_b_offset == 0) {
         LocalExp loc_cum = {0.f,0.f,0.f,0.f};
         
-        for(int i=0; i < n_write; i++) {
-            int idx = i * num + a_write;
-            
-            add_f4<kahan>(loc_cum.f4, loc_shared[idx].f4, loc_a_kahan.f4);
-        }
+        for(int i=0; i < n_write; i++)
+            add_f4<kahan>(loc_cum.f4, loc_shared[i*num + a_write].f4, loc_a_kahan.f4);
 
         loc_out[prange.x + a_write] = loc_cum;
     }

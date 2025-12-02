@@ -180,15 +180,12 @@ ffi::Error GroupedForceAndPotFFIHost(
     ffi::AnyBuffer posm,
     ffi::Result<ffi::AnyBuffer> loc_out,
     float softening,
-    int max_leaf_size,
-    bool kahan
+    bool kahan,
+    size_t block_size
 ) {
-    dim3 blockDim(128);
+    dim3 blockDim(block_size);
     dim3 gridDim(spl_nodes.element_count() - 1);
     size_t smem = blockDim.x * sizeof(float4);
-    
-    // Initialize output buffers
-    cudaMemsetAsync(loc_out->untyped_data(), 0, loc_out->size_bytes(), stream);
     
     // Build a bundled argument list for cudaLaunchKernel
     // For pointers we need to create a pointer to the pointer
@@ -206,8 +203,7 @@ ffi::Error GroupedForceAndPotFFIHost(
         &ilist_nodes_val,
         &posm_val,
         &loc_out_val,
-        &softening,
-        &max_leaf_size
+        &softening
     };
     
     // We have template parameters, so we need to instantiate all valid templates
@@ -251,8 +247,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // posm
         .Ret<ffi::AnyBuffer>() // loc_out
         .Attr<float>("softening")
-        .Attr<int>("max_leaf_size")
-        .Attr<bool>("kahan"),
+        .Attr<bool>("kahan")
+        .Attr<size_t>("block_size"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );
 
