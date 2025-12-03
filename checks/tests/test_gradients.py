@@ -59,27 +59,6 @@ def test_fmm_node_gradients(pos_mass_z, tree_hierarchy, cfg):
     check_grads(f, (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-1)
 
 @pytest.mark.parametrize("npart", [1024], indirect=True)
-def test_direct_sum_gradient(pos_mass_z: fmdj.data.PosMass):
-    loc = fmdj.fmm.direct_force_and_potential.jit(pos_mass_z, softening=1e-2, kahan=True)
-    loc = fmdj.data.LocalExpansion(loc)
-    fphi_jax = fmdj.fmm.direct_force_and_potential_jax.jit(pos_mass_z.pos, pos_mass_z.mass, softening=1e-2)
-
-    assert loc.fphi() == pytest.approx(fphi_jax, rel=1e-4, abs=1e-5)
-
-    def loss(xm):
-        loc = fmdj.fmm.direct_force_and_potential(xm, softening=1e-2, kahan=True)
-
-        return jnp.sum(fmdj.data.LocalExpansion(loc).fphi())
-
-    def loss_jax(xm):
-        return jnp.sum(fmdj.fmm.direct_force_and_potential_jax.jit(xm[:,0:3], xm[:,3], softening=1e-2))
-
-    gx1 = jax.grad(loss)(pos_mass_z).posm()
-    gx2 = jax.grad(loss_jax)(pos_mass_z.posm())
-    
-    assert gx1 == pytest.approx(gx2, rel=1e-3, abs=1e-5)
-
-@pytest.mark.parametrize("npart", [1024], indirect=True)
 def test_sim_com(particles_blob):
     """Tests that gradients with respect to the center of mass work correctly"""
     p = replace(particles_blob, cvel=jnp.array([0.,0.,0.1]))
@@ -109,3 +88,38 @@ def test_sim_com(particles_blob):
 
     assert jnp.sum(pgrad.pos, axis=0) == pytest.approx(xcom_grad, rel=1e-5)
     assert jnp.sum(pgrad.vel, axis=0) == pytest.approx(vcom_grad, rel=1e-5)
+
+@pytest.mark.parametrize("npart", [1024*8], indirect=True)
+def test_force_gradients(pos_mass_z: fmdj.data.PosMass):
+    part = pos_mass_z
+    fmmcfg = fmdj.config.FMMConfig(p=4, kahan_summation=True, opening_angle=0.8)
+    cfg = fmdj.Config(softening=0.05, fmm=fmmcfg)
+    
+    ispl = jnp.arange(part.pos.shape[0]//32 + 1, dtype=jnp.int32) * 32
+    ilist = fmdj.fmm.dense_interaction_list.jit(len(ispl)-1)
+
+    fphi1 = fmdj.fmm.direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True)
+    fphi2 = fmdj.fmm.grouped_force_and_pot.jit(part, ispl, ilist, cfg)
+    fphi3 = fmdj.fmm.fast_multipole_method_z.jit(part, cfg=cfg).values / cfg.G()
+
+    abstol = float(jnp.std(fphi1) * 5e-3)
+
+    assert fphi2 == pytest.approx(fphi1, rel=1e-4)
+    assert fphi3 == pytest.approx(fphi1, abs=abstol)
+
+    def f1(part): return fmdj.fmm.grouped_force_and_pot(part, ispl, ilist, cfg=cfg).sum()
+    def f2(part): return fmdj.fmm.direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True).sum()
+    def f3(part): return fmdj.fmm.fast_multipole_method_z(part, cfg=cfg).values.sum() / cfg.G()
+    
+    gposm1 = jax.jit(jax.grad(f1))(part)
+    gposm2 = jax.jit(jax.grad(f2))(part)
+    gposm3 = jax.jit(jax.grad(f3))(part)
+
+    assert gposm2.pos == pytest.approx(gposm1.pos, rel=1e-4)
+    assert gposm2.mass == pytest.approx(gposm1.mass, rel=1e-4)
+
+    abstol_pos = float(jnp.std(gposm2.pos) * 1e-2)
+    abstol_mass = float(jnp.std(gposm2.mass) * 1e-2)
+
+    assert gposm3.pos == pytest.approx(gposm1.pos, abs=abstol_pos)
+    assert gposm3.mass == pytest.approx(gposm1.mass, abs=abstol_mass)

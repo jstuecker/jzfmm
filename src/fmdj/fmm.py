@@ -115,7 +115,7 @@ def grouped_force_and_pot(particles: PosMass, ispl: jnp.ndarray, ilist: Interact
     out_type = jax.ShapeDtypeStruct((particles.pos.shape[0], 4), jnp.float32)
 
     @jax.custom_vjp
-    def eval(particles):
+    def eval(particles, ispl, ilist):
         loc = jax.ffi.ffi_call("GroupedForceAndPot", (out_type,))(
             node_range, ispl, ilist.ispl, ilist.iother, particles.posm(),
             softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
@@ -124,20 +124,21 @@ def grouped_force_and_pot(particles: PosMass, ispl: jnp.ndarray, ilist: Interact
         loc = loc.at[...,0].add(particles.mass/cfg.softening) # Remove self-interaction from potential
         return loc
     
-    def eval_fwd(particles):
-        return eval(particles), particles
+    def eval_fwd(particles, ispl, ilist):
+        return eval(particles, ispl, ilist), (particles, ispl, ilist)
     
-    def eval_bwd(particles, gloc):
+    def eval_bwd(res, gloc):
+        particles, ispl, ilist = res
         gposm = jax.ffi.ffi_call("BwdGroupedForceAndPot", (out_type,))(
             node_range, ispl, ilist.ispl, ilist.iother, particles.posm(), gloc,
             softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
-        return (PosMass(gposm[:,0:3], gposm[:,3]),)
+        return PosMass(gposm[:,0:3], gposm[:,3]), None, None
     
     eval.defvjp(eval_fwd, eval_bwd)
 
-    return eval(particles)
+    return eval(particles, ispl, ilist)
 grouped_force_and_pot.jit = jax.jit(grouped_force_and_pot, static_argnames=['cfg'])
 
 
@@ -259,7 +260,7 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jnp.ndarray | None = None, c
 
     loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg=cfg)
 
-    loc_leaf_leaf = grouped_force_and_pot(partz, th[0].ispl, ilist, cfg=cfg)
+    loc_leaf_leaf = grouped_force_and_pot(partz, th[0].ispl, jax.lax.stop_gradient(ilist), cfg=cfg)
     loc = loc_leaf_leaf + loc_node_node
 
     return LocalExpansion(loc * cfg.G())
