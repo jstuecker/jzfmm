@@ -16,13 +16,16 @@ def rerr_force(a: fmdj.data.LocalExpansion, b: fmdj.data.LocalExpansion):
     return jnp.linalg.norm(a.force() - b.force(), axis=-1)/jnp.linalg.norm(b.force(), axis=-1)
 def rerr_potential(a: fmdj.data.LocalExpansion, b: fmdj.data.LocalExpansion):
     return jnp.abs((a.potential() - b.potential())/b.potential())
+def rel_mom_cons(a: fmdj.data.LocalExpansion):
+    f = a.force() * part.mass[:,None]
+    return jnp.abs(jnp.sum(f) / jnp.linalg.norm(f))
 
 t0 = time.time()
 
 loc = fmdj.fmm.direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True) * cfg.G()
 loc_ref = fmdj.data.LocalExpansion(loc)
 
-print(f"Direct sum. done, {time.time() - t0:.2f}s")
+print(f"Direct sum. done, {time.time() - t0:.2f}s, rel. mom. cons = {rel_mom_cons(loc_ref):.2e}")
 
 fig, axs = plt.subplots(1,2, figsize=(12,5))
 
@@ -35,7 +38,7 @@ for p in (1,2,3,4,5):
     hist(axs[0], rerr_force(loc, loc_ref), p)
     hist(axs[1], rerr_potential(loc, loc_ref), p)
 
-    print(f"p={p} done, {time.time() - t0:.2f}s")
+    print(f"p={p} done, {time.time() - t0:.2f}s, rel. mom. cons = {rel_mom_cons(loc):.2e}")
 
 axs[0].set_title("Force Error Distribution")
 axs[0].set_xlim(-6, 0)

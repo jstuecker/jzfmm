@@ -26,7 +26,8 @@ def fmm(part, p):
 t0 = time.time()
 
 gposm_phi_ref = jax.jit(jax.grad(lambda part: direct(part).potential().sum()))(part)
-gposm_acc_ref = jax.jit(jax.grad(lambda part: jnp.abs(direct(part).force()).sum()))(part)
+gposm_accabs_ref = jax.jit(jax.grad(lambda part: jnp.abs(direct(part).force()).sum()))(part)
+gposm_acc_ref = jax.jit(jax.grad(lambda part: direct(part).force().sum()))(part)
 
 print(f"Direct sum. done, {time.time() - t0:.2f}s")
 
@@ -37,19 +38,19 @@ def hist(ax, rerr, p):
 
 for p in (2,3,4,5):
     gposm_phi_fmm = jax.jit(jax.grad(lambda part: fmm(part, p).potential().sum()))(part)
-    gposm_acc_fmm = jax.jit(jax.grad(lambda part: jnp.abs(fmm(part, p).force()).sum()))(part)
+    gposm_accabs_fmm = jax.jit(jax.grad(lambda part: jnp.abs(fmm(part, p).force()).sum()))(part)
 
-    hist(axs[0,0], rerr_pos(gposm_acc_fmm, gposm_acc_ref), p)
-    hist(axs[0,1], rerr_mass(gposm_acc_fmm, gposm_acc_ref), p)
+    hist(axs[0,0], rerr_pos(gposm_accabs_fmm, gposm_accabs_ref), p)
+    hist(axs[0,1], rerr_mass(gposm_accabs_fmm, gposm_accabs_ref), p)
     hist(axs[1,0], rerr_pos(gposm_phi_fmm, gposm_phi_ref), p)
     hist(axs[1,1], rerr_mass(gposm_phi_fmm, gposm_phi_ref), p)
 
     print(f"p={p} done, {time.time() - t0:.2f}s")
 
-axs[0,0].set_title("d|Acc|/dPos")
-axs[0,1].set_title("d|Acc|/dMass")
-axs[1,0].set_title("dPhi/dPos")
-axs[1,1].set_title("dPhi/dMass")
+axs[0,0].set_title(r"d$\sum |\vec{F}|$/d $\vec{x}$")
+axs[0,1].set_title(r"d$\sum |\vec{F}|$/d $m$")
+axs[1,0].set_title(r"d$\sum \phi$/d $\vec{x}$")
+axs[1,1].set_title(r"d$\sum \phi$/d $m$")
 
 for ax in axs.flatten():
     ax.legend()
