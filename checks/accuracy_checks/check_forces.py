@@ -3,24 +3,23 @@ import jax.numpy as jnp
 import fmdj
 import numpy as np
 import matplotlib.pyplot as plt
-
-jax.config.update("jax_compilation_cache_dir", "logs/cache")
-
-eps = 1e-2
-N = int(512*1024)
-
-pos0 = jax.random.normal(jax.random.PRNGKey(0), (N,3), dtype=jnp.float32) * 1.0
-mass0 = jnp.ones(len(pos0), dtype=pos0.dtype)
-part = fmdj.data.PosMass(pos0, mass0)
-
 import time
+from dataclasses import replace
+from fmdj_utils.ics import gaussian_blob
+
+part = gaussian_blob(N=int(512*1024), scale=1.0, mass=1.)
+
+fmm_cfg = fmdj.config.FMMConfig(kahan_summation=True, multipoles_around_com=True)
+cfg = fmdj.Config(softening=1e-2, fmm=fmm_cfg)
+
+def rerr_force(a: fmdj.data.LocalExpansion, b: fmdj.data.LocalExpansion):
+    return jnp.linalg.norm(a.force() - b.force(), axis=-1)/jnp.linalg.norm(b.force(), axis=-1)
+def rerr_potential(a: fmdj.data.LocalExpansion, b: fmdj.data.LocalExpansion):
+    return jnp.abs((a.potential() - b.potential())/b.potential())
+
 t0 = time.time()
 
-cfg = fmdj.Config(softening=eps)
-cfg.fmm.kahan_summation = True
-cfg.fmm.multipoles_around_com = True
-
-loc = fmdj.fmm.direct_force_and_potential.jit(part, softening=eps, kahan=True) * cfg.G()
+loc = fmdj.fmm.direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True) * cfg.G()
 loc_ref = fmdj.data.LocalExpansion(loc)
 
 print(f"Direct sum. done, {time.time() - t0:.2f}s")
@@ -28,16 +27,12 @@ print(f"Direct sum. done, {time.time() - t0:.2f}s")
 fig, axs = plt.subplots(1,2, figsize=(12,5))
 
 for p in (1,2,3,4,5):
-    cfg.fmm.p = p
+    loc = fmdj.fmm.fast_multipole_method.jit(part, cfg=replace(cfg, fmm=replace(cfg.fmm, p=p)))
 
-    loc: fmdj.data.LocalExpansion = fmdj.fmm.fast_multipole_method.jit(part, cfg=cfg)
-
-    rel_err = jnp.linalg.norm(loc.force() - loc_ref.force(), axis=-1)/jnp.linalg.norm(loc_ref.force(), axis=-1)
-
-    axs[0].hist(np.log10(rel_err), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5,
-             color="C%d"%(p-1), edgecolor='black')
-    axs[1].hist(np.log10(np.abs((loc.potential() - loc_ref.potential())/loc_ref.potential())), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5,
-             color="C%d"%(p-1), edgecolor='black')
+    axs[0].hist(np.log10(rerr_force(loc, loc_ref)), bins=np.linspace(-7,0), label=f'p={p}', 
+                alpha=0.5, color="C%d"%(p-1), edgecolor='black')
+    axs[1].hist(np.log10(rerr_potential(loc, loc_ref)), bins=np.linspace(-7,0), label=f'p={p}',
+                 alpha=0.5, color="C%d"%(p-1), edgecolor='black')
 
     print(f"p={p} done, {time.time() - t0:.2f}s")
 

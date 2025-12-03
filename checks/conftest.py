@@ -5,7 +5,7 @@ import fmdj
 import aegis
 
 def get_particles(N = 1024*1024):
-    pos0 = jax.random.normal(jax.random.PRNGKey(0), (N, 3), dtype=jnp.float32) * 0.1
+    pos0 = jax.random.normal(jax.random.PRNGKey(0), (N, 3), dtype=jnp.float32) * 0.3
     pos0 = jnp.clip(pos0, -0.5, 0.5).block_until_ready()
     mass = jnp.ones(N, dtype=jnp.float32)
     
