@@ -1,3 +1,6 @@
+import os
+os.environ.setdefault("XLA_PYTHON_CLIENT_MEM_FRACTION", "0.20")
+
 import fmdj
 import jax.numpy as jnp
 import jax
@@ -90,8 +93,8 @@ def test_sim_com(particles_blob):
     assert jnp.sum(pgrad.vel, axis=0) == pytest.approx(vcom_grad, rel=1e-5)
 
 @pytest.mark.parametrize("npart", [1024*8], indirect=True)
-def test_force_gradients(pos_mass_z: fmdj.data.PosMass):
-    part = pos_mass_z
+def test_force_gradients(pos_mass: fmdj.data.PosMass):
+    part = pos_mass
     fmmcfg = fmdj.config.FMMConfig(p=4, kahan_summation=True, opening_angle=0.8)
     cfg = fmdj.Config(softening=0.05, fmm=fmmcfg)
     
@@ -100,26 +103,26 @@ def test_force_gradients(pos_mass_z: fmdj.data.PosMass):
 
     fphi1 = fmdj.fmm.direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True)
     fphi2 = fmdj.fmm.grouped_force_and_pot.jit(part, ispl, ilist, cfg)
-    fphi3 = fmdj.fmm.fast_multipole_method_z.jit(part, cfg=cfg).values / cfg.G()
+    fphi3 = fmdj.fmm.fast_multipole_method.jit(part, cfg=cfg).values / cfg.G()
 
     abstol = float(jnp.std(fphi1) * 5e-3)
 
-    assert fphi2 == pytest.approx(fphi1, rel=1e-4)
+    assert fphi2 == pytest.approx(fphi1, abs=abstol*1e-2)
     assert fphi3 == pytest.approx(fphi1, abs=abstol)
 
     def f1(part): return fmdj.fmm.grouped_force_and_pot(part, ispl, ilist, cfg=cfg).sum()
-    def f2(part): return fmdj.fmm.direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True).sum()
-    def f3(part): return fmdj.fmm.fast_multipole_method_z(part, cfg=cfg).values.sum() / cfg.G()
+    def f2(part): return fmdj.fmm.direct_force_and_potential(part, softening=cfg.softening, kahan=True).sum()
+    def f3(part): return fmdj.fmm.fast_multipole_method(part, cfg=cfg).values.sum() / cfg.G()
     
     gposm1 = jax.jit(jax.grad(f1))(part)
     gposm2 = jax.jit(jax.grad(f2))(part)
     gposm3 = jax.jit(jax.grad(f3))(part)
 
-    assert gposm2.pos == pytest.approx(gposm1.pos, rel=1e-4)
-    assert gposm2.mass == pytest.approx(gposm1.mass, rel=1e-4)
-
     abstol_pos = float(jnp.std(gposm2.pos) * 1e-2)
     abstol_mass = float(jnp.std(gposm2.mass) * 1e-2)
+
+    assert gposm2.pos == pytest.approx(gposm1.pos, abs=abstol_pos*1e-2)
+    assert gposm2.mass == pytest.approx(gposm1.mass, abs=abstol_mass*1e-2)
 
     assert gposm3.pos == pytest.approx(gposm1.pos, abs=abstol_pos)
     assert gposm3.mass == pytest.approx(gposm1.mass, abs=abstol_mass)

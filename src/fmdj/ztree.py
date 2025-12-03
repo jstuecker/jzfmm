@@ -29,7 +29,7 @@ def get_node_box(x, level_binary):
 #                                             FFI Calls                                            #
 # ------------------------------------------------------------------------------------------------ #
 
-def pos_zorder_sort(x, block_size=64):
+def _pos_zorder_sort_impl(x, block_size=64):
     assert x.dtype == jnp.float32
     assert x.shape[-1] == 3
 
@@ -45,7 +45,26 @@ def pos_zorder_sort(x, block_size=64):
     ids = isort[:, 3].view(jnp.int32)
 
     return pos, ids
-pos_zorder_sort.jit = jax.jit(pos_zorder_sort, static_argnames=("block_size",))
+
+def pos_zorder_sort(x):
+    @jax.custom_vjp
+    def eval(x):
+        return _pos_zorder_sort_impl(x)
+    
+    def eval_fwd(x):
+        pos, ids = eval(x)
+        return (pos, ids), ids
+    
+    def eval_bwd(ids, g):
+        gpos, gids = g
+        # Scatter the gradients back to the original ordering
+        gpos_unsort = jax.numpy.zeros_like(gpos).at[ids].set(gpos)
+        return (gpos_unsort,)
+    
+    eval.defvjp(eval_fwd, eval_bwd)
+
+    return eval(x)
+pos_zorder_sort.jit = jax.jit(pos_zorder_sort)
 
 def summarize_leaves(xleaf, nleaf=None, max_size=64, num_part=None, ref_fac=None, alloc_fac_nodes=1., alloc_min=128):
     """Summarizes leaf nodes into parent nodes
