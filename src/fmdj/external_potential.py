@@ -16,6 +16,14 @@ class NFWPotential(PotentialField):
         return self.phic(G=cfg.G()) * (jnp.log(1. + u) / u - 1.)
     
 @dataclass(unsafe_hash=True)
+class HernquistPotential(PotentialField):
+    a: float = 1.0
+    M: float = 1.0
+
+    def potential(self, x: jnp.ndarray, t: float = 0., cfg: Config = None) -> jnp.ndarray:
+        return -cfg.G() * self.M / (jnp.linalg.norm(x, axis=-1) + self.a)
+    
+@dataclass(unsafe_hash=True)
 class UniformAcceleration(PotentialField):
     acc : tuple[float, float, float] = (0., 0., 0.)
 
