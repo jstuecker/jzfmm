@@ -123,10 +123,50 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
+/*                             FFI call to CUDA kernel: ZTreeNodeRelations                        */
+/* ---------------------------------------------------------------------------------------------- */
+
+ffi::Error ZTreeNodeRelationsFFIHost(
+    cudaStream_t stream,
+    ffi::AnyBuffer pos_in,
+    ffi::Result<ffi::AnyBuffer> outputs,
+    size_t nleaves,
+    size_t block_size
+) {
+
+    // Now call our function
+    ZTreeNodeRelations(
+        stream,
+        reinterpret_cast<float3*>(pos_in.untyped_data()),
+        reinterpret_cast<int*>(outputs->untyped_data()),
+        nleaves,
+        block_size
+    );
+
+    cudaError_t last_error = cudaGetLastError();
+    if (last_error != cudaSuccess) {
+        return ffi::Error::Internal(std::string("CUDA error: ") + cudaGetErrorString(last_error));
+    }
+    return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    ZTreeNodeRelationsFFI, ZTreeNodeRelationsFFIHost,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<cudaStream_t>>()
+        .Arg<ffi::AnyBuffer>() // pos_in
+        .Ret<ffi::AnyBuffer>() // outputs
+        .Attr<size_t>("nleaves")
+        .Attr<size_t>("block_size"),
+    {xla::ffi::Traits::kCmdBufferCompatible}
+);
+
+/* ---------------------------------------------------------------------------------------------- */
 /*                               Module declaration through nanobind                              */
 /* ---------------------------------------------------------------------------------------------- */
 
 NB_MODULE(ffi_tree, m) {
     m.def("PosZorderSort", []() { return EncapsulateFfiCall(&PosZorderSortFFI); });
     m.def("SummarizeLeaves", []() { return EncapsulateFfiCall(&SummarizeLeavesFFI); });
+    m.def("ZTreeNodeRelations", []() { return EncapsulateFfiCall(&ZTreeNodeRelationsFFI); });
 }

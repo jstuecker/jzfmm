@@ -152,3 +152,146 @@ __global__ void SummarizeLeaves(
 }
 
 #endif // CUSTOM_JAX_TREE_H
+
+/* ---------------------------------------------------------------------------------------------- */
+/*                                          Tree Building                                         */
+/* ---------------------------------------------------------------------------------------------- */
+
+struct NodePointers {
+    int32_t* levels;
+    int32_t* lbound;
+    int32_t* rbound;
+    int32_t* lchild;
+    int32_t* rchild;
+};
+
+__global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    bool valid_thread = (idx < n-1);
+
+    // Node indices are offset by 1, because we put a fake node at the beginning
+    // but we don't launch the kernel for it
+    int node = idx + 1; 
+
+    int target_level, lvl_left, lvl_right;
+    int lbound, rbound;
+    float3 p1, p2;
+
+    if (valid_thread) {
+        // Calculate the level difference of our considered set of two points (=node)
+        p1 = pos_in[idx];
+        p2 = pos_in[idx + 1];
+
+        target_level = msb_diff_level(p1, p2);
+
+        // We do a binary search, trying to find the closest point to the left
+        // that has a level difference of at least `level`
+        int imin = -1, imax = idx+1;
+        lvl_left = 388;
+        while (imin+1 < imax) {
+            int itest = (imin + imax) / 2;
+            lvl_left = msb_diff_level(pos_in[itest], p2);
+            if (lvl_left > target_level) {
+                imin = itest;
+            } else {
+                imax = itest;
+            }
+        }
+
+        // Our array has two fake nodes at the beginning and end
+        // that's why we have to offset the indices by 1
+        lbound = imin+1;
+
+        if(imin >= 0)
+            lvl_left = msb_diff_level(p1, pos_in[imin]);
+        else
+            lvl_left = 388;
+    }
+    
+    __syncthreads(); // Synchronize to reduce thread divergence
+
+    if (valid_thread) {
+        // Now find the right side parent
+        int imin = idx, imax = n;
+        lvl_right = 388;
+        while (imin+1 < imax) {
+            int itest = (imin + imax) / 2;
+            lvl_right = msb_diff_level(p1, pos_in[itest]);
+            if (lvl_right > target_level) {
+                imax = itest;
+            } else {
+                imin = itest;
+            }
+        }
+
+        rbound = imin+1;
+
+        if(rbound < n)
+            lvl_right = msb_diff_level(p1, pos_in[rbound]);
+        else
+            lvl_right = 388;
+    }
+
+    __syncthreads();
+
+    if (valid_thread) {
+        nodes.levels[node] = target_level;
+        nodes.lbound[node] = lbound;
+        nodes.rbound[node] = rbound;
+        
+        // The parent of each node is the lower one of the two boundary nodes
+        if(lvl_left <= lvl_right) {
+            nodes.rchild[lbound] = node;
+        } else {
+            nodes.lchild[rbound] = node;
+        }
+    }
+}
+__global__ void InitNodes(NodePointers nodes, size_t n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int Nnodes = n + 1;
+
+    if (idx >= Nnodes)
+        return;
+
+    // We have fake nodes at the beginning and end of the array
+    // to simplify walking the tree
+    if((idx == 0) || (idx == Nnodes - 1)) {
+        nodes.lbound[idx] = 0;
+        nodes.rbound[idx] = Nnodes-1;
+        nodes.levels[idx] = 388;
+        nodes.lchild[idx] = idx; // Point to itself, may be overwritten later
+        nodes.rchild[idx] = idx; // Point to itself, may be overwritten later
+    }
+    else {
+        // indices <= 0 correspond to leafs (=particles)
+        // by defaults node's children point to particles,
+        // but about half of them will be overwritten by nodes later
+        nodes.lchild[idx] = -idx + 1;
+        nodes.rchild[idx] = -idx;
+    }
+}
+
+void ZTreeNodeRelations(
+    cudaStream_t stream, 
+    const float3* pos_in,
+    int* outputs,
+    const size_t nleaves,
+    const size_t block_size
+) {
+    // size_t n = pos_in.element_count()/3;
+    size_t Nnodes = nleaves + 1;
+
+    // Output will be (5, Nnodes) array with different types of information in the first axis
+    // Create some easier readable pointers that start at offset locations in the output
+    NodePointers nodes;
+    nodes.levels = outputs;
+    nodes.lbound = outputs + Nnodes;
+    nodes.rbound = outputs + 2 * Nnodes;
+    nodes.lchild = outputs + 3 * Nnodes;
+    nodes.rchild = outputs + 4 * Nnodes;
+    
+    InitNodes<<< div_ceil(Nnodes, block_size), block_size, 0, stream>>>(nodes, nleaves);
+
+    BinarySearchParents<<< div_ceil(nleaves-1, block_size), block_size, 0, stream>>>(pos_in, nodes, nleaves);
+}

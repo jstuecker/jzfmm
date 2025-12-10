@@ -95,7 +95,7 @@ gen.generate_ffi_module_file(
 
 functions = parse.get_functions_from_file(
     str(HERE / "tree.cuh"),
-    names=["PosZorderSort", "SummarizeLeaves"],
+    names=["PosZorderSort", "SummarizeLeaves", "ZTreeNodeRelations"],
     only_kernels=False
 )
 
