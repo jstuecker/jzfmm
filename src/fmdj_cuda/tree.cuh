@@ -166,9 +166,9 @@ struct NodePointers {
 };
 
 __global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, const int *nleaves) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = 1 + blockIdx.x * blockDim.x + threadIdx.x;
     int n = nleaves[0];
-    bool valid_thread = idx < n-1;
+    bool valid_thread = idx < n;
 
     int target_level, lvl_left, lvl_right;
     int lbound, rbound;
@@ -176,31 +176,34 @@ __global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, co
 
     if (valid_thread) {
         // Calculate the level difference of our considered set of two points (=node)
-        p1 = pos_in[idx];
-        p2 = pos_in[idx + 1];
+        p1 = pos_in[idx - 1];
+        p2 = pos_in[idx];
 
+        // Our node includes at least [idx-1, idx] and it goes up to the left until a
+        // point has a level difference that is larger han target_level:
         target_level = msb_diff_level(p1, p2);
 
-        // We do a binary search, trying to find the closest point to the left
-        // that has a level difference of at least `level`
         if(msb_diff_level(pos_in[0], p2) <= target_level) {
             // Node goes until left-domain boundary... We have no left parent
             lbound = 0;
             lvl_left = 388; // larger than any possible level
         } else {
-            int imin = 0, imax = idx+1;
+            // ibefore is the an index (left) outside of the node, iinside is an index inside
+            // We do a binary search until they lie next to each other
+
+            int ibefore = 0, iinside = idx;
             lvl_left = 388;
-            while (imin+1 < imax) {
-                int itest = (imin + imax) / 2;
+            while (ibefore+1 < iinside) {
+                int itest = (ibefore + iinside) / 2;
                 lvl_left = msb_diff_level(pos_in[itest], p2);
                 if (lvl_left > target_level) {
-                    imin = itest;
+                    ibefore = itest;
                 } else {
-                    imax = itest;
+                    iinside = itest;
                 }
             }
-            lvl_left = msb_diff_level(p1, pos_in[imin]);
-            lbound = imin;
+            lvl_left = msb_diff_level(p1, pos_in[ibefore]);
+            lbound = iinside;
         }
     }
     
@@ -210,24 +213,24 @@ __global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, co
         // Now find the right side parent
         if(msb_diff_level(p1, pos_in[n-1]) <= target_level)
         {
-            rbound = n-1;
+            rbound = n;
             lvl_right = 388;
         }
         else
         {
-            int imin = idx, imax = n-1;
+            int iinside = idx-1, iafter = n-1;
             lvl_right = 388;
-            while (imin+1 < imax) {
-                int itest = (imin + imax) / 2;
+            while (iinside+1 < iafter) {
+                int itest = (iinside + iafter) / 2;
                 lvl_right = msb_diff_level(p1, pos_in[itest]);
                 if (lvl_right > target_level) {
-                    imax = itest;
+                    iafter = itest;
                 } else {
-                    imin = itest;
+                    iinside = itest;
                 }
             }
 
-            rbound = imax;
+            rbound = iafter;
             lvl_right = msb_diff_level(p1, pos_in[rbound]);
         }
     }
@@ -235,18 +238,16 @@ __global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, co
     __syncthreads();
 
     if (valid_thread) {
-        int iwrite = idx + 1;
-
-        nodes.levels[iwrite] = target_level;
-        nodes.lbound[iwrite] = lbound;
-        nodes.rbound[iwrite] = rbound;
+        nodes.levels[idx] = target_level;
+        nodes.lbound[idx] = lbound;
+        nodes.rbound[idx] = rbound;
         
         // The parent of each node is the lower one of the two boundary nodes
         if((lvl_left <= lvl_right) && (lvl_left != 388)) {
-            nodes.rchild[lbound] = iwrite;
+            nodes.rchild[lbound] = idx;
         }
         else if (lvl_right != 388) {
-            nodes.lchild[rbound] = iwrite;
+            nodes.lchild[rbound] = idx;
         }
     }
 }
