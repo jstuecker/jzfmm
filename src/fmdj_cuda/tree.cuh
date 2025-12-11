@@ -161,8 +161,6 @@ struct NodePointers {
     int32_t* levels;
     int32_t* lbound;
     int32_t* rbound;
-    int32_t* lchild;
-    int32_t* rchild;
 };
 
 __global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, const int *nleaves) {
@@ -241,14 +239,6 @@ __global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, co
         nodes.levels[idx] = target_level;
         nodes.lbound[idx] = lbound;
         nodes.rbound[idx] = rbound;
-        
-        // The parent of each node is the lower one of the two boundary nodes
-        if((lvl_left <= lvl_right) && (lvl_left != 388)) {
-            nodes.rchild[lbound] = idx;
-        }
-        else if (lvl_right != 388) {
-            nodes.lchild[rbound] = idx;
-        }
     }
 }
 __global__ void InitNodes(NodePointers nodes, const int* nleaves, size_t size_nodes) {
@@ -261,20 +251,12 @@ __global__ void InitNodes(NodePointers nodes, const int* nleaves, size_t size_no
         nodes.levels[idx] = 388; // larger than any possible level
         nodes.lbound[idx] = 0;
         nodes.rbound[idx] = nlv;
-        nodes.lchild[idx] = nlv;
-        nodes.rchild[idx] = nlv;
     }
-    if(idx < nnodes) {
-        nodes.lchild[idx] = -idx + 1;
-        nodes.rchild[idx] = -idx;
-    }
-    else if (idx < size_nodes) {
+    else if ((idx >= nnodes) && (idx < size_nodes)) {
         // Set values for undefined nodes
         nodes.levels[idx] = -1000;
         nodes.lbound[idx] = nlv;
         nodes.rbound[idx] = nlv;
-        nodes.lchild[idx] = nlv;
-        nodes.rchild[idx] = nlv;
     }
 }
 
@@ -294,8 +276,6 @@ void ZTreeNodeBoundaries(
     nodes.levels = outputs;
     nodes.lbound = outputs + size_nodes;
     nodes.rbound = outputs + 2 * size_nodes;
-    nodes.lchild = outputs + 3 * size_nodes;
-    nodes.rchild = outputs + 4 * size_nodes;
     
     InitNodes<<< div_ceil(size_nodes, block_size), block_size, 0, stream>>>(nodes, nleaves, size_nodes);
 

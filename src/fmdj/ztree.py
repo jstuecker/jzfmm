@@ -148,8 +148,6 @@ class BinaryZTree:
     level: jnp.ndarray = None
     lbound: jnp.ndarray = None
     rbound: jnp.ndarray = None
-    lchild: jnp.ndarray = None
-    rchild: jnp.ndarray = None
 
 def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int = 64) -> jnp.ndarray:
     out_type = jax.ShapeDtypeStruct((posz.shape[0]+1,), jnp.int32)
@@ -168,17 +166,17 @@ def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int
     return splits
 create_coarse_leaves.jit = jax.jit(create_coarse_leaves, static_argnames=("leaf_size", "block_size"))
 
-def build_ztree(posz: jnp.ndarray, block_size: int = 64, leaf_size: int = 1, nleaves: jnp.array = None) -> BinaryZTree:
+def determine_znode_boundaries(posz: jnp.ndarray, block_size: int = 64, nleaves: jnp.array = None) -> BinaryZTree:
     """Builds a Z-order tree from positions"""
     if nleaves is None:
         nleaves = jnp.array(len(posz))
 
-    out_type = jax.ShapeDtypeStruct((5, posz.shape[0]+1), jnp.int32)
+    out_type = jax.ShapeDtypeStruct((3, posz.shape[0]+1), jnp.int32)
     res = jax.ffi.ffi_call("ZTreeNodeBoundaries", (out_type,))(posz, nleaves, block_size=np.uint64(block_size))[0]
     ztree = BinaryZTree(*res)
 
     return ztree
-build_ztree.jit = jax.jit(build_ztree)
+determine_znode_boundaries.jit = jax.jit(determine_znode_boundaries)
 
 # ------------------------------------------------------------------------------------------------ #
 #                                      Tree Building Functions                                     #
