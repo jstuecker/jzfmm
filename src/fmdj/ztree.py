@@ -138,7 +138,7 @@ def summarize_leaves(xleaf, nleaf=None, max_size=64, num_part=None, ref_fac=None
 
     return splits, new_nleaf, new_leaf_lvl, new_leaf_cent, numleaves
 
-summarize_leaves.jit = jax.jit(summarize_leaves, static_argnames=("max_size", "num_part", "ref_fac"))
+summarize_leaves.jit = jax.jit(summarize_leaves, static_argnames=("max_size", "num_part", "ref_fac", "alloc_min"))
 
 
 from dataclasses import dataclass

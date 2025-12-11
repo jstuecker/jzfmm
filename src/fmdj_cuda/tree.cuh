@@ -163,101 +163,92 @@ struct NodePointers {
     int32_t* rbound;
 };
 
-__global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, const int *nleaves) {
-    int idx = 1 + blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, const int *nleaves, const int size_nodes) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int n = nleaves[0];
+    int nnodes = n + 1;
     bool valid_thread = idx < n;
 
     int target_level, lvl_left, lvl_right;
     int lbound, rbound;
     float3 p1, p2;
 
-    if (valid_thread) {
-        // Calculate the level difference of our considered set of two points (=node)
-        p1 = pos_in[idx - 1];
-        p2 = pos_in[idx];
-
-        // Our node includes at least [idx-1, idx] and it goes up to the left until a
-        // point has a level difference that is larger han target_level:
-        target_level = msb_diff_level(p1, p2);
-
-        if(msb_diff_level(pos_in[0], p2) <= target_level) {
-            // Node goes until left-domain boundary... We have no left parent
-            lbound = 0;
-            lvl_left = 388; // larger than any possible level
-        } else {
-            // ibefore is the an index (left) outside of the node, iinside is an index inside
-            // We do a binary search until they lie next to each other
-
-            int ibefore = 0, iinside = idx;
-            lvl_left = 388;
-            while (ibefore+1 < iinside) {
-                int itest = (ibefore + iinside) / 2;
-                lvl_left = msb_diff_level(pos_in[itest], p2);
-                if (lvl_left > target_level) {
-                    ibefore = itest;
-                } else {
-                    iinside = itest;
-                }
-            }
-            lvl_left = msb_diff_level(p1, pos_in[ibefore]);
-            lbound = iinside;
-        }
-    }
-    
-    __syncthreads(); // Synchronize to reduce thread divergence
-
-    if (valid_thread) {
-        // Now find the right side parent
-        if(msb_diff_level(p1, pos_in[n-1]) <= target_level)
-        {
-            rbound = n;
-            lvl_right = 388;
-        }
-        else
-        {
-            int iinside = idx-1, iafter = n-1;
-            lvl_right = 388;
-            while (iinside+1 < iafter) {
-                int itest = (iinside + iafter) / 2;
-                lvl_right = msb_diff_level(p1, pos_in[itest]);
-                if (lvl_right > target_level) {
-                    iafter = itest;
-                } else {
-                    iinside = itest;
-                }
-            }
-
-            rbound = iafter;
-            lvl_right = msb_diff_level(p1, pos_in[rbound]);
-        }
-    }
-
-    __syncthreads();
-
-    if (valid_thread) {
-        nodes.levels[idx] = target_level;
-        nodes.lbound[idx] = lbound;
-        nodes.rbound[idx] = rbound;
-    }
-}
-__global__ void InitNodes(NodePointers nodes, const int* nleaves, size_t size_nodes) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int nlv = nleaves[0];
-    int nnodes = nlv + 1;
-
     if((idx == 0) || (idx == nnodes-1)) {
         // At left and right boundary, we put a pseudo-note that spans the whole domain
         nodes.levels[idx] = 388; // larger than any possible level
         nodes.lbound[idx] = 0;
-        nodes.rbound[idx] = nlv;
+        nodes.rbound[idx] = n;
+
+        return;
     }
     else if ((idx >= nnodes) && (idx < size_nodes)) {
         // Set values for undefined nodes
         nodes.levels[idx] = -1000;
-        nodes.lbound[idx] = nlv;
-        nodes.rbound[idx] = nlv;
+        nodes.lbound[idx] = n;
+        nodes.rbound[idx] = n;
+
+        return;
     }
+
+    // Calculate the level difference of our considered set of two points (=node)
+    p1 = pos_in[idx - 1];
+    p2 = pos_in[idx];
+
+    // Our node includes at least [idx-1, idx] and it goes up to the left until a
+    // point has a level difference that is larger han target_level:
+    target_level = msb_diff_level(p1, p2);
+
+    if(msb_diff_level(pos_in[0], p2) <= target_level) {
+        // Node goes until left-domain boundary... We have no left parent
+        lbound = 0;
+        lvl_left = 388; // larger than any possible level
+    } else {
+        // ibefore is the an index (left) outside of the node, iinside is an index inside
+        // We do a binary search until they lie next to each other
+
+        int ibefore = 0, iinside = idx;
+        lvl_left = 388;
+        while (ibefore+1 < iinside) {
+            int itest = (ibefore + iinside) / 2;
+            lvl_left = msb_diff_level(pos_in[itest], p2);
+            if (lvl_left > target_level) {
+                ibefore = itest;
+            } else {
+                iinside = itest;
+            }
+        }
+        lvl_left = msb_diff_level(p1, pos_in[ibefore]);
+        lbound = iinside;
+    }
+
+
+    // Now find the right side parent
+    if(msb_diff_level(p1, pos_in[n-1]) <= target_level)
+    {
+        rbound = n;
+        lvl_right = 388;
+    }
+    else
+    {
+        int iinside = idx-1, iafter = n-1;
+        lvl_right = 388;
+        while (iinside+1 < iafter) {
+            int itest = (iinside + iafter) / 2;
+            lvl_right = msb_diff_level(p1, pos_in[itest]);
+            if (lvl_right > target_level) {
+                iafter = itest;
+            } else {
+                iinside = itest;
+            }
+        }
+
+        rbound = iafter;
+        lvl_right = msb_diff_level(p1, pos_in[rbound]);
+    }
+
+    nodes.levels[idx] = target_level;
+    nodes.lbound[idx] = lbound;
+    nodes.rbound[idx] = rbound;
 }
 
 void ZTreeNodeBoundaries(
@@ -277,7 +268,5 @@ void ZTreeNodeBoundaries(
     nodes.lbound = outputs + size_nodes;
     nodes.rbound = outputs + 2 * size_nodes;
     
-    InitNodes<<< div_ceil(size_nodes, block_size), block_size, 0, stream>>>(nodes, nleaves, size_nodes);
-
-    BinarySearchParents<<< div_ceil(size_nodes-2, block_size), block_size, 0, stream>>>(pos_in, nodes, nleaves);
+    BinarySearchParents<<< div_ceil(size_nodes, block_size), block_size, 0, stream>>>(pos_in, nodes, nleaves, size_nodes);
 }
