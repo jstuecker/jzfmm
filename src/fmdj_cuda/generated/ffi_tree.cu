@@ -123,23 +123,25 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                             FFI call to CUDA kernel: ZTreeNodeRelations                        */
+/*                             FFI call to CUDA kernel: ZTreeNodeBoundaries                       */
 /* ---------------------------------------------------------------------------------------------- */
 
-ffi::Error ZTreeNodeRelationsFFIHost(
+ffi::Error ZTreeNodeBoundariesFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer pos_in,
+    ffi::AnyBuffer nleaves,
     ffi::Result<ffi::AnyBuffer> outputs,
-    size_t nleaves,
     size_t block_size
 ) {
+    size_t size_leaves = pos_in.element_count()/3;
 
     // Now call our function
-    ZTreeNodeRelations(
+    ZTreeNodeBoundaries(
         stream,
         reinterpret_cast<float3*>(pos_in.untyped_data()),
+        reinterpret_cast<int*>(nleaves.untyped_data()),
         reinterpret_cast<int*>(outputs->untyped_data()),
-        nleaves,
+        size_leaves,
         block_size
     );
 
@@ -151,12 +153,12 @@ ffi::Error ZTreeNodeRelationsFFIHost(
 }
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    ZTreeNodeRelationsFFI, ZTreeNodeRelationsFFIHost,
+    ZTreeNodeBoundariesFFI, ZTreeNodeBoundariesFFIHost,
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // pos_in
+        .Arg<ffi::AnyBuffer>() // nleaves
         .Ret<ffi::AnyBuffer>() // outputs
-        .Attr<size_t>("nleaves")
         .Attr<size_t>("block_size"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );
@@ -168,5 +170,5 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 NB_MODULE(ffi_tree, m) {
     m.def("PosZorderSort", []() { return EncapsulateFfiCall(&PosZorderSortFFI); });
     m.def("SummarizeLeaves", []() { return EncapsulateFfiCall(&SummarizeLeavesFFI); });
-    m.def("ZTreeNodeRelations", []() { return EncapsulateFfiCall(&ZTreeNodeRelationsFFI); });
+    m.def("ZTreeNodeBoundaries", []() { return EncapsulateFfiCall(&ZTreeNodeBoundariesFFI); });
 }

@@ -165,13 +165,10 @@ struct NodePointers {
     int32_t* rchild;
 };
 
-__global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, int n) {
+__global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, const int *nleaves) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    bool valid_thread = (idx < n-1);
-
-    // Node indices are offset by 1, because we put a fake node at the beginning
-    // but we don't launch the kernel for it
-    int node = idx + 1; 
+    int n = nleaves[0];
+    bool valid_thread = idx < n-1;
 
     int target_level, lvl_left, lvl_right;
     int lbound, rbound;
@@ -186,112 +183,120 @@ __global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, in
 
         // We do a binary search, trying to find the closest point to the left
         // that has a level difference of at least `level`
-        int imin = -1, imax = idx+1;
-        lvl_left = 388;
-        while (imin+1 < imax) {
-            int itest = (imin + imax) / 2;
-            lvl_left = msb_diff_level(pos_in[itest], p2);
-            if (lvl_left > target_level) {
-                imin = itest;
-            } else {
-                imax = itest;
-            }
-        }
-
-        // Our array has two fake nodes at the beginning and end
-        // that's why we have to offset the indices by 1
-        lbound = imin+1;
-
-        if(imin >= 0)
-            lvl_left = msb_diff_level(p1, pos_in[imin]);
-        else
+        if(msb_diff_level(pos_in[0], p2) <= target_level) {
+            // Node goes until left-domain boundary... We have no left parent
+            lbound = 0;
+            lvl_left = 388; // larger than any possible level
+        } else {
+            int imin = 0, imax = idx+1;
             lvl_left = 388;
+            while (imin+1 < imax) {
+                int itest = (imin + imax) / 2;
+                lvl_left = msb_diff_level(pos_in[itest], p2);
+                if (lvl_left > target_level) {
+                    imin = itest;
+                } else {
+                    imax = itest;
+                }
+            }
+            lvl_left = msb_diff_level(p1, pos_in[imin]);
+            lbound = imin;
+        }
     }
     
     __syncthreads(); // Synchronize to reduce thread divergence
 
     if (valid_thread) {
         // Now find the right side parent
-        int imin = idx, imax = n;
-        lvl_right = 388;
-        while (imin+1 < imax) {
-            int itest = (imin + imax) / 2;
-            lvl_right = msb_diff_level(p1, pos_in[itest]);
-            if (lvl_right > target_level) {
-                imax = itest;
-            } else {
-                imin = itest;
-            }
-        }
-
-        rbound = imin+1;
-
-        if(rbound < n)
-            lvl_right = msb_diff_level(p1, pos_in[rbound]);
-        else
+        if(msb_diff_level(p1, pos_in[n-1]) <= target_level)
+        {
+            rbound = n-1;
             lvl_right = 388;
+        }
+        else
+        {
+            int imin = idx, imax = n-1;
+            lvl_right = 388;
+            while (imin+1 < imax) {
+                int itest = (imin + imax) / 2;
+                lvl_right = msb_diff_level(p1, pos_in[itest]);
+                if (lvl_right > target_level) {
+                    imax = itest;
+                } else {
+                    imin = itest;
+                }
+            }
+
+            rbound = imax;
+            lvl_right = msb_diff_level(p1, pos_in[rbound]);
+        }
     }
 
     __syncthreads();
 
     if (valid_thread) {
-        nodes.levels[node] = target_level;
-        nodes.lbound[node] = lbound;
-        nodes.rbound[node] = rbound;
+        int iwrite = idx + 1;
+
+        nodes.levels[iwrite] = target_level;
+        nodes.lbound[iwrite] = lbound;
+        nodes.rbound[iwrite] = rbound;
         
         // The parent of each node is the lower one of the two boundary nodes
-        if(lvl_left <= lvl_right) {
-            nodes.rchild[lbound] = node;
-        } else {
-            nodes.lchild[rbound] = node;
+        if((lvl_left <= lvl_right) && (lvl_left != 388)) {
+            nodes.rchild[lbound] = iwrite;
+        }
+        else if (lvl_right != 388) {
+            nodes.lchild[rbound] = iwrite;
         }
     }
 }
-__global__ void InitNodes(NodePointers nodes, size_t n) {
+__global__ void InitNodes(NodePointers nodes, const int* nleaves, size_t size_nodes) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int Nnodes = n + 1;
+    int nlv = nleaves[0];
+    int nnodes = nlv + 1;
 
-    if (idx >= Nnodes)
-        return;
-
-    // We have fake nodes at the beginning and end of the array
-    // to simplify walking the tree
-    if((idx == 0) || (idx == Nnodes - 1)) {
+    if((idx == 0) || (idx == nnodes-1)) {
+        // At left and right boundary, we put a pseudo-note that spans the whole domain
+        nodes.levels[idx] = 388; // larger than any possible level
         nodes.lbound[idx] = 0;
-        nodes.rbound[idx] = Nnodes-1;
-        nodes.levels[idx] = 388;
-        nodes.lchild[idx] = idx; // Point to itself, may be overwritten later
-        nodes.rchild[idx] = idx; // Point to itself, may be overwritten later
+        nodes.rbound[idx] = nlv;
+        nodes.lchild[idx] = nlv;
+        nodes.rchild[idx] = nlv;
     }
-    else {
-        // indices <= 0 correspond to leafs (=particles)
-        // by defaults node's children point to particles,
-        // but about half of them will be overwritten by nodes later
+    if(idx < nnodes) {
         nodes.lchild[idx] = -idx + 1;
         nodes.rchild[idx] = -idx;
     }
+    else if (idx < size_nodes) {
+        // Set values for undefined nodes
+        nodes.levels[idx] = -1000;
+        nodes.lbound[idx] = nlv;
+        nodes.rbound[idx] = nlv;
+        nodes.lchild[idx] = nlv;
+        nodes.rchild[idx] = nlv;
+    }
 }
 
-void ZTreeNodeRelations(
+void ZTreeNodeBoundaries(
     cudaStream_t stream, 
     const float3* pos_in,
+    const int* nleaves,       // filled size (gpu pointer)
     int* outputs,
-    const size_t nleaves,
+    const size_t size_leaves, // allocated size
     const size_t block_size
 ) {
-    // size_t n = pos_in.element_count()/3;
-    size_t Nnodes = nleaves + 1;
+    size_t size_nodes = size_leaves + 1;
 
     // Output will be (5, Nnodes) array with different types of information in the first axis
     // Create some easier readable pointers that start at offset locations in the output
     NodePointers nodes;
     nodes.levels = outputs;
-    nodes.lbound = outputs + Nnodes;
-    nodes.rbound = outputs + 2 * Nnodes;
-    nodes.lchild = outputs + 3 * Nnodes;
-    nodes.rchild = outputs + 4 * Nnodes;
+    nodes.lbound = outputs + size_nodes;
+    nodes.rbound = outputs + 2 * size_nodes;
+    nodes.lchild = outputs + 3 * size_nodes;
+    nodes.rchild = outputs + 4 * size_nodes;
     
-    InitNodes<<< div_ceil(Nnodes, block_size), block_size, 0, stream>>>(nodes, nleaves);
+    InitNodes<<< div_ceil(size_nodes, block_size), block_size, 0, stream>>>(nodes, nleaves, size_nodes);
 
-    BinarySearchParents<<< div_ceil(nleaves-1, block_size), block_size, 0, stream>>>(pos_in, nodes, nleaves);
+    BinarySearchParents<<< div_ceil(size_nodes-2, block_size), block_size, 0, stream>>>(pos_in, nodes, nleaves);
 }

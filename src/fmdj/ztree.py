@@ -10,7 +10,7 @@ from .multipoles import center_of_mass
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
-jax.ffi.register_ffi_target("ZTreeNodeRelations", ffi_tree.ZTreeNodeRelations(), platform="CUDA")
+jax.ffi.register_ffi_target("ZTreeNodeBoundaries", ffi_tree.ZTreeNodeBoundaries(), platform="CUDA")
 
 # ------------------------------------------------------------------------------------------------ #
 #                                         Helper Functions                                         #
@@ -168,18 +168,14 @@ def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int
     return splits
 create_coarse_leaves.jit = jax.jit(create_coarse_leaves, static_argnames=("leaf_size", "block_size"))
 
-def build_ztree(posz: jnp.ndarray, block_size: int = 64, leaf_size: int = 1, nleaves: int = None) -> BinaryZTree:
+def build_ztree(posz: jnp.ndarray, block_size: int = 64, leaf_size: int = 1, nleaves: jnp.array = None) -> BinaryZTree:
     """Builds a Z-order tree from positions"""
     if nleaves is None:
-        nleaves = len(posz)
+        nleaves = jnp.array(len(posz))
 
     out_type = jax.ShapeDtypeStruct((5, posz.shape[0]+1), jnp.int32)
-    res = jax.ffi.ffi_call("ZTreeNodeRelations", (out_type,))(posz, block_size=np.uint64(block_size), nleaves=np.uint64(nleaves))[0]
+    res = jax.ffi.ffi_call("ZTreeNodeBoundaries", (out_type,))(posz, nleaves, block_size=np.uint64(block_size))[0]
     ztree = BinaryZTree(*res)
-
-    root_node = jnp.argmax(ztree.level[1:-1]).astype(jnp.int32)
-    ztree.level = ztree.level.at[0].set(root_node)
-    ztree.level = ztree.level.at[-1].set(root_node)
 
     return ztree
 build_ztree.jit = jax.jit(build_ztree)
