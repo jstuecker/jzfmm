@@ -232,10 +232,10 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
 
     # The number of times we need to refine to reach a level with <= cfg.fmm.stop_coarsen nodes
     nlevels = np.log(len(ispl) / cfg.fmm.stop_coarsen) / np.log(cfg.fmm.coarse_fac)
-    nlevels = int(np.ceil(nlevels))
+    nlevels = np.maximum(int(np.ceil(nlevels)), 0)
 
     ispls = [ispl]
-    node_idx = []
+    node_idx = [ispl]
     node_size = cfg.fmm.max_leaf_size
     for i in range(nlevels):
         node_size = node_size * cfg.fmm.coarse_fac
@@ -246,7 +246,7 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
         ispl = jnp.where(npart > node_size, size=max_nodes, fill_value=nnodes)[0]
         npart = jnp.where(npart[ispl] > node_size, npart[ispl], 0)
         ispls.append(ispl)
-        node_idx.append(jnp.where(npart_leaf > node_size, size=max_nodes, fill_value=nnodes)[0])
+        node_idx.append(jnp.where(npart_leaf > node_size, size=max_nodes, fill_value=nleaves)[0])
 
     th = TreeHierarchy(
         particles=part,
@@ -257,6 +257,6 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
         ispls=ispls
     )
 
-    th = [th.get_tree_plane(i) for i in range(nlevels)]
+    # th = [th.get_tree_plane(i) for i in range(nlevels+1)]
     return th
 new_build_tree_hierarchy.jit = jax.jit(new_build_tree_hierarchy, static_argnames=['cfg'])

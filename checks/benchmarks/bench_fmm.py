@@ -7,6 +7,16 @@ import fmdj.fmm
 from fmdj.config import Config, FMMConfig
 from dataclasses import replace
 
+@pytest.mark.parametrize("npart", [1024*128, 1024*1024, 1024*1024*4, 8*1024*1024])
+def bench_tree_hierarchy(jax_bench, pos_mass_z, cfg):
+    cfg = Config()
+
+    jb = jax_bench(jit_rounds=40, jit_warmup=10)
+
+    th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="old")[1]
+    th2 = jb.measure(fn_jit=fmdj.ztree.new_build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="new")[1]
+
+
 @pytest.mark.parametrize("coarsen_fac", [2,4,6,8])
 def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
     cfg = replace(cfg, fmm=replace(cfg.fmm, coarse_fac=coarsen_fac))
@@ -51,6 +61,7 @@ def bench_fmm_p(jax_bench, p, pos_mass_z):
     jb = jax_bench(jit_rounds=20, jit_warmup=2)
     jb.measure(fn_jit=fmdj.fmm.fast_multipole_method.jit,
                part=pos_mass_z, cfg=cfg)
+
 
 @pytest.mark.parametrize("p", [3,4,5])
 def bench_fmm_steps(jax_bench, p, pos_mass):

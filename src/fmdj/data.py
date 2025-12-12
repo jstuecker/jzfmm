@@ -109,13 +109,17 @@ class TreeHierarchy():
     ispls: List[jnp.ndarray]
     
     def get_tree_plane(self, level: int) -> TreePlane:
+        from .ztree import get_node_box
+
         inodes = self.node_idx[level]
         npart = self.rbound[inodes] - self.lbound[inodes]
+        x1 = self.particles.pos[self.lbound[inodes]]
+        xcent = get_node_box(x1, self.lvl[inodes])[0]
         return TreePlane(
             ispl=self.ispls[level],
             npart=npart,
             lvl=self.lvl[inodes],
-            geom_cent=self.particles.pos[self.lbound[inodes]],
+            geom_cent=xcent,
             nnodes=jnp.argmax(self.ispls[level]),
             around_com=False,
             max_node_size = 1,
