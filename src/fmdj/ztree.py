@@ -10,7 +10,7 @@ from .multipoles import center_of_mass
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
-jax.ffi.register_ffi_target("ZTreeNodeBoundaries", ffi_tree.ZTreeNodeBoundaries(), platform="CUDA")
+jax.ffi.register_ffi_target("FindNodeBoundaries", ffi_tree.FindNodeBoundaries(), platform="CUDA")
 
 # ------------------------------------------------------------------------------------------------ #
 #                                         Helper Functions                                         #
@@ -171,8 +171,8 @@ def determine_znode_boundaries(posz: jnp.ndarray, block_size: int = 64, nleaves:
     if nleaves is None:
         nleaves = jnp.array(len(posz))
 
-    out_type = jax.ShapeDtypeStruct((3, posz.shape[0]+1), jnp.int32)
-    res = jax.ffi.ffi_call("ZTreeNodeBoundaries", (out_type,))(posz, nleaves, block_size=np.uint64(block_size))[0]
+    out_types = (jax.ShapeDtypeStruct((posz.shape[0]+1,), jnp.int32),)*3
+    res = jax.ffi.ffi_call("FindNodeBoundaries", out_types)(posz, nleaves, block_size=np.uint64(block_size))
     ztree = BinaryZTree(*res)
 
     return ztree

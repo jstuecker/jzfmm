@@ -157,13 +157,14 @@ __global__ void SummarizeLeaves(
 /*                                          Tree Building                                         */
 /* ---------------------------------------------------------------------------------------------- */
 
-struct NodePointers {
-    int32_t* levels;
-    int32_t* lbound;
-    int32_t* rbound;
-};
-
-__global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, const int *nleaves, const int size_nodes) {
+__global__ void FindNodeBoundaries(
+    const float3* pos_in,
+    const int *nleaves,
+    int32_t* nodes_levels,
+    int32_t* nodes_lbound,
+    int32_t* nodes_rbound,
+    const int size_nodes
+) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int n = nleaves[0];
     int nnodes = n + 1;
@@ -175,18 +176,21 @@ __global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, co
 
     if((idx == 0) || (idx == nnodes-1)) {
         // At left and right boundary, we put a pseudo-note that spans the whole domain
-        nodes.levels[idx] = 388; // larger than any possible level
-        nodes.lbound[idx] = 0;
-        nodes.rbound[idx] = n;
+        nodes_levels[idx] = 388; // larger than any possible level
+        nodes_lbound[idx] = 0;
+        nodes_rbound[idx] = n;
 
         return;
     }
     else if ((idx >= nnodes) && (idx < size_nodes)) {
         // Set values for undefined nodes
-        nodes.levels[idx] = -1000;
-        nodes.lbound[idx] = n;
-        nodes.rbound[idx] = n;
+        nodes_levels[idx] = -1000;
+        nodes_lbound[idx] = n;
+        nodes_rbound[idx] = n;
 
+        return;
+    }
+    else if (idx >= size_nodes) {
         return;
     }
 
@@ -204,8 +208,7 @@ __global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, co
         lvl_left = 388; // larger than any possible level
     } else {
         // ibefore is the an index (left) outside of the node, iinside is an index inside
-        // We do a binary search until they lie next to each other
-
+        // We do a binary search until they lie next to each other:
         int ibefore = 0, iinside = idx;
         lvl_left = 388;
         while (ibefore+1 < iinside) {
@@ -246,27 +249,7 @@ __global__ void BinarySearchParents(const float3* pos_in, NodePointers nodes, co
         lvl_right = msb_diff_level(p1, pos_in[rbound]);
     }
 
-    nodes.levels[idx] = target_level;
-    nodes.lbound[idx] = lbound;
-    nodes.rbound[idx] = rbound;
-}
-
-void ZTreeNodeBoundaries(
-    cudaStream_t stream, 
-    const float3* pos_in,
-    const int* nleaves,       // filled size (gpu pointer)
-    int* outputs,
-    const size_t size_leaves, // allocated size
-    const size_t block_size
-) {
-    size_t size_nodes = size_leaves + 1;
-
-    // Output will be (5, Nnodes) array with different types of information in the first axis
-    // Create some easier readable pointers that start at offset locations in the output
-    NodePointers nodes;
-    nodes.levels = outputs;
-    nodes.lbound = outputs + size_nodes;
-    nodes.rbound = outputs + 2 * size_nodes;
-    
-    BinarySearchParents<<< div_ceil(size_nodes, block_size), block_size, 0, stream>>>(pos_in, nodes, nleaves, size_nodes);
+    nodes_levels[idx] = target_level;
+    nodes_lbound[idx] = lbound;
+    nodes_rbound[idx] = rbound;
 }

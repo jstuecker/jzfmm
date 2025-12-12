@@ -123,27 +123,40 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                             FFI call to CUDA kernel: ZTreeNodeBoundaries                       */
+/*                             FFI call to CUDA kernel: FindNodeBoundaries                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-ffi::Error ZTreeNodeBoundariesFFIHost(
+ffi::Error FindNodeBoundariesFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer pos_in,
     ffi::AnyBuffer nleaves,
-    ffi::Result<ffi::AnyBuffer> outputs,
+    ffi::Result<ffi::AnyBuffer> nodes_levels,
+    ffi::Result<ffi::AnyBuffer> nodes_lbound,
+    ffi::Result<ffi::AnyBuffer> nodes_rbound,
     size_t block_size
 ) {
-    size_t size_leaves = pos_in.element_count()/3;
+    int size_nodes = nodes_levels->element_count();
+    dim3 blockDim(block_size);
+    dim3 gridDim(div_ceil(size_nodes, block_size));
+    size_t smem = 0;
+    
+    // Build a bundled argument list for cudaLaunchKernel
+    // For pointers we need to create a pointer to the pointer
+    float3* pos_in_val = reinterpret_cast<float3*>(pos_in.untyped_data());
+    int* nleaves_val = reinterpret_cast<int*>(nleaves.untyped_data());
+    int32_t* nodes_levels_val = reinterpret_cast<int32_t*>(nodes_levels->untyped_data());
+    int32_t* nodes_lbound_val = reinterpret_cast<int32_t*>(nodes_lbound->untyped_data());
+    int32_t* nodes_rbound_val = reinterpret_cast<int32_t*>(nodes_rbound->untyped_data());
 
-    // Now call our function
-    ZTreeNodeBoundaries(
-        stream,
-        reinterpret_cast<float3*>(pos_in.untyped_data()),
-        reinterpret_cast<int*>(nleaves.untyped_data()),
-        reinterpret_cast<int*>(outputs->untyped_data()),
-        size_leaves,
-        block_size
-    );
+    void* args[] = {
+        &pos_in_val,
+        &nleaves_val,
+        &nodes_levels_val,
+        &nodes_lbound_val,
+        &nodes_rbound_val,
+        &size_nodes
+    };
+    cudaLaunchKernel((const void*)FindNodeBoundaries, gridDim, blockDim, args, smem, stream);
 
     cudaError_t last_error = cudaGetLastError();
     if (last_error != cudaSuccess) {
@@ -153,12 +166,14 @@ ffi::Error ZTreeNodeBoundariesFFIHost(
 }
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    ZTreeNodeBoundariesFFI, ZTreeNodeBoundariesFFIHost,
+    FindNodeBoundariesFFI, FindNodeBoundariesFFIHost,
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // pos_in
         .Arg<ffi::AnyBuffer>() // nleaves
-        .Ret<ffi::AnyBuffer>() // outputs
+        .Ret<ffi::AnyBuffer>() // nodes_levels
+        .Ret<ffi::AnyBuffer>() // nodes_lbound
+        .Ret<ffi::AnyBuffer>() // nodes_rbound
         .Attr<size_t>("block_size"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );
@@ -170,5 +185,5 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 NB_MODULE(ffi_tree, m) {
     m.def("PosZorderSort", []() { return EncapsulateFfiCall(&PosZorderSortFFI); });
     m.def("SummarizeLeaves", []() { return EncapsulateFfiCall(&SummarizeLeavesFFI); });
-    m.def("ZTreeNodeBoundaries", []() { return EncapsulateFfiCall(&ZTreeNodeBoundariesFFI); });
+    m.def("FindNodeBoundaries", []() { return EncapsulateFfiCall(&FindNodeBoundariesFFI); });
 }
