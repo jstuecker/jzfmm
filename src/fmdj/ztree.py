@@ -149,7 +149,7 @@ class BinaryZTree:
     lbound: jnp.ndarray = None
     rbound: jnp.ndarray = None
 
-def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int = 64) -> jnp.ndarray:
+def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int = 64, alloc_fac=1.0) -> jnp.ndarray:
     out_type = jax.ShapeDtypeStruct((posz.shape[0]+1,), jnp.int32)
 
     nleaf = jnp.ones((posz.shape[0],), dtype=jnp.int32)
@@ -159,7 +159,7 @@ def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int
         xnleaf, len(posz), max_size=np.int32(leaf_size),
         block_size=np.uint64(block_size), scan_size=np.int32(leaf_size+1))[0]
     
-    max_new_leaves = int(div_ceil(len(posz), np.maximum(leaf_size//2, 1)))
+    max_new_leaves = int(div_ceil(len(posz) * alloc_fac, np.maximum(leaf_size//2, 1)))
     
     splits = jnp.where(flag_split > -1000, size=max_new_leaves+1, fill_value=len(posz))[0]
 
@@ -222,3 +222,28 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
         tree_levels.append(new_level)
     return tree_levels
 build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg'])
+
+def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
+    ispl =  create_coarse_leaves(part.pos, leaf_size=cfg.fmm.max_leaf_size, alloc_fac=cfg.fmm.alloc_fac_nodes)
+    nleaves = jnp.argmax(ispl)
+    tree = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
+    npart = ispl[tree.rbound] - ispl[tree.lbound]
+    print(ispl[0:20])
+
+    # The number of times we need to refine to reach a level with <= cfg.fmm.stop_coarsen nodes
+    nlevels = np.log(len(ispl) / cfg.fmm.stop_coarsen) / np.log(cfg.fmm.coarse_fac)
+    nlevels = int(np.ceil(nlevels))
+
+    ispls = [ispl]
+    node_size = cfg.fmm.max_leaf_size
+    for i in range(nlevels):
+        node_size = node_size * cfg.fmm.coarse_fac
+        # upper limit of number of nodes -- needed to allocate large enough buffers:
+        max_nodes = int(div_ceil(len(part.pos), np.maximum(node_size//2, 1)))
+        # actually filled number of nodes:
+        nnodes = jnp.sum(npart > node_size)
+        ispl = jnp.where(npart > node_size, size=max_nodes, fill_value=nnodes)[0]
+        npart = jnp.where(npart[ispl] > node_size, npart[ispl], 0)
+        ispls.append(ispl)
+    return ispls
+new_build_tree_hierarchy.jit = jax.jit(new_build_tree_hierarchy, static_argnames=['cfg'])
