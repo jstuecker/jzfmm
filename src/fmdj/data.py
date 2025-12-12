@@ -52,27 +52,27 @@ class TreePlane():
     # Defined per node:
     ispl: jnp.ndarray # relation to children
 
-    npart: jnp.ndarray
-    lvl: jnp.ndarray
-    geom_cent: jnp.ndarray
+    npart: jnp.ndarray                    # Only constr.
+    lvl: jnp.ndarray                      # Maybe needed
+    geom_cent: jnp.ndarray                # Needed 
 
     # Scalars (data dependent)
-    nnodes: jnp.ndarray
+    nnodes: jnp.ndarray                   # Only constr.
 
     # metadata (data independent)
-    max_node_size: int = static_field()
-    tot_npart: int = static_field()
+    max_node_size: int = static_field()   # Only constr.
+    tot_npart: int = static_field()       # Only constr.
 
-    size_children : int = static_field()
+    size_children : int = static_field()  # Only constr.
 
-    around_com: bool = static_field()
+    around_com: bool = static_field()     # Maybe not needed
 
     # Optional data:
-    mass_cent: PosMass | None = None
+    mass_cent: PosMass | None = None      # Optionally needed
 
     def icoarse_of_fine(self) -> jnp.ndarray:
         return inverse_of_splits(self.ispl, self.size_children)
-    def size(self) -> int:
+    def size(self) -> int: # needed
         return self.lvl.shape[0]
     def center(self) -> jnp.ndarray:
         if self.around_com:
@@ -80,7 +80,7 @@ class TreePlane():
             return self.mass_cent.pos
         else:
             return self.geom_cent
-    def node_extent(self, diag2=False) -> jnp.ndarray:
+    def node_extent(self, diag2=False) -> jnp.ndarray: # only jax
         # return jnp.ldexp(1., self.lvl)
         olvl, omod = self.lvl//3, self.lvl % 3
 
@@ -92,6 +92,36 @@ class TreePlane():
             return dx*dx + dy*dy + dz*dz
         else:
             return jnp.stack((dx, dy, dz), axis=-1)
+
+@jax.tree_util.register_dataclass
+@dataclass
+class TreeHierarchy():
+    # Particles
+    particles: PosMass
+
+    # Node specific data
+    lvl: jnp.ndarray
+    lbound: jnp.ndarray
+    rbound: jnp.ndarray
+
+    # Tree plane abstraction
+    node_idx: List[jnp.ndarray]
+    ispls: List[jnp.ndarray]
+    
+    def get_tree_plane(self, level: int) -> TreePlane:
+        inodes = self.node_idx[level]
+        npart = self.rbound[inodes] - self.lbound[inodes]
+        return TreePlane(
+            ispl=self.ispls[level],
+            npart=npart,
+            lvl=self.lvl[inodes],
+            geom_cent=self.particles.pos[self.lbound[inodes]],
+            nnodes=jnp.argmax(self.ispls[level]),
+            around_com=False,
+            max_node_size = 1,
+            tot_npart = 1,
+            size_children = 1
+        )
 
 def find_group(ispl, index):
     return jnp.searchsorted(ispl, index, side='right') - 1

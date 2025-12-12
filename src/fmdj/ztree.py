@@ -4,7 +4,7 @@ import jax.numpy as jnp
 
 from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
-from .data import TreePlane, PosMass
+from .data import TreePlane, PosMass, TreeHierarchy
 from .config import Config
 from .multipoles import center_of_mass
 
@@ -227,14 +227,15 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
     ispl =  create_coarse_leaves(part.pos, leaf_size=cfg.fmm.max_leaf_size, alloc_fac=cfg.fmm.alloc_fac_nodes)
     nleaves = jnp.argmax(ispl)
     tree = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
-    npart = ispl[tree.rbound] - ispl[tree.lbound]
-    print(ispl[0:20])
+    npart_leaf = ispl[tree.rbound] - ispl[tree.lbound]
+    npart = npart_leaf
 
     # The number of times we need to refine to reach a level with <= cfg.fmm.stop_coarsen nodes
     nlevels = np.log(len(ispl) / cfg.fmm.stop_coarsen) / np.log(cfg.fmm.coarse_fac)
     nlevels = int(np.ceil(nlevels))
 
     ispls = [ispl]
+    node_idx = []
     node_size = cfg.fmm.max_leaf_size
     for i in range(nlevels):
         node_size = node_size * cfg.fmm.coarse_fac
@@ -245,5 +246,17 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
         ispl = jnp.where(npart > node_size, size=max_nodes, fill_value=nnodes)[0]
         npart = jnp.where(npart[ispl] > node_size, npart[ispl], 0)
         ispls.append(ispl)
-    return ispls
+        node_idx.append(jnp.where(npart_leaf > node_size, size=max_nodes, fill_value=nnodes)[0])
+
+    th = TreeHierarchy(
+        particles=part,
+        lvl=tree.level,
+        lbound=tree.lbound,
+        rbound=tree.rbound,
+        node_idx=node_idx,
+        ispls=ispls
+    )
+
+    th = [th.get_tree_plane(i) for i in range(nlevels)]
+    return th
 new_build_tree_hierarchy.jit = jax.jit(new_build_tree_hierarchy, static_argnames=['cfg'])
