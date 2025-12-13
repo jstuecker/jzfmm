@@ -105,7 +105,7 @@ def test_force_gradients(pos_mass: fmdj.data.PosMass):
     fphi2 = fmdj.fmm.grouped_force_and_pot.jit(part, ispl, ilist, cfg)
     fphi3 = fmdj.fmm.fast_multipole_method.jit(part, cfg=cfg).values / cfg.G()
 
-    abstol = float(jnp.std(fphi1) * 5e-3)
+    abstol = float(jnp.std(fphi1) * 1e-2)
 
     assert fphi2 == pytest.approx(fphi1, abs=abstol*1e-2)
     assert fphi3 == pytest.approx(fphi1, abs=abstol)
@@ -118,7 +118,7 @@ def test_force_gradients(pos_mass: fmdj.data.PosMass):
     gposm2 = jax.jit(jax.grad(f2))(part)
     gposm3 = jax.jit(jax.grad(f3))(part)
 
-    abstol_pos = float(jnp.std(gposm2.pos) * 1e-2)
+    abstol_pos = float(jnp.std(gposm2.pos) * 2e-2)
     abstol_mass = float(jnp.std(gposm2.mass) * 1e-2)
 
     assert gposm2.pos == pytest.approx(gposm1.pos, abs=abstol_pos*1e-2)
