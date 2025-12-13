@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from typing import Tuple
 from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
-from .data import TreePlane, PosMass, TreeHierarchy
+from .data import TreePlane, PosMass, TreeHierarchy, PackedArray
 from .config import Config
 from .multipoles import center_of_mass
 
@@ -119,6 +119,51 @@ get_node_geometry.jit = jax.jit(get_node_geometry)
 # ------------------------------------------------------------------------------------------------ #
 #                                      Tree Building Functions                                     #
 # ------------------------------------------------------------------------------------------------ #
+
+def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
+    ispl =  create_coarse_leaves(part.pos, leaf_size=cfg.fmm.max_leaf_size, alloc_fac=cfg.fmm.alloc_fac_nodes)
+    nleaves = jnp.argmax(ispl)
+    lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
+
+    mass_center = center_of_mass(ispl, part)
+
+    npart_node = ispl[rbound] - ispl[lbound]
+
+    nlevels = np.log(len(ispl) / cfg.fmm.stop_coarsen) / np.log(cfg.fmm.coarse_fac)
+    nlevels = np.maximum(int(np.ceil(nlevels)), 0)
+
+    buffer = jnp.zeros(int(len(ispl) * cfg.fmm.alloc_fac_tree), dtype=jnp.int32)
+    
+    ispl_n2l = PackedArray(buffer, levels=nlevels)
+    ispl_n2l = ispl_n2l.set(0, jnp.arange(buffer.size, dtype=jnp.int32), num=nleaves+1, fill_value=nleaves)
+    ispl_n2n = PackedArray(buffer, levels=nlevels)
+    ispl_n2n = ispl_n2n.set(0, ispl, num=nleaves+1, fill_value=len(part.pos))
+
+    def handle_level(i, carry):
+        node_size = cfg.fmm.max_leaf_size * (cfg.fmm.coarse_fac ** i)
+
+        ispl_n2l, ispl_n2n = carry
+        
+        # node to leaf relation
+        new_nnodes = jnp.sum(npart_node > node_size)
+        new_ispl_n2l = jnp.where(npart_node > node_size, size=ispl_n2n.size())[0]
+        ispl_n2l = ispl_n2l.set(i, new_ispl_n2l, num=new_nnodes, fill_value=nleaves)
+
+        # node to node relation
+        last_n2l = ispl_n2l.get(i-1, ispl_n2n.size()) # , fill_value=ispl_n2n.num(i-1)
+        last_npart = npart_node[last_n2l]
+        new_ispl_n2n = jnp.where(last_npart > node_size, size=ispl_n2n.size())[0]
+        ispl_n2n = ispl_n2n.set(i, new_ispl_n2n, num=new_nnodes, fill_value=ispl_n2n.num(i-1)-1)
+
+        return ispl_n2l, ispl_n2n
+    
+    ispl_n2l, ispl_n2n = jax.lax.fori_loop(1, nlevels+1, handle_level, (ispl_n2l, ispl_n2n))
+
+    # for i in range(1, nlevels):
+    #     ispl_n2l, ispl_n2n = handle_level(i, (ispl_n2l, ispl_n2n))
+
+    return ispl_n2n, ispl_n2l
+new_build_tree_hierarchy.jit = jax.jit(new_build_tree_hierarchy, static_argnames=['cfg'])
 
 def build_tree_hierarchy(part: PosMass, cfg: Config) -> Tuple[TreeHierarchy, list[TreePlane]]:
     ispl =  create_coarse_leaves(part.pos, leaf_size=cfg.fmm.max_leaf_size, alloc_fac=cfg.fmm.alloc_fac_nodes)

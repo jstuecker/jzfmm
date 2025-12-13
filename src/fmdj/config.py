@@ -28,6 +28,7 @@ class FMMConfig():
     kahan_summation : bool = False
 
     # less relevant
+    alloc_fac_tree : float = 1.0
     alloc_fac_nodes : float = 1.5
     alloc_min : int = 1024
     stop_coarsen : int = 1024

@@ -48,6 +48,59 @@ class Particles(PosMass):
 
 @jax.tree_util.register_dataclass
 @dataclass
+class PackedArray:
+    data: jnp.ndarray
+    ispl: jnp.ndarray
+    fill_values: jnp.ndarray | None = None
+
+    def __init__(self, data, ispl=None, levels=None, fill_values=None):
+        assert (ispl is not None) or (levels is not None), "Either ispl or num_arr must be provided"
+
+        self.data = data
+        if ispl is not None:
+            self.ispl = ispl
+            levels = len(ispl) - 1
+        elif levels is not None:
+            self.ispl = jnp.zeros(levels + 1, dtype=jnp.int32)
+        if fill_values is None:
+            if data.dtype == jnp.float32 or data.dtype == jnp.float64:
+                fill_values = jnp.nan
+            else:
+                fill_values = 0
+        if jnp.isscalar(fill_values):
+            self.fill_values = jnp.full(levels, fill_values, dtype=self.data.dtype)
+        else:
+            assert len(fill_values) == levels
+            self.fill_values = fill_values
+    
+    def get(self, level, size=None, fill_value=None):
+        if size is None:
+            size = self.size()
+        indices = jnp.arange(size) + self.ispl[level]
+        valid = indices < self.ispl[level + 1]
+        if fill_value is None:
+            fill_value = self.fill_values[level]
+        return jnp.where(valid, self.data[indices], fill_value)
+    
+    def set(self, level, values, num=None, fill_value=None):
+        if num is None:
+            num = values.shape[0]
+        new_spl = jnp.where(jnp.arange(len(self.ispl)) <= level, self.ispl, self.ispl[level] + num)
+        new_data = set_range(self.data, values, self.ispl[level], self.ispl[level] + num)
+        if fill_value is not None:
+            new_fill_vals = self.fill_values.at[level].set(fill_value)
+        else:
+            new_fill_vals = self.fill_values
+        return PackedArray(new_data, ispl=new_spl, fill_values=new_fill_vals)
+    
+    def size(self):
+        return self.data.size
+    
+    def num(self, level):
+        return self.ispl[level + 1] - self.ispl[level]
+
+@jax.tree_util.register_dataclass
+@dataclass
 class TreePlane():
     # Defined per node:
     ispl: jnp.ndarray # relation to children
@@ -99,6 +152,13 @@ class TreeHierarchy():
     lbound: jnp.ndarray
     rbound: jnp.ndarray
     node_npart: jnp.ndarray
+
+    # Packed Arrays:
+    p_ispl_l: PackedArray | None = None
+    p_ispl_p: PackedArray | None = None
+    p_mass: PackedArray | None = None
+    p_mass_cent: PackedArray | None = None
+    p_geom_cent: PackedArray | None = None
 
     def get_plane_relation(self, nsize_fine, nsize_coarse, size_fine: int, size: int) -> TreePlane:
         nnodes_fine = jnp.sum(self.node_npart > nsize_fine) - 1
@@ -299,29 +359,4 @@ def set_range(arr : jnp.ndarray, values, start, end):
     else:
         # Do a masked update
         idx = jnp.arange(len(arr))
-        return jnp.where((idx >= start) & (idx < end), values, arr)
-
-@jax.tree_util.register_dataclass
-@dataclass
-class PackedArray:
-    data: jnp.ndarray
-    ispl: jnp.ndarray
-
-    def __init__(self, data, ispl=None, levels=None):
-        self.data = data
-        if ispl is not None:
-            self.ispl = ispl
-        elif levels is not None:
-            self.ispl = jnp.zeros(levels + 1, dtype=jnp.int32)
-    
-    def get(self, level, size, fill_value=jnp.nan):
-        indices = jnp.arange(size) + self.ispl[level]
-        valid = indices < self.ispl[level + 1]
-        return jnp.where(valid, self.data[indices], fill_value)
-    
-    def set(self, level, values, num=None):
-        if num is None:
-            num = values.shape[0]
-        new_spl = jnp.where(jnp.arange(len(self.ispl)) <= level, self.ispl, self.ispl[level] + num)
-        new_data = set_range(self.data, values, self.ispl[level], self.ispl[level] + num)
-        return PackedArray(new_data, new_spl)
+        return jnp.where((idx >= start) & (idx < end), values[idx - start], arr)
