@@ -103,11 +103,8 @@ class TreeHierarchy():
     leaf_ispl: jnp.ndarray
 
     # Node specific data
-    lvl: jnp.ndarray
     lbound: jnp.ndarray
     rbound: jnp.ndarray
-    node_cent: jnp.ndarray
-    node_ext: jnp.ndarray
     node_npart: jnp.ndarray
 
     def get_plane_relation(self, nsize_fine, nsize_coarse, size_fine: int, size: int) -> TreePlane:
@@ -124,13 +121,18 @@ class TreeHierarchy():
         ispl = self.get_plane_relation(nsize_fine, nsize_coarse, size_fine, size)
 
         nnodes = jnp.sum(self.node_npart > nsize_coarse) - 1
-        idx = jnp.where(self.node_npart > nsize_coarse, size=size, fill_value=size)[0]
+        ispl_l = jnp.where(self.node_npart > nsize_coarse, size=size, fill_value=size)[0]
+
+        ispl_p = self.leaf_ispl[ispl_l]
+        
+        from .ztree import get_node_geometry
+        lvl, cent, ext = get_node_geometry(self.particles.pos, ispl_p[:-1], ispl_p[1:], nnodes)
 
         return TreePlane(
             ispl = ispl,
-            npart = self.node_npart[idx], 
-            lvl = self.lvl[idx],
-            geom_cent = self.node_cent[idx],
+            npart = self.node_npart[ispl_l], 
+            lvl = lvl,
+            geom_cent = cent,
             nnodes = nnodes, # check whether needed
             max_node_size = nsize_coarse, # remove later
             tot_npart = len(self.particles.pos),
@@ -139,12 +141,19 @@ class TreeHierarchy():
         )
     
     def leaf_plane(self) -> TreePlane:
+        from .ztree import get_node_geometry
+
+        nleaves = jnp.argmax(self.leaf_ispl)
+        lvl, cent, ext = get_node_geometry(
+            self.particles.pos, self.leaf_ispl[:-1], self.leaf_ispl[1:], nleaves
+        )
+
         return TreePlane(
             ispl = self.leaf_ispl,
             npart = self.node_npart,
-            lvl = self.lvl,
-            geom_cent = self.node_cent,
-            nnodes = jnp.argmax(self.leaf_ispl),
+            lvl = lvl,
+            geom_cent = cent,
+            nnodes = nleaves,
             max_node_size = 0,
             tot_npart = len(self.particles.pos),
             size_children = 0,

@@ -253,3 +253,40 @@ __global__ void FindNodeBoundaries(
     nodes_lbound[idx] = lbound;
     nodes_rbound[idx] = rbound;
 }
+
+/* ---------------------------------------------------------------------------------------------- */
+/*                                         Node Properties                                        */
+/* ---------------------------------------------------------------------------------------------- */
+
+__global__ void GetNodeGeometry(
+    const float3* pos,
+    const int* lbound,
+    const int* rbound,
+    const int *nnodes,
+    int32_t* level,
+    float3* center,
+    float3* extent,
+    const int size_nodes
+) {
+    // Gets the properties of the smallest node that contains pos[lbound[idx]] and pos[rbound[idx]-1]
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(idx >= nnodes[0]) {
+        if(idx < size_nodes) {
+            level[idx] = -1000;
+            center[idx] = make_float3(CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F);
+            extent[idx] = make_float3(0, 0, 0);
+        }
+        return;
+    }
+    
+    float3 x0 = pos[lbound[idx]];
+    float3 x1 = pos[rbound[idx]-1];
+
+    int lvl = msb_diff_level(x0, x1);
+    NodeWithExt node_ext = get_common_node(x0, x1);
+
+    level[idx] = msb_diff_level(x0, x1);
+    center[idx] = node_ext.center;
+    extent[idx] = node_ext.extent;
+}

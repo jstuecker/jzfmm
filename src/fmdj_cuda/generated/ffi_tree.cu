@@ -179,6 +179,70 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
+/*                             FFI call to CUDA kernel: GetNodeGeometry                           */
+/* ---------------------------------------------------------------------------------------------- */
+
+ffi::Error GetNodeGeometryFFIHost(
+    cudaStream_t stream,
+    ffi::AnyBuffer pos,
+    ffi::AnyBuffer lbound,
+    ffi::AnyBuffer rbound,
+    ffi::AnyBuffer nnodes,
+    ffi::Result<ffi::AnyBuffer> level,
+    ffi::Result<ffi::AnyBuffer> center,
+    ffi::Result<ffi::AnyBuffer> extent,
+    size_t block_size
+) {
+    int size_nodes = level->element_count();
+    dim3 blockDim(block_size);
+    dim3 gridDim(div_ceil(size_nodes, block_size));
+    size_t smem = 0;
+    
+    // Build a bundled argument list for cudaLaunchKernel
+    // For pointers we need to create a pointer to the pointer
+    float3* pos_val = reinterpret_cast<float3*>(pos.untyped_data());
+    int* lbound_val = reinterpret_cast<int*>(lbound.untyped_data());
+    int* rbound_val = reinterpret_cast<int*>(rbound.untyped_data());
+    int* nnodes_val = reinterpret_cast<int*>(nnodes.untyped_data());
+    int32_t* level_val = reinterpret_cast<int32_t*>(level->untyped_data());
+    float3* center_val = reinterpret_cast<float3*>(center->untyped_data());
+    float3* extent_val = reinterpret_cast<float3*>(extent->untyped_data());
+
+    void* args[] = {
+        &pos_val,
+        &lbound_val,
+        &rbound_val,
+        &nnodes_val,
+        &level_val,
+        &center_val,
+        &extent_val,
+        &size_nodes
+    };
+    cudaLaunchKernel((const void*)GetNodeGeometry, gridDim, blockDim, args, smem, stream);
+
+    cudaError_t last_error = cudaGetLastError();
+    if (last_error != cudaSuccess) {
+        return ffi::Error::Internal(std::string("CUDA error: ") + cudaGetErrorString(last_error));
+    }
+    return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    GetNodeGeometryFFI, GetNodeGeometryFFIHost,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<cudaStream_t>>()
+        .Arg<ffi::AnyBuffer>() // pos
+        .Arg<ffi::AnyBuffer>() // lbound
+        .Arg<ffi::AnyBuffer>() // rbound
+        .Arg<ffi::AnyBuffer>() // nnodes
+        .Ret<ffi::AnyBuffer>() // level
+        .Ret<ffi::AnyBuffer>() // center
+        .Ret<ffi::AnyBuffer>() // extent
+        .Attr<size_t>("block_size"),
+    {xla::ffi::Traits::kCmdBufferCompatible}
+);
+
+/* ---------------------------------------------------------------------------------------------- */
 /*                               Module declaration through nanobind                              */
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -186,4 +250,5 @@ NB_MODULE(ffi_tree, m) {
     m.def("PosZorderSort", []() { return EncapsulateFfiCall(&PosZorderSortFFI); });
     m.def("SummarizeLeaves", []() { return EncapsulateFfiCall(&SummarizeLeavesFFI); });
     m.def("FindNodeBoundaries", []() { return EncapsulateFfiCall(&FindNodeBoundariesFFI); });
+    m.def("GetNodeGeometry", []() { return EncapsulateFfiCall(&GetNodeGeometryFFI); });
 }

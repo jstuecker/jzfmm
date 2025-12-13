@@ -95,7 +95,7 @@ gen.generate_ffi_module_file(
 
 functions = parse.get_functions_from_file(
     str(HERE / "tree.cuh"),
-    names=["PosZorderSort", "SummarizeLeaves", "FindNodeBoundaries"],
+    names=["PosZorderSort", "SummarizeLeaves", "FindNodeBoundaries", "GetNodeGeometry"],
     only_kernels=False
 )
 
@@ -108,6 +108,9 @@ functions["SummarizeLeaves"].smem_size_expression = "(block_size + 2*scan_size +
 
 functions["FindNodeBoundaries"].par["size_nodes"].expression = "nodes_levels->element_count()"
 functions["FindNodeBoundaries"].grid_size_expression = "div_ceil(size_nodes, block_size)"
+
+functions["GetNodeGeometry"].par["size_nodes"].expression = "level->element_count()"
+functions["GetNodeGeometry"].grid_size_expression = "div_ceil(size_nodes, block_size)"
 
 gen.generate_ffi_module_file(
     output_file = str(HERE / "generated/ffi_tree.cu"), 

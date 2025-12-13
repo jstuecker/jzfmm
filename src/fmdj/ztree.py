@@ -2,6 +2,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
+from typing import Tuple
 from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
 from .data import TreePlane, PosMass, TreeHierarchy
@@ -11,6 +12,7 @@ from .multipoles import center_of_mass
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
 jax.ffi.register_ffi_target("FindNodeBoundaries", ffi_tree.FindNodeBoundaries(), platform="CUDA")
+jax.ffi.register_ffi_target("GetNodeGeometry", ffi_tree.GetNodeGeometry(), platform="CUDA")
 
 # ------------------------------------------------------------------------------------------------ #
 #                                         Helper Functions                                         #
@@ -140,15 +142,6 @@ def summarize_leaves(xleaf, nleaf=None, max_size=64, num_part=None, ref_fac=None
 
 summarize_leaves.jit = jax.jit(summarize_leaves, static_argnames=("max_size", "num_part", "ref_fac", "alloc_min"))
 
-
-from dataclasses import dataclass
-@jax.tree_util.register_dataclass
-@dataclass
-class BinaryZTree:
-    level: jnp.ndarray = None
-    lbound: jnp.ndarray = None
-    rbound: jnp.ndarray = None
-
 def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int = 64, alloc_fac=1.0) -> jnp.ndarray:
     out_type = jax.ShapeDtypeStruct((posz.shape[0]+1,), jnp.int32)
 
@@ -166,7 +159,7 @@ def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int
     return splits
 create_coarse_leaves.jit = jax.jit(create_coarse_leaves, static_argnames=("leaf_size", "block_size"))
 
-def determine_znode_boundaries(posz: jnp.ndarray, block_size: int = 64, nleaves: jnp.array = None) -> BinaryZTree:
+def determine_znode_boundaries(posz: jnp.ndarray, block_size: int = 64, nleaves: jnp.array = None) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Builds a Z-order tree from positions"""
     if nleaves is None:
         nleaves = jnp.array(len(posz))
@@ -178,6 +171,23 @@ def determine_znode_boundaries(posz: jnp.ndarray, block_size: int = 64, nleaves:
 
     return lvl, lbound, rbound
 determine_znode_boundaries.jit = jax.jit(determine_znode_boundaries)
+
+def get_node_geometry(posz: jnp.ndarray, lbound: jnp.ndarray, rbound: jnp.ndarray, 
+                      num: jnp.array = None, block_size: int = 64
+                      ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    if num is None:
+        num = jnp.array(len(lbound))
+
+    out_types = (jax.ShapeDtypeStruct((lbound.shape[0],), jnp.int32),
+                 jax.ShapeDtypeStruct((lbound.shape[0], 3), jnp.float32),
+                 jax.ShapeDtypeStruct((lbound.shape[0], 3), jnp.float32))
+    
+    lvl, node_cent, node_ext = jax.ffi.ffi_call("GetNodeGeometry", out_types)(
+        posz, lbound, rbound, num, block_size=np.uint64(block_size)
+    )
+
+    return lvl, node_cent, node_ext
+get_node_geometry.jit = jax.jit(get_node_geometry)
 
 # ------------------------------------------------------------------------------------------------ #
 #                                      Tree Building Functions                                     #
@@ -230,16 +240,14 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
     nleaves = jnp.argmax(ispl)
     lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
 
-    cent, ext = get_node_box(part.pos[lbound], lvl)
+    # cent, ext = get_node_box(part.pos[lbound], lvl)
+    # get_node_geometry
 
     th = TreeHierarchy(
         particles=part,
         leaf_ispl=ispl,
-        lvl=lvl,
         lbound=lbound,
         rbound=rbound,
-        node_cent=cent,
-        node_ext=ext,
         node_npart=ispl[rbound] - ispl[lbound]
     )
     
