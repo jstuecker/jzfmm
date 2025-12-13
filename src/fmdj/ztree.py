@@ -213,7 +213,7 @@ def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
     return coarse
 coarsen_plane.jit = jax.jit(coarsen_plane, static_argnames=['cfg'])
 
-def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
+def old_build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
     res = summarize_leaves(
         part.pos, max_size=cfg.fmm.max_leaf_size, num_part=part.pos.shape[0],
         alloc_fac_nodes=cfg.fmm.alloc_fac_nodes
@@ -232,10 +232,10 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
         new_level = coarsen_plane.jit(tree_levels[-1], cfg)
         tree_levels.append(new_level)
     return tree_levels
-build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg'])
+old_build_tree_hierarchy.jit = jax.jit(old_build_tree_hierarchy, static_argnames=['cfg'])
 
 
-def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
+def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
     ispl =  create_coarse_leaves(part.pos, leaf_size=cfg.fmm.max_leaf_size, alloc_fac=cfg.fmm.alloc_fac_nodes)
     nleaves = jnp.argmax(ispl)
     lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
@@ -258,8 +258,9 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
         node_size = last_node_size * cfg.fmm.coarse_fac
         max_nodes = int(div_ceil(len(part.pos), np.maximum(node_size//2, 1)))
         tp = th.tree_plane(last_node_size, node_size, tps[-1].size(), max_nodes)
+        tp.around_com = cfg.fmm.multipoles_around_com
         tps.append(tp)
         last_node_size = node_size
     
-    return th, tps
-new_build_tree_hierarchy.jit = jax.jit(new_build_tree_hierarchy, static_argnames=['cfg'])
+    return tps
+build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg'])

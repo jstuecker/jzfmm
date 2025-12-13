@@ -121,8 +121,10 @@ class TreeHierarchy():
     def tree_plane(self, nsize_fine, nsize_coarse, size_fine: int, size: int) -> TreePlane:
         ispl = self.get_plane_relation(nsize_fine, nsize_coarse, size_fine, size)
 
+        nleaves = jnp.argmax(self.leaf_ispl)
+
         nnodes = jnp.sum(self.node_npart > nsize_coarse) - 1
-        ispl_l = jnp.where(self.node_npart > nsize_coarse, size=size, fill_value=size)[0]
+        ispl_l = jnp.where(self.node_npart > nsize_coarse, size=size, fill_value=nleaves)[0]
 
         ispl_p = self.leaf_ispl[ispl_l]
         
@@ -133,7 +135,7 @@ class TreeHierarchy():
 
         return TreePlane(
             ispl = ispl,
-            npart = self.node_npart[ispl_l], 
+            npart = ispl_p[1:] - ispl_p[:-1], 
             lvl = lvl,
             geom_cent = cent,
             nnodes = nnodes, # check whether needed
@@ -154,7 +156,7 @@ class TreeHierarchy():
 
         return TreePlane(
             ispl = self.leaf_ispl,
-            npart = self.node_npart,
+            npart = self.leaf_ispl[1:] - self.leaf_ispl[:-1],
             lvl = lvl,
             geom_cent = cent,
             nnodes = nleaves,

@@ -72,8 +72,8 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
     posz, isortz = jb.measure(fn_jit=fmdj.ztree.pos_zorder_sort.jit, x=pos_mass.pos, tag="zsort")[1]
     pos_mass_z = fmdj.data.PosMass(pos=posz, mass=pos_mass.mass[isortz])
 
-    th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build")[1]
-    th2 = jb.measure(fn_jit=fmdj.ztree.new_build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build_new")[1]
+    th = jb.measure(fn_jit=fmdj.ztree.old_build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build")[1]
+    th2 = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build_new")[1]
 
     mph = jb.measure(fn_jit=fmdj.multipoles.build_multipole_hierarchy.jit, 
                      th=th, pos=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg, tag="multipoles")[1]
