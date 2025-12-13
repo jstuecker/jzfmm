@@ -5,9 +5,10 @@ import jax.numpy as jnp
 from typing import Tuple
 from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
-from .data import TreePlane, PosMass, TreeHierarchy, PackedArray
+from .data import TreePlane, PosMass, TreeHierarchy, PackedArray, NewTreeHierarchy
 from .config import Config
 from .multipoles import center_of_mass
+from .tools import cumsum_starting_with_zero
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
@@ -120,12 +121,10 @@ get_node_geometry.jit = jax.jit(get_node_geometry)
 #                                      Tree Building Functions                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
+def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> NewTreeHierarchy:
     ispl =  create_coarse_leaves(part.pos, leaf_size=cfg.fmm.max_leaf_size, alloc_fac=cfg.fmm.alloc_fac_nodes)
     nleaves = jnp.argmax(ispl)
     lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
-
-    mass_center = center_of_mass(ispl, part)
 
     npart_node = ispl[rbound] - ispl[lbound]
 
@@ -168,6 +167,12 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
         ispl_n2l.nfilled(), ispl_n2l.size(),
     )
 
+    ispl_n2p = ispl[ispl_n2l.data] # node to particle relation
+    lvl, geom_cent, ext = get_node_geometry(part.pos, ispl_n2p[:-1], ispl_n2p[1:], num=ispl_n2l.nfilled()-1)
+
+    # Can predict the shapes of further packed arrays
+    leaf_array_spl = cumsum_starting_with_zero(ispl_n2l.ispl[1:]- ispl_n2l.ispl[:-1] - 1)
+
     if cfg.fmm.multipoles_around_com:
         def handle_mcent_level(i, carry):
             npos, nmass, posm = carry
@@ -177,16 +182,21 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
             return npos, nmass, posm
         
         posm = center_of_mass(ispl, part)
-        posm_array_spl = jnp.array([0, nleaves] + [0]*(nlevels-1), dtype=jnp.int32)
-        npos = PackedArray(posm.pos, ispl=posm_array_spl, fill_values=jnp.nan)
-        nmass = PackedArray(posm.mass, ispl=posm_array_spl, fill_values=jnp.nan)
+        npos = PackedArray(posm.pos, ispl=leaf_array_spl, fill_values=jnp.nan)
+        nmass = PackedArray(posm.mass, ispl=leaf_array_spl, fill_values=jnp.nan)
 
-        npos, nmass, _ = jax.lax.fori_loop(1, nlevels, handle_mcent_level, (npos, nmass, posm))
+        mass_cent, nmass, _ = jax.lax.fori_loop(1, nlevels, handle_mcent_level, (npos, nmass, posm))
     else:
-        nmass = None
-        npos = None
+        mass_cent = None
 
-    return ispl_n2n, ispl_n2l, nmass, npos
+    th = NewTreeHierarchy(
+        ispl_n2n, ispl_n2l,
+        lvl = PackedArray(lvl, leaf_array_spl, fill_values=-1000),
+        geom_cent = PackedArray(geom_cent, leaf_array_spl, fill_values=jnp.nan),
+        mass_cent = mass_cent
+    )
+    
+    return th
 new_build_tree_hierarchy.jit = jax.jit(new_build_tree_hierarchy, static_argnames=['cfg'])
 
 def build_tree_hierarchy(part: PosMass, cfg: Config) -> Tuple[TreeHierarchy, list[TreePlane]]:

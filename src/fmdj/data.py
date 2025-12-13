@@ -144,6 +144,24 @@ class TreePlane():
 
 @jax.tree_util.register_dataclass
 @dataclass
+class NewTreeHierarchy():
+    # Packed Arrays:
+    ispl_n2n: PackedArray
+    ispl_n2l: PackedArray
+
+    # tree plane data:
+    lvl: PackedArray
+    geom_cent: PackedArray
+    mass_cent: PackedArray | None = None
+
+    def center(self) -> PackedArray:
+        if self.mass_cent is not None:
+            return self.mass_cent
+        else:
+            return self.geom_cent
+
+@jax.tree_util.register_dataclass
+@dataclass
 class TreeHierarchy():
     # Particles
     particles: PosMass
