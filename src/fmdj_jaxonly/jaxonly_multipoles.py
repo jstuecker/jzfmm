@@ -6,6 +6,7 @@ import fmdj
 from fmdj.config import Config
 from fmdj.data import TreePlane, PosMass
 from fmdj.multipoles import num_multi, p_of_num_multi, iter_multi, get_index_map
+from fmdj.tools import inverse_of_splits
 
 # ------------------------------------------------------------------------------------------------ #
 #                                        Some Combinatorics                                        #
@@ -69,7 +70,7 @@ def x_moment(x, c):
 
 def coarsen_multipoles_jax(mp: jnp.ndarray, tp: TreePlane, *, cfg: Config) -> jnp.ndarray:
     """Determines the multipoles at the next coarser tree plane"""
-    parent = tp.icoarse_of_fine()
+    parent = inverse_of_splits(tp.ispl, mp.size)
     kwargs = dict(
         segment_ids=parent,
         num_segments=tp.size(),
@@ -99,7 +100,7 @@ coarsen_multipoles_jax.jit = jax.jit(coarsen_multipoles_jax, static_argnames=['c
 def multipoles_from_particles_jax(tp: TreePlane, part: PosMass, *, cfg: Config) -> jnp.ndarray:
     dtype = part.mass.dtype
 
-    parent = tp.icoarse_of_fine()
+    parent = inverse_of_splits(tp.ispl, mp.size)
     kwargs = dict(
         segment_ids=parent,
         num_segments=tp.size(),

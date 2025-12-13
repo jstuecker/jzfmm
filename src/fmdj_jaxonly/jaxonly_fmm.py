@@ -107,7 +107,7 @@ def jaxonly_evaluate_plane_interactions(plane: TreePlane,
 
     loc = ilist_node_to_node(plane.center(), mp, interactions, irange, cfg=cfg)
     if loc_lr is not None:
-        ipar = plane_lr.icoarse_of_fine()
+        ipar = inverse_of_splits(plane_lr.ispl, plane.size())
         loc = loc + shift_local_to_local_jax(loc_lr[ipar], plane.center() - plane_lr.center()[ipar])
 
     # Some logging

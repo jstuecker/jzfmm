@@ -52,26 +52,18 @@ class TreePlane():
     # Defined per node:
     ispl: jnp.ndarray # relation to children
 
-    npart: jnp.ndarray                    # Only constr.
-    lvl: jnp.ndarray                      # Maybe needed
-    geom_cent: jnp.ndarray                # Needed 
+    npart: jnp.ndarray
+    lvl: jnp.ndarray
+    geom_cent: jnp.ndarray
 
     # Scalars (data dependent)
-    nnodes: jnp.ndarray                   # Only constr.
+    nnodes: jnp.ndarray
 
-    # metadata (data independent)
-    max_node_size: int = static_field()   # Only constr.
-    tot_npart: int = static_field()       # Only constr.
-
-    size_children : int = static_field()  # Only constr.
-
-    around_com: bool = static_field()     # Maybe not needed
+    around_com: bool = static_field()
 
     # Optional data:
     mass_cent: PosMass | None = None      # Optionally needed
 
-    def icoarse_of_fine(self) -> jnp.ndarray:
-        return inverse_of_splits(self.ispl, self.size_children)
     def size(self) -> int: # needed
         return self.lvl.shape[0]
     def center(self) -> jnp.ndarray:
@@ -138,10 +130,7 @@ class TreeHierarchy():
             npart = ispl_p[1:] - ispl_p[:-1], 
             lvl = lvl,
             geom_cent = cent,
-            nnodes = nnodes, # check whether needed
-            max_node_size = nsize_coarse, # remove later
-            tot_npart = len(self.particles.pos),
-            size_children = nsize_fine,
+            nnodes = nnodes,
             around_com = False,
             mass_cent = mass_cent
         )
@@ -160,9 +149,6 @@ class TreeHierarchy():
             lvl = lvl,
             geom_cent = cent,
             nnodes = nleaves,
-            max_node_size = 0,
-            tot_npart = len(self.particles.pos),
-            size_children = 0,
             around_com = False,
             mass_cent = self.leaf_mass_cent
         )
