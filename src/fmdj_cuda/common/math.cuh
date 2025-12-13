@@ -207,10 +207,13 @@ __device__ __forceinline__ int32_t msb_diff_level(const float3 &p1, const float3
 }
 
 __device__ __forceinline__ float2 float_common_ext(float a, float b) {
+    // Warning: This function cannot be used dimension wise in z-order curves
+    //          to get node extends!
     // Finds the center and the extend of the domain where floating point numbers
     // have the same most significant bit as both a and b
+
     if (signbit(a) != signbit(b)) {
-        return {-INFINITY, INFINITY};  // The sign is the highest significant bit
+        return {0.f, INFINITY};  // The sign is the highest significant bit
     }
     int32_t a_bits = __float_as_int(fabsf(a));
     int32_t b_bits = __float_as_int(fabsf(b));
@@ -253,12 +256,36 @@ __device__ __forceinline__ bool z_pos_less(float3 pos1, float3 pos2)
     return pos1.z < pos2.z;
 }
 
+__device__ __forceinline__ float round_float_pow2_cent(float x, int level)
+{
+    // rounds to the next center at resolution 2**level
+    int32_t x_bits = __float_as_int(fabsf(x));
+    int32_t x_exp = (x_bits >> 23) - 127;
+
+    int32_t new_bits = x_bits;
+
+    if(level >= 128) {
+        return 0.f; // level represents sign bit difference -> center = 0
+    }
+    if (level > x_exp) { // exponent larger -- our bits don't matter
+        return ldexpf(signbit(x) ? -0.5f : 0.5f, level);
+    }
+    else {
+        // the rounding is done by zeroing out mantissa bits
+        int32_t keep_bits = x_exp - level; // how many mantissa bits to keep
+        int32_t mask = 0xFFFFFFFFu << (23 - keep_bits);
+        new_bits = x_bits & mask;
+        new_bits = new_bits | (1u << (22 - keep_bits)); // set next bit to one for center
+        return signbit(x) ? -__int_as_float(new_bits) : __int_as_float(new_bits);
+    }
+}
+
 /* ---------------------------------------------------------------------------------------------- */
 /*                                            Node Math                                           */
 /* ---------------------------------------------------------------------------------------------- */
 
-__device__ __forceinline__ float3 LvlToExt(int level) {
-    // Converts a node's or leaf's binary level to its extend per dimension
+__device__ __forceinline__ int3 lvl_xyz(const int level) {
+    // Converts a node's or leaf's binary level to its level per dimension
 
     // CUDA's integer division does not what we want for negative numbers. 
     // e.g. -4/3 = -1 whereas what we want is python behaviour: -4//3 = -2
@@ -269,17 +296,33 @@ __device__ __forceinline__ float3 LvlToExt(int level) {
     int ly = olvl + (omod >= 2);
     int lz = olvl + (omod >= 1);
     
-    return make_float3(ldexpf(1.0f, lx), ldexpf(1.0f, ly), ldexpf(1.0f, lz));
+    return int3{lx, ly, lz};
+}
+
+__device__ __forceinline__ float3 LvlToExt(const int level) {
+    // Converts a node's or leaf's binary level to its extend per dimension
+    int3 l = lvl_xyz(level);
+    
+    return make_float3(ldexpf(1.0f, l.x), ldexpf(1.0f, l.y), ldexpf(1.0f, l.z));
+}
+
+__device__ __forceinline__ float3 LvlToCenter(const float3 pos, const int level) {
+    // Converts a node's or leaf's binary level to its extend per dimension
+    int3 l = lvl_xyz(level);
+    
+    return make_float3(
+        round_float_pow2_cent(pos.x, l.x),
+        round_float_pow2_cent(pos.y, l.y),
+        round_float_pow2_cent(pos.z, l.z)
+    );
 }
 
 __device__ __forceinline__ NodeWithExt get_common_node(const float3 p1, const float3 p2) {
-    float2 ce_x = float_common_ext(p1.x, p2.x);
-    float2 ce_y = float_common_ext(p1.y, p2.y);
-    float2 ce_z = float_common_ext(p1.z, p2.z);
+    int lvl = msb_diff_level(p1, p2);
 
     NodeWithExt node;
-    node.center = make_float3(ce_x.x, ce_y.x, ce_z.x);
-    node.extent = make_float3(ce_x.y, ce_y.y, ce_z.y);
+    node.center = LvlToCenter(p1, lvl);
+    node.extent = LvlToExt(lvl);
     return node;
 }
 
