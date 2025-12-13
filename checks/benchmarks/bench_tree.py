@@ -7,5 +7,8 @@ def bench_build_tree_hierarchy(jax_bench, pos_mass_z, cfg):
 
     jb.measure(
         fn=fmdj.ztree.build_tree_hierarchy, fn_jit=fmdj.ztree.build_tree_hierarchy.jit, 
-        part=pos_mass_z,
-        cfg=cfg)
+        part=pos_mass_z, cfg=cfg, tag="prev")
+    
+    jb.measure(
+        fn=fmdj.ztree.new_build_tree_hierarchy, fn_jit=fmdj.ztree.new_build_tree_hierarchy.jit, 
+        part=pos_mass_z, cfg=cfg, tag="new")

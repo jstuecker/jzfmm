@@ -132,11 +132,11 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
     nlevels = np.log(len(ispl) / cfg.fmm.stop_coarsen) / np.log(cfg.fmm.coarse_fac)
     nlevels = np.maximum(int(np.ceil(nlevels)), 0)
 
-    buffer = jnp.zeros(int(len(ispl) * cfg.fmm.alloc_fac_tree), dtype=jnp.int32)
+    alloc_size = int(len(ispl) * cfg.fmm.alloc_fac_tree)
     
-    ispl_n2l = PackedArray(buffer, levels=nlevels)
-    ispl_n2l = ispl_n2l.set(0, jnp.arange(buffer.size, dtype=jnp.int32), num=nleaves+1, fill_value=nleaves)
-    ispl_n2n = PackedArray(buffer, levels=nlevels)
+    ispl_n2l = PackedArray(jnp.zeros(alloc_size, dtype=jnp.int32), levels=nlevels)
+    ispl_n2l = ispl_n2l.set(0, jnp.arange(alloc_size, dtype=jnp.int32), num=nleaves+1, fill_value=nleaves)
+    ispl_n2n = PackedArray(jnp.zeros(alloc_size, dtype=jnp.int32), levels=nlevels)
     ispl_n2n = ispl_n2n.set(0, ispl, num=nleaves+1, fill_value=len(part.pos))
 
     def handle_level(i, carry):
@@ -150,19 +150,43 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
         ispl_n2l = ispl_n2l.set(i, new_ispl_n2l, num=new_nnodes, fill_value=nleaves)
 
         # node to node relation
-        last_n2l = ispl_n2l.get(i-1, ispl_n2n.size()) # , fill_value=ispl_n2n.num(i-1)
+        last_n2l = ispl_n2l.get(i-1, ispl_n2n.size())
         last_npart = npart_node[last_n2l]
         new_ispl_n2n = jnp.where(last_npart > node_size, size=ispl_n2n.size())[0]
         ispl_n2n = ispl_n2n.set(i, new_ispl_n2n, num=new_nnodes, fill_value=ispl_n2n.num(i-1)-1)
 
         return ispl_n2l, ispl_n2n
     
-    ispl_n2l, ispl_n2n = jax.lax.fori_loop(1, nlevels+1, handle_level, (ispl_n2l, ispl_n2n))
+    ispl_n2l, ispl_n2n = jax.lax.fori_loop(1, nlevels, handle_level, (ispl_n2l, ispl_n2n))
 
-    # for i in range(1, nlevels):
-    #     ispl_n2l, ispl_n2n = handle_level(i, (ispl_n2l, ispl_n2n))
+    # Check that the allocation was big enough
+    def alloc_err(filled, size):
+        raise RuntimeError(f"Tree allocation too small: filled {filled}, size {size}")
+    
+    ispl_n2l.ispl = ispl_n2l.ispl + conditional_callback(
+        ispl_n2l.nfilled() > ispl_n2l.size(), alloc_err,
+        ispl_n2l.nfilled(), ispl_n2l.size(),
+    )
 
-    return ispl_n2n, ispl_n2l
+    if cfg.fmm.multipoles_around_com:
+        def handle_mcent_level(i, carry):
+            npos, nmass, posm = carry
+            posm = center_of_mass(ispl_n2n.get(i, size=len(posm.mass)+1), posm)
+            nmass = nmass.set(i, posm.mass, num=ispl_n2n.num(i)-1)
+            npos = npos.set(i, posm.pos, num=ispl_n2n.num(i)-1)
+            return npos, nmass, posm
+        
+        posm = center_of_mass(ispl, part)
+        posm_array_spl = jnp.array([0, nleaves] + [0]*(nlevels-1), dtype=jnp.int32)
+        npos = PackedArray(posm.pos, ispl=posm_array_spl, fill_values=jnp.nan)
+        nmass = PackedArray(posm.mass, ispl=posm_array_spl, fill_values=jnp.nan)
+
+        npos, nmass, _ = jax.lax.fori_loop(1, nlevels, handle_mcent_level, (npos, nmass, posm))
+    else:
+        nmass = None
+        npos = None
+
+    return ispl_n2n, ispl_n2l, nmass, npos
 new_build_tree_hierarchy.jit = jax.jit(new_build_tree_hierarchy, static_argnames=['cfg'])
 
 def build_tree_hierarchy(part: PosMass, cfg: Config) -> Tuple[TreeHierarchy, list[TreePlane]]:

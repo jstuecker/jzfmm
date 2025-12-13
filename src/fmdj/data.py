@@ -78,6 +78,7 @@ class PackedArray:
             size = self.size()
         indices = jnp.arange(size) + self.ispl[level]
         valid = indices < self.ispl[level + 1]
+        valid = valid.reshape((-1,) + (1,) * (self.data.ndim - 1))
         if fill_value is None:
             fill_value = self.fill_values[level]
         return jnp.where(valid, self.data[indices], fill_value)
@@ -98,6 +99,9 @@ class PackedArray:
     
     def num(self, level):
         return self.ispl[level + 1] - self.ispl[level]
+    
+    def nfilled(self):
+        return self.ispl[-1]
 
 @jax.tree_util.register_dataclass
 @dataclass
@@ -359,4 +363,6 @@ def set_range(arr : jnp.ndarray, values, start, end):
     else:
         # Do a masked update
         idx = jnp.arange(len(arr))
-        return jnp.where((idx >= start) & (idx < end), values[idx - start], arr)
+        cond = (idx >= start) & (idx < end)
+        cond = cond.reshape((-1,) + (1,) * (values.ndim - 1))
+        return jnp.where(cond, values[idx - start], arr)
