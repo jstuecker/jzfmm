@@ -256,7 +256,7 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jnp.ndarray | None = None, c
     if mpz is None:
         mpz = partz.mass
 
-    th = build_tree_hierarchy(jax.lax.stop_gradient(partz), cfg)
+    thi,th = build_tree_hierarchy(jax.lax.stop_gradient(partz), cfg)
 
     loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg=cfg)
 

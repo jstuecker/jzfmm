@@ -13,14 +13,13 @@ def bench_tree_hierarchy(jax_bench, pos_mass_z, cfg):
 
     jb = jax_bench(jit_rounds=40, jit_warmup=10)
 
-    th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="old")[1]
-    th2 = jb.measure(fn_jit=fmdj.ztree.new_build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="new")[1]
+    thi,th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="new")[1]
 
 
 @pytest.mark.parametrize("coarsen_fac", [2,4,6,8])
 def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
     cfg = replace(cfg, fmm=replace(cfg.fmm, coarse_fac=coarsen_fac))
-    th = fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg)
+    thi,th = fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg)
     mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
     
     jb = jax_bench(jit_rounds=100, jit_warmup=50)
@@ -35,7 +34,7 @@ def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
 
     jb = jax_bench(jit_rounds=40, jit_warmup=20)
 
-    th = fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg)
+    thi,th = fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg)
     mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
 
     res, (loc, ilist) = jb.measure(fn_jit=fmdj.fmm.evaluate_interaction_hierarchy.jit,
@@ -72,7 +71,7 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
     posz, isortz = jb.measure(fn_jit=fmdj.ztree.pos_zorder_sort.jit, x=pos_mass.pos, tag="zsort")[1]
     pos_mass_z = fmdj.data.PosMass(pos=posz, mass=pos_mass.mass[isortz])
 
-    th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build_new")[1]
+    thi,th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build_new")[1]
 
     mph = jb.measure(fn_jit=fmdj.multipoles.build_multipole_hierarchy.jit, 
                      th=th, pos=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg, tag="multipoles")[1]

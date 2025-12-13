@@ -120,7 +120,7 @@ get_node_geometry.jit = jax.jit(get_node_geometry)
 #                                      Tree Building Functions                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
+def build_tree_hierarchy(part: PosMass, cfg: Config) -> Tuple[TreeHierarchy, list[TreePlane]]:
     ispl =  create_coarse_leaves(part.pos, leaf_size=cfg.fmm.max_leaf_size, alloc_fac=cfg.fmm.alloc_fac_nodes)
     nleaves = jnp.argmax(ispl)
     lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
@@ -147,5 +147,5 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
         tps.append(tp)
         last_node_size = node_size
     
-    return tps
+    return th, tps
 build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg'])
