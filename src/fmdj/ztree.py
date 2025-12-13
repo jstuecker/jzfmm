@@ -172,10 +172,11 @@ def determine_znode_boundaries(posz: jnp.ndarray, block_size: int = 64, nleaves:
         nleaves = jnp.array(len(posz))
 
     out_types = (jax.ShapeDtypeStruct((posz.shape[0]+1,), jnp.int32),)*3
-    res = jax.ffi.ffi_call("FindNodeBoundaries", out_types)(posz, nleaves, block_size=np.uint64(block_size))
-    ztree = BinaryZTree(*res)
+    lvl, lbound, rbound = jax.ffi.ffi_call("FindNodeBoundaries", out_types)(
+        posz, nleaves, block_size=np.uint64(block_size)
+    )
 
-    return ztree
+    return lvl, lbound, rbound
 determine_znode_boundaries.jit = jax.jit(determine_znode_boundaries)
 
 # ------------------------------------------------------------------------------------------------ #
@@ -223,40 +224,34 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
     return tree_levels
 build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg'])
 
+
 def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
     ispl =  create_coarse_leaves(part.pos, leaf_size=cfg.fmm.max_leaf_size, alloc_fac=cfg.fmm.alloc_fac_nodes)
     nleaves = jnp.argmax(ispl)
-    tree = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
-    npart_leaf = ispl[tree.rbound] - ispl[tree.lbound]
-    npart = npart_leaf
+    lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
 
-    # The number of times we need to refine to reach a level with <= cfg.fmm.stop_coarsen nodes
-    nlevels = np.log(len(ispl) / cfg.fmm.stop_coarsen) / np.log(cfg.fmm.coarse_fac)
-    nlevels = np.maximum(int(np.ceil(nlevels)), 0)
-
-    ispls = [ispl]
-    node_idx = [ispl]
-    node_size = cfg.fmm.max_leaf_size
-    for i in range(nlevels):
-        node_size = node_size * cfg.fmm.coarse_fac
-        # upper limit of number of nodes -- needed to allocate large enough buffers:
-        max_nodes = int(div_ceil(len(part.pos), np.maximum(node_size//2, 1)))
-        # actually filled number of nodes:
-        nnodes = jnp.sum(npart > node_size)
-        ispl = jnp.where(npart > node_size, size=max_nodes, fill_value=nnodes)[0]
-        npart = jnp.where(npart[ispl] > node_size, npart[ispl], 0)
-        ispls.append(ispl)
-        node_idx.append(jnp.where(npart_leaf > node_size, size=max_nodes, fill_value=nleaves)[0])
+    cent, ext = get_node_box(part.pos[lbound], lvl)
 
     th = TreeHierarchy(
         particles=part,
-        lvl=tree.level,
-        lbound=tree.lbound,
-        rbound=tree.rbound,
-        node_idx=node_idx,
-        ispls=ispls
+        leaf_ispl=ispl,
+        lvl=lvl,
+        lbound=lbound,
+        rbound=rbound,
+        node_cent=cent,
+        node_ext=ext,
+        node_npart=ispl[rbound] - ispl[lbound]
     )
-
-    # th = [th.get_tree_plane(i) for i in range(nlevels+1)]
-    return th
+    
+    tps = [th.leaf_plane()]
+    last_node_size = cfg.fmm.max_leaf_size
+    
+    while tps[-1].size() > cfg.fmm.stop_coarsen:
+        node_size = last_node_size * cfg.fmm.coarse_fac
+        max_nodes = int(div_ceil(len(part.pos), np.maximum(node_size//2, 1)))
+        tp = th.tree_plane(last_node_size, node_size, tps[-1].size(), max_nodes)
+        tps.append(tp)
+        last_node_size = node_size
+    
+    return th, tps
 new_build_tree_hierarchy.jit = jax.jit(new_build_tree_hierarchy, static_argnames=['cfg'])

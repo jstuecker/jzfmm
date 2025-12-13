@@ -99,32 +99,56 @@ class TreeHierarchy():
     # Particles
     particles: PosMass
 
+    # leaf specific
+    leaf_ispl: jnp.ndarray
+
     # Node specific data
     lvl: jnp.ndarray
     lbound: jnp.ndarray
     rbound: jnp.ndarray
+    node_cent: jnp.ndarray
+    node_ext: jnp.ndarray
+    node_npart: jnp.ndarray
 
-    # Tree plane abstraction
-    node_idx: List[jnp.ndarray]
-    ispls: List[jnp.ndarray]
+    def get_plane_relation(self, nsize_fine, nsize_coarse, size_fine: int, size: int) -> TreePlane:
+        nnodes_fine = jnp.sum(self.node_npart > nsize_fine) - 1
+
+        # Determine the splitting point towards the finer level
+        inodes_fine = jnp.where(self.node_npart > nsize_fine, size=size_fine, fill_value=size_fine)[0]
+        np_fine = self.node_npart.at[inodes_fine].get(fill_value=0)
+        ispl = jnp.where(np_fine > nsize_coarse, size=size, fill_value=nnodes_fine)[0]
+
+        return ispl
     
-    def get_tree_plane(self, level: int) -> TreePlane:
-        from .ztree import get_node_box
+    def tree_plane(self, nsize_fine, nsize_coarse, size_fine: int, size: int) -> TreePlane:
+        ispl = self.get_plane_relation(nsize_fine, nsize_coarse, size_fine, size)
 
-        inodes = self.node_idx[level]
-        npart = self.rbound[inodes] - self.lbound[inodes]
-        x1 = self.particles.pos[self.lbound[inodes]]
-        xcent = get_node_box(x1, self.lvl[inodes])[0]
+        nnodes = jnp.sum(self.node_npart > nsize_coarse) - 1
+        idx = jnp.where(self.node_npart > nsize_coarse, size=size, fill_value=size)[0]
+
         return TreePlane(
-            ispl=self.ispls[level],
-            npart=npart,
-            lvl=self.lvl[inodes],
-            geom_cent=xcent,
-            nnodes=jnp.argmax(self.ispls[level]),
-            around_com=False,
-            max_node_size = 1,
-            tot_npart = 1,
-            size_children = 1
+            ispl = ispl,
+            npart = self.node_npart[idx], 
+            lvl = self.lvl[idx],
+            geom_cent = self.node_cent[idx],
+            nnodes = nnodes, # check whether needed
+            max_node_size = nsize_coarse, # remove later
+            tot_npart = len(self.particles.pos),
+            size_children = nsize_fine,
+            around_com = False
+        )
+    
+    def leaf_plane(self) -> TreePlane:
+        return TreePlane(
+            ispl = self.leaf_ispl,
+            npart = self.node_npart,
+            lvl = self.lvl,
+            geom_cent = self.node_cent,
+            nnodes = jnp.argmax(self.leaf_ispl),
+            max_node_size = 0,
+            tot_npart = len(self.particles.pos),
+            size_children = 0,
+            around_com = False
         )
 
 def find_group(ispl, index):
@@ -263,3 +287,39 @@ def dense_interaction_list(size: int, nnodes: jnp.ndarray = None) -> Interaction
     
     return InteractionList(ispl=ispl, iother=ilist, nfilled=nfilled)
 dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size'])
+
+def set_range(arr : jnp.ndarray, values, start, end):
+    if(len(arr) / len(values) >= 4):
+        # values are much smaller than arr, do a scatter based update
+        idx = jnp.arange(len(values)) + start
+        idx = jnp.where(idx < end, idx, len(arr))
+        return arr.at[idx].set(values, unique_indices=True)
+    else:
+        # Do a masked update
+        idx = jnp.arange(len(arr))
+        return jnp.where((idx >= start) & (idx < end), values, arr)
+
+@jax.tree_util.register_dataclass
+@dataclass
+class PackedArray:
+    data: jnp.ndarray
+    ispl: jnp.ndarray
+
+    def __init__(self, data, ispl=None, levels=None):
+        self.data = data
+        if ispl is not None:
+            self.ispl = ispl
+        elif levels is not None:
+            self.ispl = jnp.zeros(levels + 1, dtype=jnp.int32)
+    
+    def get(self, level, size, fill_value=jnp.nan):
+        indices = jnp.arange(size) + self.ispl[level]
+        valid = indices < self.ispl[level + 1]
+        return jnp.where(valid, self.data[indices], fill_value)
+    
+    def set(self, level, values, num=None):
+        if num is None:
+            num = values.shape[0]
+        new_spl = jnp.where(jnp.arange(len(self.ispl)) <= level, self.ispl, self.ispl[level] + num)
+        new_data = set_range(self.data, values, self.ispl[level], self.ispl[level] + num)
+        return PackedArray(new_data, new_spl)
