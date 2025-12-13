@@ -207,7 +207,7 @@ def coarsen_plane(fine: TreePlane, cfg : Config) -> TreePlane:
         max_node_size = max_size, tot_npart = fine.tot_npart, 
         size_children = fine.size(), around_com=fine.around_com
     )
-    coarse.mass_cent = center_of_mass(coarse.ispl, fine.mass_cent, cfg=cfg)
+    coarse.mass_cent = center_of_mass(coarse.ispl, fine.mass_cent)
 
 
     return coarse
@@ -223,7 +223,7 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
         max_node_size=cfg.fmm.max_leaf_size, tot_npart=part.pos.shape[0], 
         size_children=len(part.pos), around_com=cfg.fmm.multipoles_around_com
     )
-    leaves.mass_cent = center_of_mass(leaves.ispl, part, cfg=cfg)
+    leaves.mass_cent = center_of_mass(leaves.ispl, part)
 
     tree_levels : list[TreePlane] = [leaves]
 
@@ -240,12 +240,12 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> list[TreePlane]:
     nleaves = jnp.argmax(ispl)
     lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
 
-    # cent, ext = get_node_box(part.pos[lbound], lvl)
-    # get_node_geometry
+    mass_center = center_of_mass(ispl, part)
 
     th = TreeHierarchy(
         particles=part,
         leaf_ispl=ispl,
+        leaf_mass_cent=mass_center,
         lbound=lbound,
         rbound=rbound,
         node_npart=ispl[rbound] - ispl[lbound]

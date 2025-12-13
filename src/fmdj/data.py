@@ -101,6 +101,7 @@ class TreeHierarchy():
 
     # leaf specific
     leaf_ispl: jnp.ndarray
+    leaf_mass_cent: PosMass
 
     # Node specific data
     lbound: jnp.ndarray
@@ -125,8 +126,10 @@ class TreeHierarchy():
 
         ispl_p = self.leaf_ispl[ispl_l]
         
-        from .ztree import get_node_geometry
+        from .ztree import get_node_geometry, center_of_mass
         lvl, cent, ext = get_node_geometry(self.particles.pos, ispl_p[:-1], ispl_p[1:], nnodes)
+
+        mass_cent = center_of_mass(ispl_l, self.leaf_mass_cent)
 
         return TreePlane(
             ispl = ispl,
@@ -137,7 +140,8 @@ class TreeHierarchy():
             max_node_size = nsize_coarse, # remove later
             tot_npart = len(self.particles.pos),
             size_children = nsize_fine,
-            around_com = False
+            around_com = False,
+            mass_cent = mass_cent
         )
     
     def leaf_plane(self) -> TreePlane:
@@ -157,7 +161,8 @@ class TreeHierarchy():
             max_node_size = 0,
             tot_npart = len(self.particles.pos),
             size_children = 0,
-            around_com = False
+            around_com = False,
+            mass_cent = self.leaf_mass_cent
         )
 
 def find_group(ispl, index):

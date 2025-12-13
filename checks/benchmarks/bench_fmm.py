@@ -102,6 +102,6 @@ def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_hierarchy):
     )
     
     jb.measure(fn_jit = fmdj.multipoles.center_of_mass.jit,
-               ispl=th[0].ispl, part=pos_mass_z, cfg=cfg,
+               ispl=th[0].ispl, part=pos_mass_z,
                tag="com"
     )
