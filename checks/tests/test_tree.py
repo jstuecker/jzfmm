@@ -6,9 +6,9 @@ import fmdj_jaxonly.jaxonly_multipoles as jmp
 import pytest
 import numpy.testing as npt
 
-def test_tree_hierarchy(tree_hierarchy : list[TreePlane]):
-    npart = jnp.sum(tree_hierarchy[0].npart)
-    for tplane  in tree_hierarchy:
+def test_tree_hierarchy(tree_planes : list[TreePlane]):
+    npart = jnp.sum(tree_planes[0].npart)
+    for tplane  in tree_planes:
         assert jnp.sum(tplane.npart) == npart
         lvls = tplane.lvl[:tplane.nnodes]
         assert jnp.all((lvls >= -100 ) & (lvls < 100))

@@ -9,7 +9,7 @@ from dataclasses import replace
 @pytest.fixture
 def stripping_cfg():
     cfg = fmdj.config.Config()
-    cfg.fmm.alloc_fac_nodes = 3.0
+    # cfg.fmm.alloc_fac_nodes = 3.0
     cfg.logging.level = -1
 
     host = aegis.profiles.NFWProfile(conc=6., m200c=1e12)

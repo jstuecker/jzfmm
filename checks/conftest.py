@@ -37,7 +37,11 @@ def pos_mass_z(npart):
 @pytest.fixture
 def tree_hierarchy(pos_mass_z, cfg):
     th = jax.block_until_ready(fmdj.fmm.new_build_tree_hierarchy.jit(pos_mass_z, cfg=cfg))
-    return list(th.planes())
+    return th
+
+@pytest.fixture
+def tree_planes(tree_hierarchy):
+    return list(tree_hierarchy.planes())
 
 @pytest.fixture
 def particles_blob(npart):

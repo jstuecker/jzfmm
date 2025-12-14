@@ -144,7 +144,7 @@ class TreePlane():
 
 @jax.tree_util.register_dataclass
 @dataclass
-class NewTreeHierarchy():
+class TreeHierarchy():
     # Packed Arrays:
     ispl_n2n: PackedArray
     ispl_n2l: PackedArray
@@ -188,77 +188,6 @@ class NewTreeHierarchy():
     def planes(self) -> Iterator[TreePlane]:
         for level in range(self.num_planes()):
             yield self.get_tree_plane(level)
-
-@jax.tree_util.register_dataclass
-@dataclass
-class TreeHierarchy():
-    # Particles
-    particles: PosMass
-
-    # leaf specific
-    leaf_ispl: jnp.ndarray
-    leaf_mass_cent: PosMass
-
-    # Node specific data
-    lbound: jnp.ndarray
-    rbound: jnp.ndarray
-    node_npart: jnp.ndarray
-
-    def get_plane_relation(self, nsize_fine, nsize_coarse, size_fine: int, size: int) -> TreePlane:
-        nnodes_fine = jnp.sum(self.node_npart > nsize_fine) - 1
-
-        # Determine the splitting point towards the finer level
-        inodes_fine = jnp.where(self.node_npart > nsize_fine, size=size_fine, fill_value=size_fine)[0]
-        np_fine = self.node_npart.at[inodes_fine].get(fill_value=0)
-        ispl = jnp.where(np_fine > nsize_coarse, size=size, fill_value=nnodes_fine)[0]
-
-        return ispl
-    
-    def tree_plane(self, nsize_fine, nsize_coarse, size_fine: int, size: int) -> TreePlane:
-        ispl = self.get_plane_relation(nsize_fine, nsize_coarse, size_fine, size)
-
-        nleaves = jnp.argmax(self.leaf_ispl)
-
-        nnodes = jnp.sum(self.node_npart > nsize_coarse) - 1
-        ispl_l = jnp.where(self.node_npart > nsize_coarse, size=size, fill_value=nleaves)[0]
-
-        ispl_p = self.leaf_ispl[ispl_l]
-        
-        from .ztree import get_node_geometry, center_of_mass
-        lvl, cent, ext = get_node_geometry(self.particles.pos, ispl_p[:-1], ispl_p[1:], nnodes)
-
-        mass_cent = center_of_mass(ispl_l, self.leaf_mass_cent)
-
-        return TreePlane(
-            ispl = ispl,
-            npart = ispl_p[1:] - ispl_p[:-1], 
-            lvl = lvl,
-            geom_cent = cent,
-            nnodes = nnodes,
-            around_com = False,
-            mass_cent = mass_cent
-        )
-    
-    def leaf_plane(self) -> TreePlane:
-        from .ztree import get_node_geometry
-
-        nleaves = jnp.argmax(self.leaf_ispl)
-        lvl, cent, ext = get_node_geometry(
-            self.particles.pos, self.leaf_ispl[:-1], self.leaf_ispl[1:], nleaves
-        )
-
-        return TreePlane(
-            ispl = self.leaf_ispl,
-            npart = self.leaf_ispl[1:] - self.leaf_ispl[:-1],
-            lvl = lvl,
-            geom_cent = cent,
-            nnodes = nleaves,
-            around_com = False,
-            mass_cent = self.leaf_mass_cent
-        )
-
-def find_group(ispl, index):
-    return jnp.searchsorted(ispl, index, side='right') - 1
 
 @jax.tree_util.register_dataclass
 @dataclass

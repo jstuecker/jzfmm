@@ -22,8 +22,8 @@ def my_check_gradient(f, x, epsrel=1e-4, rtol=5e-3, atol=0.):
 
     assert df2 == pytest.approx(df1, rel=rtol, abs=atol)
 
-def test_m2m_gradients(pos_mass_z, tree_hierarchy, cfg):
-    th = tree_hierarchy
+def test_m2m_gradients(pos_mass_z, tree_planes, cfg):
+    th = tree_planes
     # mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg)
 
     def m2m(x,m):
@@ -33,8 +33,8 @@ def test_m2m_gradients(pos_mass_z, tree_hierarchy, cfg):
     check_grads(lambda x: m2m(x, pos_mass_z.mass), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-3)
     check_grads(m2m, (pos_mass_z.pos, pos_mass_z.mass), order=1, modes=("rev",), eps=1e-3)
 
-def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
-    th = tree_hierarchy
+def test_l2l_gradients(pos_mass_z, tree_planes, cfg):
+    th = tree_planes
     cfg = replace(cfg, softening=1e-1)
     mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
     loc, ilist = fmdj.fmm.evaluate_interaction_hierarchy.jit(th, mph, cfg)
@@ -47,18 +47,18 @@ def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
     # For multipole gradients we need to use smarter finit difference steps than jax's default:
     my_check_gradient(lambda l: l2l(pos_mass_z.pos, l).sum(), loc, epsrel=5e-2)
 
-def test_fmm_node_gradients(pos_mass_z, tree_hierarchy, cfg):
+def test_fmm_node_gradients(pos_mass_z, tree_planes, cfg):
     cfg_fmm = replace(cfg.fmm, p=4, multipoles_around_com=True)
     cfg = replace(cfg, softening=1e-1, fmm=cfg_fmm)
 
     def f(pos):
         pm = fmdj.data.PosMass(pos, pos_mass_z.mass)
-        return fmdj.fmm.evaluate_node_node_fmm(pm, tree_hierarchy, cfg=cfg)[0]
+        return fmdj.fmm.evaluate_node_node_fmm(pm, tree_planes, cfg=cfg)[0]
     check_grads(f, (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-2)
 
     def f(mass):
         pm = fmdj.data.PosMass(pos_mass_z.pos, mass)
-        return fmdj.fmm.evaluate_node_node_fmm(pm, tree_hierarchy, cfg=cfg)[0]
+        return fmdj.fmm.evaluate_node_node_fmm(pm, tree_planes, cfg=cfg)[0]
     check_grads(f, (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-1)
 
 @pytest.mark.parametrize("npart", [1024], indirect=True)

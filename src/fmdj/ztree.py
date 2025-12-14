@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from typing import Tuple
 from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
-from .data import TreePlane, PosMass, TreeHierarchy, PackedArray, NewTreeHierarchy
+from .data import TreePlane, PosMass, PackedArray, TreeHierarchy
 from .config import Config
 from .multipoles import center_of_mass
 from .tools import cumsum_starting_with_zero
@@ -81,6 +81,17 @@ def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int
         block_size=np.uint64(block_size), scan_size=np.int32(leaf_size+1))[0]
     
     max_new_leaves = int(div_ceil(len(posz) * alloc_fac, np.maximum(leaf_size//2, 1)))
+
+    # Check that the allocation was big enough
+    def alloc_err(filled, size):
+        raise RuntimeError(f"Coarsen Leaves: allocation too small: filled {filled}, size {size}.\n"
+                            "Increase alloc_fac_nodes in FMMConfig.")
+    
+    nfilled = jnp.sum(flag_split > -1000)
+    flag_split = flag_split + conditional_callback(
+        nfilled > max_new_leaves+1, alloc_err,
+        nfilled, max_new_leaves+1,
+    )
     
     splits = jnp.where(flag_split > -1000, size=max_new_leaves+1, fill_value=len(posz))[0]
 
@@ -121,8 +132,9 @@ get_node_geometry.jit = jax.jit(get_node_geometry)
 #                                      Tree Building Functions                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> NewTreeHierarchy:
+def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
     ispl =  create_coarse_leaves(part.pos, leaf_size=cfg.fmm.max_leaf_size, alloc_fac=cfg.fmm.alloc_fac_nodes)
+
     nleaves = jnp.argmax(ispl)
     lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
 
@@ -131,7 +143,7 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> NewTreeHierarchy:
     nlevels = np.log(len(ispl) / cfg.fmm.stop_coarsen) / np.log(cfg.fmm.coarse_fac)
     nlevels = np.maximum(int(np.ceil(nlevels)), 1)
 
-    alloc_size = int(len(ispl) * cfg.fmm.alloc_fac_tree)
+    alloc_size = len(ispl)
     
     ispl_n2l = PackedArray(jnp.zeros(alloc_size, dtype=jnp.int32), levels=nlevels)
     ispl_n2l = ispl_n2l.set(0, jnp.arange(alloc_size, dtype=jnp.int32), num=nleaves+1, fill_value=nleaves)
@@ -160,9 +172,10 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> NewTreeHierarchy:
 
     # Check that the allocation was big enough
     def alloc_err(filled, size):
-        raise RuntimeError(f"Tree allocation too small: filled {filled}, size {size}")
+        raise RuntimeError(f"Tree allocation too small: filled {filled}, size {size}.\n"
+                            "Increase alloc_fac_nodes in FMMConfig.")
     
-    ispl_n2l.ispl = ispl_n2l.ispl + conditional_callback(
+    ispl_n2l.data = ispl_n2l.data + conditional_callback(
         ispl_n2l.nfilled() > ispl_n2l.size(), alloc_err,
         ispl_n2l.nfilled(), ispl_n2l.size(),
     )
@@ -196,7 +209,17 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> NewTreeHierarchy:
 
     plane_sizes = [int(alloc_size / (cfg.fmm.coarse_fac ** i)) for i in range(nlevels)]
 
-    th = NewTreeHierarchy(
+    def plane_size_err(num, sizes):
+        raise RuntimeError(f"Tree allocation too small: \nplanes filled: {num} \nsize: {sizes}.\n"
+                            "Increase alloc_fac_nodes in FMMConfig.")
+    
+    nsizes = ispl_n2n.ispl[1:] - ispl_n2n.ispl[:-1] - 1
+    ispl_n2l.ispl = ispl_n2l.ispl + conditional_callback(
+        jnp.any(nsizes > jnp.array(plane_sizes)), plane_size_err,
+        nsizes, jnp.array(plane_sizes),
+    )
+
+    th = TreeHierarchy(
         ispl_n2n, ispl_n2l,
         lvl = PackedArray(lvl, leaf_array_spl, fill_values=-1000),
         geom_cent = PackedArray(geom_cent, leaf_array_spl, fill_values=jnp.nan),
@@ -207,33 +230,3 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> NewTreeHierarchy:
     
     return th
 new_build_tree_hierarchy.jit = jax.jit(new_build_tree_hierarchy, static_argnames=['cfg'])
-
-def build_tree_hierarchy(part: PosMass, cfg: Config) -> Tuple[TreeHierarchy, list[TreePlane]]:
-    ispl =  create_coarse_leaves(part.pos, leaf_size=cfg.fmm.max_leaf_size, alloc_fac=cfg.fmm.alloc_fac_nodes)
-    nleaves = jnp.argmax(ispl)
-    lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
-
-    mass_center = center_of_mass(ispl, part)
-
-    th = TreeHierarchy(
-        particles=part,
-        leaf_ispl=ispl,
-        leaf_mass_cent=mass_center,
-        lbound=lbound,
-        rbound=rbound,
-        node_npart=ispl[rbound] - ispl[lbound]
-    )
-    
-    tps = [th.leaf_plane()]
-    last_node_size = cfg.fmm.max_leaf_size
-    
-    while tps[-1].size() > cfg.fmm.stop_coarsen:
-        node_size = last_node_size * cfg.fmm.coarse_fac
-        max_nodes = int(div_ceil(len(part.pos), np.maximum(node_size//2, 1)))
-        tp = th.tree_plane(last_node_size, node_size, tps[-1].size(), max_nodes)
-        tp.around_com = cfg.fmm.multipoles_around_com
-        tps.append(tp)
-        last_node_size = node_size
-    
-    return th, tps
-build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg'])

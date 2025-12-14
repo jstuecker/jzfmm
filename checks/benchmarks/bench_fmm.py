@@ -10,6 +10,9 @@ from dataclasses import replace
 @pytest.mark.parametrize("coarsen_fac", [2,4,6,8])
 def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
     cfg = replace(cfg, fmm=replace(cfg.fmm, coarse_fac=coarsen_fac))
+    if coarsen_fac <= 4:
+        cfg = replace(cfg, fmm=replace(cfg.fmm, alloc_fac_nodes=1.5))
+    
     th = fmdj.ztree.new_build_tree_hierarchy.jit(pos_mass_z, cfg)
     tps = list(th.planes())
     mph = fmdj.multipoles.build_multipole_hierarchy.jit(tps, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
@@ -79,8 +82,8 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
                       particles=pos_mass_z, ispl=tps[0].ispl, ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]
 
 @pytest.mark.parametrize("p", [3,4,5])
-def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_hierarchy):
-    th = tree_hierarchy
+def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_planes):
+    th = tree_planes
 
     jb = jax_bench(jit_rounds=200, jit_warmup=20)
 
