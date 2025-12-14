@@ -2,6 +2,7 @@
 Fast Multipoles Done with Jax
 
 # ToDo:
+* Add a unit test that compares the tree structure for different coarsening
 * Adapt code to use new tree hierarchy efficiently / Don't materialize tree-planes
 * Improve dense interaction allocation handling
 * Think about ztree in multi GPU

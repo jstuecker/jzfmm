@@ -14,6 +14,8 @@ jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform=
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
 jax.ffi.register_ffi_target("FindNodeBoundaries", ffi_tree.FindNodeBoundaries(), platform="CUDA")
 jax.ffi.register_ffi_target("GetNodeGeometry", ffi_tree.GetNodeGeometry(), platform="CUDA")
+jax.ffi.register_ffi_target("SearchSortedZ", ffi_tree.SearchSortedZ(), platform="CUDA")
+
 
 # ------------------------------------------------------------------------------------------------ #
 #                                         Helper Functions                                         #
@@ -69,6 +71,22 @@ def pos_zorder_sort(x):
 
     return eval(x)
 pos_zorder_sort.jit = jax.jit(pos_zorder_sort)
+
+def search_sorted_z(xz, xz_query, block_size=64, leaf_search=False):
+    """Finds the indices in xz where elements of xz_query would be inserted to keep order.
+    This is similar to np.searchsorted, but works for 3D points sorted in Z-order.
+    On equality maintains the rule: xz[idx] < v <= xz[idx+1]
+    if leaf_search is True, it is assumed that xz contains one point per leaf and we 
+    return the index of the leaf that the query point belongs to.
+    """
+    assert xz.dtype ==  xz_query.dtype == jnp.float32
+    assert xz.shape[-1] == xz_query.shape[-1] == 3
+
+    out_type = jax.ShapeDtypeStruct((xz_query.shape[0],), jnp.int32)
+    inds = jax.ffi.ffi_call("SearchSortedZ", (out_type,))(
+        xz, xz_query, block_size=np.uint64(block_size), leaf_search=leaf_search)[0]
+    return inds
+search_sorted_z.jit = jax.jit(search_sorted_z, static_argnames=("block_size", "leaf_search"))
 
 def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int = 64, alloc_fac=1.0) -> jnp.ndarray:
     out_type = jax.ShapeDtypeStruct((posz.shape[0]+1,), jnp.int32)
