@@ -7,25 +7,17 @@ import fmdj.fmm
 from fmdj.config import Config, FMMConfig
 from dataclasses import replace
 
-@pytest.mark.parametrize("npart", [1024*128, 1024*1024, 1024*1024*4, 8*1024*1024])
-def bench_tree_hierarchy(jax_bench, pos_mass_z, cfg):
-    cfg = Config()
-
-    jb = jax_bench(jit_rounds=40, jit_warmup=10)
-
-    thi,th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="new")[1]
-
-
 @pytest.mark.parametrize("coarsen_fac", [2,4,6,8])
 def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
     cfg = replace(cfg, fmm=replace(cfg.fmm, coarse_fac=coarsen_fac))
-    thi,th = fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg)
-    mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
+    th = fmdj.ztree.new_build_tree_hierarchy.jit(pos_mass_z, cfg)
+    tps = list(th.planes())
+    mph = fmdj.multipoles.build_multipole_hierarchy.jit(tps, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
     
     jb = jax_bench(jit_rounds=100, jit_warmup=50)
 
     jb.measure(fn_jit=fmdj.fmm.evaluate_interaction_hierarchy.jit,
-        th=th, mph=mph, cfg=cfg
+        th=tps, mph=mph, cfg=cfg
     )
 
 @pytest.mark.parametrize("max_leaf_size", [16,24,32,48])
@@ -34,15 +26,16 @@ def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
 
     jb = jax_bench(jit_rounds=40, jit_warmup=20)
 
-    thi,th = fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg)
-    mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
+    th = fmdj.ztree.new_build_tree_hierarchy.jit(pos_mass_z, cfg)
+    tps = list(th.planes())
+    mph = fmdj.multipoles.build_multipole_hierarchy.jit(tps, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
 
     res, (loc, ilist) = jb.measure(fn_jit=fmdj.fmm.evaluate_interaction_hierarchy.jit,
-        th=th, mph=mph, cfg=cfg, tag="node2node"
+        th=tps, mph=mph, cfg=cfg, tag="node2node"
     )
 
     jb.measure(fn_jit=fmdj.fmm.grouped_force_and_pot.jit,
-        particles=pos_mass_z, ispl=th[0].ispl, ilist=ilist, cfg=cfg,
+        particles=pos_mass_z, ispl=tps[0].ispl, ilist=ilist, cfg=cfg,
         tag="leaf2leaf"
     )
 
@@ -71,18 +64,19 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
     posz, isortz = jb.measure(fn_jit=fmdj.ztree.pos_zorder_sort.jit, x=pos_mass.pos, tag="zsort")[1]
     pos_mass_z = fmdj.data.PosMass(pos=posz, mass=pos_mass.mass[isortz])
 
-    thi,th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build_new")[1]
+    th = jb.measure(fn_jit=fmdj.ztree.new_build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build_new")[1]
+    tps = list(th.planes())
 
     mph = jb.measure(fn_jit=fmdj.multipoles.build_multipole_hierarchy.jit, 
-                     th=th, pos=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg, tag="multipoles")[1]
+                     th=tps, pos=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg, tag="multipoles")[1]
 
     loc, ilist = jb.measure(fn_jit=fmdj.fmm.evaluate_interaction_hierarchy.jit, 
-                            th=th, mph=mph, cfg=cfg, tag="node2node")[1]
+                            th=tps, mph=mph, cfg=cfg, tag="node2node")[1]
     phif = jb.measure(fn_jit=fmdj.fmm.shift_local_to_children.jit, 
-                      ispl=th[0].ispl, loc=loc, xnode=th[0].center(), xchild=pos_mass_z.pos,
+                      ispl=tps[0].ispl, loc=loc, xnode=tps[0].center(), xchild=pos_mass_z.pos,
                       cfg=cfg, pout=1,tag="loc2loc")[1]
     fphi = jb.measure(fn_jit=fmdj.fmm.grouped_force_and_pot.jit,
-                      particles=pos_mass_z, ispl=th[0].ispl, ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]
+                      particles=pos_mass_z, ispl=tps[0].ispl, ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]
 
 @pytest.mark.parametrize("p", [3,4,5])
 def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_hierarchy):
