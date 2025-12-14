@@ -152,6 +152,7 @@ class NewTreeHierarchy():
     # tree plane data:
     lvl: PackedArray
     geom_cent: PackedArray
+    mass: PackedArray | None = None
     mass_cent: PackedArray | None = None
 
     def center(self) -> PackedArray:
@@ -159,6 +160,20 @@ class NewTreeHierarchy():
             return self.mass_cent
         else:
             return self.geom_cent
+        
+    def get_tree_plane(self, level: int) -> TreePlane:
+        ispl_n2p = self.ispl_n2n.get(0)[self.ispl_n2l.get(level)]
+        if self.mass_cent is not None:
+            mass_cent = PosMass(self.mass_cent.get(level), self.mass.get(level))
+        return TreePlane(
+            ispl = self.ispl_n2n.get(level),
+            npart = ispl_n2p[1:] - ispl_n2p[:-1],
+            lvl = self.lvl.get(level),
+            geom_cent = self.geom_cent.get(level),
+            nnodes = self.lvl.num(level),
+            around_com = self.mass_cent is not None,
+            mass_cent = mass_cent
+        )
 
 @jax.tree_util.register_dataclass
 @dataclass
@@ -174,13 +189,6 @@ class TreeHierarchy():
     lbound: jnp.ndarray
     rbound: jnp.ndarray
     node_npart: jnp.ndarray
-
-    # Packed Arrays:
-    p_ispl_l: PackedArray | None = None
-    p_ispl_p: PackedArray | None = None
-    p_mass: PackedArray | None = None
-    p_mass_cent: PackedArray | None = None
-    p_geom_cent: PackedArray | None = None
 
     def get_plane_relation(self, nsize_fine, nsize_coarse, size_fine: int, size: int) -> TreePlane:
         nnodes_fine = jnp.sum(self.node_npart > nsize_fine) - 1

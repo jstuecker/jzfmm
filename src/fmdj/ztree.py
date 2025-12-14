@@ -158,6 +158,9 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> NewTreeHierarchy:
     
     ispl_n2l, ispl_n2n = jax.lax.fori_loop(1, nlevels, handle_level, (ispl_n2l, ispl_n2n))
 
+    # for i in range(1, nlevels):
+    #     ispl_n2l, ispl_n2n = handle_level(i, (ispl_n2l, ispl_n2n))
+
     # Check that the allocation was big enough
     def alloc_err(filled, size):
         raise RuntimeError(f"Tree allocation too small: filled {filled}, size {size}")
@@ -168,7 +171,12 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> NewTreeHierarchy:
     )
 
     ispl_n2p = ispl[ispl_n2l.data] # node to particle relation
+
+    # We can handle all levels at once for node geometry:
     lvl, geom_cent, ext = get_node_geometry(part.pos, ispl_n2p[:-1], ispl_n2p[1:], num=ispl_n2l.nfilled()-1)
+    # However, the splits are discontinuous at level boundaries. We have to delete the extra entries
+    lvl = jnp.delete(lvl, ispl_n2l.ispl[1:-1]-1, assume_unique_indices=True)
+    geom_cent = jnp.delete(geom_cent, ispl_n2l.ispl[1:-1]-1, axis=0, assume_unique_indices=True)
 
     # Can predict the shapes of further packed arrays
     leaf_array_spl = cumsum_starting_with_zero(ispl_n2l.ispl[1:]- ispl_n2l.ispl[:-1] - 1)
@@ -185,15 +193,16 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> NewTreeHierarchy:
         npos = PackedArray(posm.pos, ispl=leaf_array_spl, fill_values=jnp.nan)
         nmass = PackedArray(posm.mass, ispl=leaf_array_spl, fill_values=jnp.nan)
 
-        mass_cent, nmass, _ = jax.lax.fori_loop(1, nlevels, handle_mcent_level, (npos, nmass, posm))
+        nmass_cent, nmass, _ = jax.lax.fori_loop(1, nlevels, handle_mcent_level, (npos, nmass, posm))
     else:
-        mass_cent = None
+        nmass_cent, nmass = None, None
 
     th = NewTreeHierarchy(
         ispl_n2n, ispl_n2l,
         lvl = PackedArray(lvl, leaf_array_spl, fill_values=-1000),
         geom_cent = PackedArray(geom_cent, leaf_array_spl, fill_values=jnp.nan),
-        mass_cent = mass_cent
+        mass = nmass,
+        mass_cent = nmass_cent
     )
     
     return th
