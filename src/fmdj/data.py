@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Iterator
 from .tools import cumsum_starting_with_zero, inverse_of_splits, offset_sum, masked_prefix_sum
 
 def static_field(*args, **kwargs):
@@ -155,25 +155,39 @@ class NewTreeHierarchy():
     mass: PackedArray | None = None
     mass_cent: PackedArray | None = None
 
+    plane_sizes: List[int] = static_field(default_factory=list)
+
     def center(self) -> PackedArray:
         if self.mass_cent is not None:
             return self.mass_cent
         else:
             return self.geom_cent
         
-    def get_tree_plane(self, level: int) -> TreePlane:
-        ispl_n2p = self.ispl_n2n.get(0)[self.ispl_n2l.get(level)]
+    def get_tree_plane(self, level: int, size=None) -> TreePlane:
+        if size is None:
+            size = self.plane_sizes[level]
+
+        ispl_n2p = self.ispl_n2n.get(0)[self.ispl_n2l.get(level, size)]
         if self.mass_cent is not None:
-            mass_cent = PosMass(self.mass_cent.get(level), self.mass.get(level))
+            mass_cent = PosMass(self.mass_cent.get(level, size), self.mass.get(level, size))
+        else:
+            mass_cent = None
         return TreePlane(
-            ispl = self.ispl_n2n.get(level),
+            ispl = self.ispl_n2n.get(level, size+1),
             npart = ispl_n2p[1:] - ispl_n2p[:-1],
-            lvl = self.lvl.get(level),
-            geom_cent = self.geom_cent.get(level),
+            lvl = self.lvl.get(level, size),
+            geom_cent = self.geom_cent.get(level, size),
             nnodes = self.lvl.num(level),
             around_com = self.mass_cent is not None,
             mass_cent = mass_cent
         )
+    
+    def num_planes(self) -> int:
+        return len(self.ispl_n2l.ispl) - 1
+    
+    def planes(self) -> Iterator[TreePlane]:
+        for level in range(self.num_planes()):
+            yield self.get_tree_plane(level)
 
 @jax.tree_util.register_dataclass
 @dataclass

@@ -78,7 +78,6 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
 
     loc, ilist = jb.measure(fn_jit=fmdj.fmm.evaluate_interaction_hierarchy.jit, 
                             th=th, mph=mph, cfg=cfg, tag="node2node")[1]
-    parent = th[0].icoarse_of_fine()
     phif = jb.measure(fn_jit=fmdj.fmm.shift_local_to_children.jit, 
                       ispl=th[0].ispl, loc=loc, xnode=th[0].center(), xchild=pos_mass_z.pos,
                       cfg=cfg, pout=1,tag="loc2loc")[1]

@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 from .config import Config
 from .data import TreePlane, PosMass, InteractionList, dense_interaction_list, LocalExpansion
-from .ztree import pos_zorder_sort, build_tree_hierarchy
+from .ztree import pos_zorder_sort, build_tree_hierarchy, new_build_tree_hierarchy
 from .multipoles import shift_local_to_children, build_multipole_hierarchy, local_readout_pos_vjp, p_of_num_multi, shift_local_to_children_vjp_x
 
 import fmdj_cuda.ffi_fmm as ffi_fmm
@@ -256,11 +256,12 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jnp.ndarray | None = None, c
     if mpz is None:
         mpz = partz.mass
 
-    thi,th = build_tree_hierarchy(jax.lax.stop_gradient(partz), cfg)
+    th = new_build_tree_hierarchy(jax.lax.stop_gradient(partz), cfg)
+    tps = list(th.planes())
 
-    loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg=cfg)
+    loc_node_node, ilist = evaluate_node_node_fmm(partz, tps, cfg=cfg)
 
-    loc_leaf_leaf = grouped_force_and_pot(partz, th[0].ispl, jax.lax.stop_gradient(ilist), cfg=cfg)
+    loc_leaf_leaf = grouped_force_and_pot(partz, tps[0].ispl, jax.lax.stop_gradient(ilist), cfg=cfg)
     loc = loc_leaf_leaf + loc_node_node
 
     return LocalExpansion(loc * cfg.G())

@@ -129,7 +129,7 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> NewTreeHierarchy:
     npart_node = ispl[rbound] - ispl[lbound]
 
     nlevels = np.log(len(ispl) / cfg.fmm.stop_coarsen) / np.log(cfg.fmm.coarse_fac)
-    nlevels = np.maximum(int(np.ceil(nlevels)), 0)
+    nlevels = np.maximum(int(np.ceil(nlevels)), 1)
 
     alloc_size = int(len(ispl) * cfg.fmm.alloc_fac_tree)
     
@@ -157,9 +157,6 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> NewTreeHierarchy:
         return ispl_n2l, ispl_n2n
     
     ispl_n2l, ispl_n2n = jax.lax.fori_loop(1, nlevels, handle_level, (ispl_n2l, ispl_n2n))
-
-    # for i in range(1, nlevels):
-    #     ispl_n2l, ispl_n2n = handle_level(i, (ispl_n2l, ispl_n2n))
 
     # Check that the allocation was big enough
     def alloc_err(filled, size):
@@ -197,12 +194,15 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> NewTreeHierarchy:
     else:
         nmass_cent, nmass = None, None
 
+    plane_sizes = [int(alloc_size / (cfg.fmm.coarse_fac ** i)) for i in range(nlevels)]
+
     th = NewTreeHierarchy(
         ispl_n2n, ispl_n2l,
         lvl = PackedArray(lvl, leaf_array_spl, fill_values=-1000),
         geom_cent = PackedArray(geom_cent, leaf_array_spl, fill_values=jnp.nan),
         mass = nmass,
-        mass_cent = nmass_cent
+        mass_cent = nmass_cent,
+        plane_sizes = plane_sizes
     )
     
     return th
