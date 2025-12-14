@@ -132,7 +132,7 @@ get_node_geometry.jit = jax.jit(get_node_geometry)
 #                                      Tree Building Functions                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
+def build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
     ispl =  create_coarse_leaves(part.pos, leaf_size=cfg.fmm.max_leaf_size, alloc_fac=cfg.fmm.alloc_fac_nodes)
 
     nleaves = jnp.argmax(ispl)
@@ -229,4 +229,4 @@ def new_build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
     )
     
     return th
-new_build_tree_hierarchy.jit = jax.jit(new_build_tree_hierarchy, static_argnames=['cfg'])
+build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg'])
