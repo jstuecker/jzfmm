@@ -157,6 +157,12 @@ class TreeHierarchy():
 
     plane_sizes: List[int] = static_field(default_factory=list)
 
+    def npart(self, level: int, size=None) -> jnp.ndarray:
+        if size is None:
+            size = self.plane_sizes[level]
+        ispl_n2p = self.ispl_n2n.get(0)[self.ispl_n2l.get(level, size+1)]
+        return ispl_n2p[1:] - ispl_n2p[:-1]
+
     def center(self) -> PackedArray:
         if self.mass_cent is not None:
             return self.mass_cent
