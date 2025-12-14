@@ -1,5 +1,5 @@
-#ifndef CUSTOM_JAX_MULTIPOLES_H
-#define CUSTOM_JAX_MULTIPOLES_H
+#ifndef MULTIPOLES_H
+#define MULTIPOLES_H
 
 #include <math_constants.h>
 
@@ -533,4 +533,4 @@ __device__ __forceinline__ void m2l_translator(
     }
 }
 
-#endif // CUSTOM_JAX_MULTIPOLES_H
+#endif // MULTIPOLES_H

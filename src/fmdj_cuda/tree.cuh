@@ -1,5 +1,5 @@
-#ifndef CUSTOM_JAX_TREE_H
-#define CUSTOM_JAX_TREE_H
+#ifndef TREE_H
+#define TREE_H
 
 #include <cub/cub.cuh>
 #include <math_constants.h>
@@ -151,8 +151,6 @@ __global__ void SummarizeLeaves(
     }
 }
 
-#endif // CUSTOM_JAX_TREE_H
-
 /* ---------------------------------------------------------------------------------------------- */
 /*                                          Tree Building                                         */
 /* ---------------------------------------------------------------------------------------------- */
@@ -290,3 +288,5 @@ __global__ void GetNodeGeometry(
     center[idx] = node_ext.center;
     extent[idx] = node_ext.extent;
 }
+
+#endif // TREE_H

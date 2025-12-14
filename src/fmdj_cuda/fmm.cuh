@@ -1,5 +1,5 @@
-#ifndef CUSTOM_JAX_FMM_H
-#define CUSTOM_JAX_FMM_H
+#ifndef FMM_H
+#define FMM_H
 
 #include "multipoles.cuh"
 #include "common/math.cuh"
