@@ -64,7 +64,7 @@ def interprete_parameter_list(node_param: Node, txt: str) -> dict[str, ParamInfo
     for c in node_param.named_children:
         if c.type == "comment": continue
 
-        assert c.type == "parameter_declaration"
+        assert (c.type == "parameter_declaration") or (c.type == "optional_parameter_declaration")
 
         pinfo = ParamInfo()
 
