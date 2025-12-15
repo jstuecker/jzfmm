@@ -17,3 +17,13 @@ def hernquist(N, a=1., M=1., anisotropy=0., seed=None):
     prof = aegis.profiles.HernquistProfile(a=a, M=M, anisotropy=anisotropy)
     pos, vel, mass = prof.sample_particles(N, result="pos_vel_m", rpmin=1e-6*a, ramax=1e6*a)
     return fmdj.data.Particles(pos, mass, vel)
+
+def discodj_sim(res, zsort=False):
+    from discodj_examples.simulations import disco_sim
+    pos = disco_sim(res=res, res_pm=res)[1].reshape(-1,3)
+    if zsort:
+        pos = fmdj.ztree.pos_zorder_sort(pos)[0]
+
+    mass = jnp.ones(len(pos), dtype=pos.dtype) / res**3
+    return fmdj.data.PosMass(pos, mass)
+discodj_sim.jit = jax.jit(discodj_sim, static_argnames=("res", "zsort"))
