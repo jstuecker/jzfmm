@@ -95,7 +95,7 @@ class PackedArray:
         return PackedArray(new_data, ispl=new_spl, fill_values=new_fill_vals)
     
     def size(self):
-        return self.data.size
+        return len(self.data)
     
     def num(self, level):
         return self.ispl[level + 1] - self.ispl[level]
@@ -194,6 +194,9 @@ class TreeHierarchy():
     def planes(self) -> Iterator[TreePlane]:
         for level in range(self.num_planes()):
             yield self.get_tree_plane(level)
+
+    def num(self, level) -> int:
+        return self.lvl.num(level)
 
 @jax.tree_util.register_dataclass
 @dataclass
