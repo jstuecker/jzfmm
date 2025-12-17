@@ -6,7 +6,7 @@ from typing import Tuple
 from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
 from .data import TreePlane, PosMass, PackedArray, TreeHierarchy
-from .config import Config
+from .config import Config, CommunicationConfig
 from .multipoles import center_of_mass
 from .tools import cumsum_starting_with_zero
 
@@ -145,6 +145,63 @@ def get_node_geometry(posz: jnp.ndarray, lbound: jnp.ndarray, rbound: jnp.ndarra
 
     return lvl, node_cent, node_ext
 get_node_geometry.jit = jax.jit(get_node_geometry)
+
+# ------------------------------------------------------------------------------------------------ #
+#                                       Domain Decomposition                                       #
+# ------------------------------------------------------------------------------------------------ #
+
+
+def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig, nparttot: int = None):
+    from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
+
+    axis_name = cfg_com.axis_name
+    mesh = jax.sharding.Mesh(jax.devices(), ('gpus',), axis_types=(AxisType.Auto))
+    sharding = NamedSharding(mesh, P('gpus'))
+
+    ndev = len(jax.devices())
+
+    valid = ~jnp.insan(pos)
+    npart = jnp.sum(valid[...,0] & valid[...,1] & valid[...,2])
+
+    if nparttot is None:
+        nparttot = jax.lax.psum(npart, axis_name=axis_name)
+
+    # Sample based domain decomposition
+    key = jax.random.key(0)
+    possamp = jax.random.choice(key, pos, shape=(cfg_com.zsort_domain_samples,))
+    posall = jax.lax.all_gather(possamp, axis_name=axis_name, tiled=True)
+    xpivot = pos_zorder_sort(posall)[0]
+    xpivot = jnp.pad(xpivot[1:,0,:], ((1,1), (0,0)), constant_values=jnp.inf).at[0].set(-jnp.inf)
+
+    # Now organize and determine which chunks need to be send to each rank
+    posz, idz = pos_zorder_sort(pos)
+    spl = search_sorted_z(posz, xpivot)
+
+    def err(n1, n2):
+        raise MemoryError(f"Size of buffer is too small: need {n1}, have {n2}.\n")
+    nneed = jnp.max(spl[1:] - spl[:-1])
+    spl = spl + conditional_callback(nneed > pos.shape[0], err, nneed, pos.shape[0])
+
+    from .comm import all_to_all_with_splits
+    
+    pos = all_to_all_with_splits(posz, spl, jnp.full_like(posz, jnp.nan), axis_name=axis_name)
+    posz, idz = pos_zorder_sort(pos)
+
+    # We have posz globally and locally in z-order now, however we can put it in perfect balance now
+    
+    
+    
+    # isamp = 
+
+
+    # npart = nparttot // ndev
+    # pos = jax.random.uniform(jax.random.key(0), (ndev,npart,3))
+    # pos = pos.at[:,3:5].set(jnp.nan) # some particles are fake
+    # posz = jnp.stack([fmdj.ztree.pos_zorder_sort(pos[i])[0] for i in range(ndev)], axis=0)
+
+    npart = jnp.sum(~jnp.isnan(posz[:,:,0]), axis=1).min()
+
+
 
 # ------------------------------------------------------------------------------------------------ #
 #                                      Tree Building Functions                                     #
