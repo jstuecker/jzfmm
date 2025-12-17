@@ -47,6 +47,31 @@ def get_pos(N=5555, xmin=0., xmax=1., seed=1):
     
     return pos0
 
+def test_zsort_infinities():
+    xin = jnp.array([
+        [0.1, 0.1, 0.5],
+        [jnp.nan, jnp.nan, jnp.nan],
+        [0.5, 0.1, 0.1],
+        [jnp.inf, 0.2, jnp.inf],
+        [-0.7, jnp.inf, 0.],
+        [-jnp.inf, -jnp.inf, -jnp.inf],
+        [0.3, 0.3, 0.3]
+    ])
+    xout = jnp.array([
+        [-jnp.inf, -jnp.inf, -jnp.inf],
+        [-0.7,  jnp.inf,  0. ],
+        [ 0.3,  0.3,  0.3],
+        [ 0.1,  0.1,  0.5],
+        [ 0.5,  0.1,  0.1],
+        [ jnp.inf,  0.2,  jnp.inf],
+        [ jnp.nan,  jnp.nan,  jnp.nan]
+    ])
+
+    xz = fmdj.ztree.pos_zorder_sort.jit(xin)[0]
+
+    assert jnp.all(xout[:-1] == xz[:-1])
+    assert jnp.all(jnp.isnan(xz[-1]))  # have to split of nan comparison since nan != nan
+
 def test_search_sorted_z():
     posz, idz = fmdj.ztree.pos_zorder_sort.jit(get_pos(1387, xmin=0.1, xmax=0.4, seed=0))
     posz2, idz2 = fmdj.ztree.pos_zorder_sort.jit(get_pos(2222, xmin=0.1, xmax=0.4, seed=2))

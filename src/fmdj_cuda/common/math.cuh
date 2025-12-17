@@ -245,6 +245,11 @@ __device__ __forceinline__ float2 float_common_ext(float a, float b) {
 // Whether pos1 should appear before pos2 in a z-curve ordering
 __device__ __forceinline__ bool z_pos_less(float3 pos1, float3 pos2)
 {
+    const bool nan1 = isnan(pos1.x) || isnan(pos1.y) || isnan(pos1.z);
+    const bool nan2 = isnan(pos2.x) || isnan(pos2.y) || isnan(pos2.z);
+    if (nan1) return false;
+    if (nan2) return true;
+
     int msb_x = float_xor_msb(pos1.x, pos2.x);
     int msb_y = float_xor_msb(pos1.y, pos2.y);
     int msb_z = float_xor_msb(pos1.z, pos2.z);
