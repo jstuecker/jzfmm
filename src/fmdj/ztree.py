@@ -165,10 +165,11 @@ def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig):
     nparttot = jax.lax.psum(npart, axis_name=axis_name)
 
     # Sample based domain decomposition
+    nsamp = cfg_com.zsort_domain_samples
     key = jax.random.key(0)
-    isamp = jax.random.randint(key, shape=(cfg_com.zsort_domain_samples,), minval=0, maxval=npart)
+    isamp = jax.random.randint(key, shape=(nsamp,), minval=0, maxval=npart)
     posall = jax.lax.all_gather(pos[isamp], axis_name=axis_name, tiled=True)
-    xpivot = pos_zorder_sort(posall)[0]
+    xpivot = pos_zorder_sort(posall)[0][nsamp::nsamp]
     xpivot = jnp.pad(xpivot, ((1,1), (0,0)), constant_values=jnp.inf).at[0].set(-jnp.inf)
 
     # Now organize and determine which chunks need to be send to each rank
@@ -181,7 +182,7 @@ def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig):
     spl = spl + conditional_callback(nneed > pos.shape[0], err, nneed, pos.shape[0])
 
     from .comm import all_to_all_with_splits, global_splits
-    
+
     pos = all_to_all_with_splits(posz, spl, jnp.full_like(posz, jnp.nan), axis_name=axis_name)
     posz, idz = pos_zorder_sort(pos)
 
@@ -191,6 +192,7 @@ def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig):
     spl_have = global_splits(npart, axis_name=axis_name)
     spl_target = (jnp.arange(0, ndev+1) * (nparttot // ndev)).at[-1].set(nparttot)
     spl_send = jnp.clip(spl_target - spl_have[rank], 0, npart)
+
     posz = all_to_all_with_splits(posz, spl_send, jnp.full_like(posz, jnp.nan), axis_name=axis_name)
 
     return posz

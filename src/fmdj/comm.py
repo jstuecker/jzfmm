@@ -49,8 +49,8 @@ def conditional_callback(flag, f, *args, **kwargs):
     return res
 
 def global_splits(n, axis_name="gpus"):
-    jax.lax.all_gather(n, axis_name)
-    return jnp.pad(jnp.cumsum(n), (1,0), constant_values=0)
+    alln = jax.lax.all_gather(n, axis_name)
+    return jnp.pad(jnp.cumsum(alln), (1,0), constant_values=0)
 
 def all_to_all_with_splits(x, ispl, output, axis_name="gpus", buf_size=1024, mode="auto", verify=True, copy_self=True):
     """all_to_all communication where we send to rank i: x[ispl[i]:ispl[i+1]]
