@@ -15,6 +15,8 @@ Fast Multipoles Done with Jax
 
 # Installation
 ## Prequesites:
+It is easy to mess this up. So I recommend using a virtual python environment or a conda environment for installation.
+
 Which CUDA version you can use depends on the GPU drivers that are installed on your system. If you install the newest CUDA libraries via pip/conda they will not always support your possibly outdated driver version. Therefore, as a first step it is important to get aware of the maximal CUDA version that you can install. For this check your driver version with
 ```
 nvidia-smi

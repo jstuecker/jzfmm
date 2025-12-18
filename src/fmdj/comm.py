@@ -48,6 +48,10 @@ def conditional_callback(flag, f, *args, **kwargs):
 
     return res
 
+def global_splits(n, axis_name="gpus"):
+    jax.lax.all_gather(n, axis_name)
+    return jnp.pad(jnp.cumsum(n), (1,0), constant_values=0)
+
 def all_to_all_with_splits(x, ispl, output, axis_name="gpus", buf_size=1024, mode="auto", verify=True, copy_self=True):
     """all_to_all communication where we send to rank i: x[ispl[i]:ispl[i+1]]
     
@@ -70,7 +74,7 @@ def all_to_all_with_splits(x, ispl, output, axis_name="gpus", buf_size=1024, mod
             raise MemoryError(f"The receiving buffer is too small, need={need}, have={have}")
         need = jnp.sum(recv_sizes)
         have = len(output)
-        recv_sizes = recv_sizes + conditional_callback(need >= have, myerr, need, have)
+        recv_sizes = recv_sizes + conditional_callback(need > have, myerr, need, have)
 
     if copy_self:
         # avoid communication for self i/o
@@ -78,6 +82,7 @@ def all_to_all_with_splits(x, ispl, output, axis_name="gpus", buf_size=1024, mod
         iout = jnp.arange(len(output)) #+ output_offsets[rank]
         iin = jnp.arange(len(output)) + input_offsets[rank] - output_offsets[rank]
         sel = (iout >= output_offsets[rank]) & (iout < output_offsets[rank] + send_sizes[rank])
+        sel = jnp.reshape(sel, (len(sel),) + (1,)*(x.ndim -1))
 
         output = jnp.where(sel, x[iin], output)
         send_sizes = send_sizes.at[rank].set(0)

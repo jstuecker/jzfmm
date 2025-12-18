@@ -150,28 +150,26 @@ get_node_geometry.jit = jax.jit(get_node_geometry)
 #                                       Domain Decomposition                                       #
 # ------------------------------------------------------------------------------------------------ #
 
+def determine_npart(pos):
+    """Determines the number of valid particles (that are not nan)"""
+    valid = ~jnp.isnan(pos)
+    return jnp.sum(valid[...,0] & valid[...,1] & valid[...,2])
 
-def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig, nparttot: int = None):
-    from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
-
+def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig):
     axis_name = cfg_com.axis_name
-    mesh = jax.sharding.Mesh(jax.devices(), ('gpus',), axis_types=(AxisType.Auto))
-    sharding = NamedSharding(mesh, P('gpus'))
 
-    ndev = len(jax.devices())
+    rank = jax.lax.axis_index(axis_name=axis_name)
+    ndev = jax.lax.axis_size(axis_name=axis_name)
 
-    valid = ~jnp.insan(pos)
-    npart = jnp.sum(valid[...,0] & valid[...,1] & valid[...,2])
-
-    if nparttot is None:
-        nparttot = jax.lax.psum(npart, axis_name=axis_name)
+    npart = determine_npart(pos)
+    nparttot = jax.lax.psum(npart, axis_name=axis_name)
 
     # Sample based domain decomposition
     key = jax.random.key(0)
-    possamp = jax.random.choice(key, pos, shape=(cfg_com.zsort_domain_samples,))
-    posall = jax.lax.all_gather(possamp, axis_name=axis_name, tiled=True)
+    isamp = jax.random.randint(key, shape=(cfg_com.zsort_domain_samples,), minval=0, maxval=npart)
+    posall = jax.lax.all_gather(pos[isamp], axis_name=axis_name, tiled=True)
     xpivot = pos_zorder_sort(posall)[0]
-    xpivot = jnp.pad(xpivot[1:,0,:], ((1,1), (0,0)), constant_values=jnp.inf).at[0].set(-jnp.inf)
+    xpivot = jnp.pad(xpivot, ((1,1), (0,0)), constant_values=jnp.inf).at[0].set(-jnp.inf)
 
     # Now organize and determine which chunks need to be send to each rank
     posz, idz = pos_zorder_sort(pos)
@@ -182,24 +180,20 @@ def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig, nparttot: 
     nneed = jnp.max(spl[1:] - spl[:-1])
     spl = spl + conditional_callback(nneed > pos.shape[0], err, nneed, pos.shape[0])
 
-    from .comm import all_to_all_with_splits
+    from .comm import all_to_all_with_splits, global_splits
     
     pos = all_to_all_with_splits(posz, spl, jnp.full_like(posz, jnp.nan), axis_name=axis_name)
     posz, idz = pos_zorder_sort(pos)
 
-    # We have posz globally and locally in z-order now, however we can put it in perfect balance now
-    
-    
-    
-    # isamp = 
+    # We have posz globally and locally in z-order now
+    # Let's do another communication step to improve the balance
+    npart = determine_npart(posz)
+    spl_have = global_splits(npart, axis_name=axis_name)
+    spl_target = (jnp.arange(0, ndev+1) * (nparttot // ndev)).at[-1].set(nparttot)
+    spl_send = jnp.clip(spl_target - spl_have[rank], 0, npart)
+    posz = all_to_all_with_splits(posz, spl_send, jnp.full_like(posz, jnp.nan), axis_name=axis_name)
 
-
-    # npart = nparttot // ndev
-    # pos = jax.random.uniform(jax.random.key(0), (ndev,npart,3))
-    # pos = pos.at[:,3:5].set(jnp.nan) # some particles are fake
-    # posz = jnp.stack([fmdj.ztree.pos_zorder_sort(pos[i])[0] for i in range(ndev)], axis=0)
-
-    npart = jnp.sum(~jnp.isnan(posz[:,:,0]), axis=1).min()
+    return posz
 
 
 
