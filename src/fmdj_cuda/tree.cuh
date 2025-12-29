@@ -55,7 +55,7 @@ std::string PosZorderSort(
     // However, below we throw an error if our assumption ever turns out wrong.
 
     // find out the required storage size
-    size_t required_storage_bytes;
+    size_t required_storage_bytes = 0;
     cub::DeviceMergeSort::SortKeys<PosId*, int64_t, PosIdLess>(nullptr, required_storage_bytes, pos_id_out, size, PosIdLess());
     
     // Check if the provided buffer is large enough
@@ -302,6 +302,99 @@ __global__ void FindNodeBoundaries(
     nodes_levels[idx] = target_level;
     nodes_lbound[idx] = lbound;
     nodes_rbound[idx] = rbound;
+}
+
+/* ---------------------------------------------------------------------------------------------- */
+/*                                         Patching Nodes                                         */
+/* ---------------------------------------------------------------------------------------------- */
+
+__global__ void KernelInitLevels(
+    const int* irange,
+    int32_t* index_of_lvl,
+    const int lvl_min,
+    const int lvl_max
+) {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if(idx <= lvl_max - lvl_min)
+        index_of_lvl[idx] = irange[1];
+}
+
+__global__ void KernelFindFirstOfEachLevel(
+    const float3* pos_ref,
+    const int* irange,
+    const float3* posz,
+    int32_t* index_of_lvl,
+    const int lvl_min,
+    const int lvl_max
+) {
+    // Finds for each level the first point that has a higher bit difference
+    // to a reference point than the considered level.
+    // This method is useful for patching together domains.
+
+    int idx = irange[0] + blockDim.x * blockIdx.x + threadIdx.x;
+    if(idx >= irange[1])
+        return;
+
+    float3 x0 = pos_ref[0];
+    float3 x1 = posz[idx];
+
+    int lvl = msb_diff_level(x0, x1);
+
+    int ilvl = max(min(lvl, lvl_max) - lvl_min, 0);
+    if((index_of_lvl[ilvl] >= idx) || (index_of_lvl == 0)) {
+        atomicMin(&index_of_lvl[ilvl], idx);
+    }
+}
+
+__global__ void KernelPostProcessLevels(
+    const int* irange,
+    int32_t* index_of_lvl,
+    const int lvl_min,
+    const int lvl_max
+) {
+    int ilvl = blockDim.x * blockIdx.x + threadIdx.x;
+    int nlevels = lvl_max - lvl_min + 1;
+
+    if(ilvl > lvl_max - lvl_min)
+        return;
+
+    int idx = index_of_lvl[ilvl];
+    
+    for(int i=nlevels-1; i>=ilvl; i--) {
+        idx = min(idx, index_of_lvl[i]); // Larger level differences also affect our level, so adapt it
+    }
+
+    index_of_lvl[ilvl] = idx;
+}
+
+std::string FindFirstOfEachLevel(
+    cudaStream_t stream, 
+    const float3* pos_ref,
+    const int* irange,
+    const float3* posz,
+    int32_t* index_of_lvl,
+    const int size,
+    const size_t block_size
+) {
+    int lvl_min = -450;
+    int lvl_max = 388;
+
+    // Initialize indices 0, 1, 2, ..., size-1
+    int nlevels = lvl_max - lvl_min + 1;
+
+    KernelInitLevels<<< div_ceil(nlevels, block_size), block_size, 0, stream>>>(
+        irange, index_of_lvl, lvl_min, lvl_max
+    );
+
+    KernelFindFirstOfEachLevel<<< div_ceil(size, block_size), block_size, 0, stream>>>(
+        pos_ref, irange, posz, index_of_lvl, lvl_min, lvl_max
+    );
+
+    KernelPostProcessLevels<<< div_ceil(nlevels, block_size), block_size, 0, stream>>>(
+        irange, index_of_lvl, lvl_min, lvl_max
+    );
+
+    return std::string();
 }
 
 /* ---------------------------------------------------------------------------------------------- */

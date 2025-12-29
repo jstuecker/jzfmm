@@ -15,6 +15,7 @@ jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platf
 jax.ffi.register_ffi_target("FindNodeBoundaries", ffi_tree.FindNodeBoundaries(), platform="CUDA")
 jax.ffi.register_ffi_target("GetNodeGeometry", ffi_tree.GetNodeGeometry(), platform="CUDA")
 jax.ffi.register_ffi_target("SearchSortedZ", ffi_tree.SearchSortedZ(), platform="CUDA")
+jax.ffi.register_ffi_target("FindFirstOfEachLevel", ffi_tree.FindFirstOfEachLevel(), platform="CUDA")
 
 
 # ------------------------------------------------------------------------------------------------ #
@@ -94,8 +95,10 @@ def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int
     nleaf = jnp.ones((posz.shape[0],), dtype=jnp.int32)
     xnleaf = jnp.concatenate((posz, nleaf[:,None].view(jnp.float32)), axis=-1)
 
+    npart = jnp.sum(~jnp.isnan(posz[...,0]))
+
     flag_split = jax.ffi.ffi_call("SummarizeLeaves", (out_type,), vmap_method="sequential")(
-        xnleaf, len(posz), max_size=np.int32(leaf_size),
+        xnleaf, npart, max_size=np.int32(leaf_size),
         block_size=np.uint64(block_size), scan_size=np.int32(leaf_size+1))[0]
     
     max_new_leaves = int(div_ceil(len(posz) * alloc_fac, np.maximum(leaf_size//2, 1)))
@@ -111,7 +114,7 @@ def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int
         nfilled, max_new_leaves+1,
     )
     
-    splits = jnp.where(flag_split > -1000, size=max_new_leaves+1, fill_value=len(posz))[0]
+    splits = jnp.where(flag_split > -1000, size=max_new_leaves+1, fill_value=npart)[0]
 
     return splits
 create_coarse_leaves.jit = jax.jit(create_coarse_leaves, static_argnames=("leaf_size", "block_size"))
@@ -145,6 +148,18 @@ def get_node_geometry(posz: jnp.ndarray, lbound: jnp.ndarray, rbound: jnp.ndarra
 
     return lvl, node_cent, node_ext
 get_node_geometry.jit = jax.jit(get_node_geometry)
+
+def find_first_of_each_level(posz, imin=0, imax=None, block_size: int = 64):
+    nlevels = 388 + 450 + 1
+    out_types = (jax.ShapeDtypeStruct((nlevels,), jnp.int32),)
+
+    irange = jnp.array([imin, imax])
+
+    idx_of_lvl = jax.ffi.ffi_call("FindFirstOfEachLevel", out_types)(
+        posz[0], irange, posz, block_size=np.uint64(block_size)
+    )
+
+    return idx_of_lvl
 
 # ------------------------------------------------------------------------------------------------ #
 #                                       Domain Decomposition                                       #

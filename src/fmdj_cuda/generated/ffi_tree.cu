@@ -232,6 +232,54 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
+/*                             FFI call to CUDA kernel: FindFirstOfEachLevel                      */
+/* ---------------------------------------------------------------------------------------------- */
+
+ffi::Error FindFirstOfEachLevelFFIHost(
+    cudaStream_t stream,
+    ffi::AnyBuffer pos_ref,
+    ffi::AnyBuffer irange,
+    ffi::AnyBuffer posz,
+    ffi::Result<ffi::AnyBuffer> index_of_lvl,
+    size_t block_size
+) {
+    int size = posz.element_count()/3;
+
+    // Now call our function
+    std::string result = FindFirstOfEachLevel(
+        stream,
+        reinterpret_cast<float3*>(pos_ref.untyped_data()),
+        reinterpret_cast<int*>(irange.untyped_data()),
+        reinterpret_cast<float3*>(posz.untyped_data()),
+        reinterpret_cast<int32_t*>(index_of_lvl->untyped_data()),
+        size,
+        block_size
+    );
+    // Check if the function returned an error string
+    if (!result.empty()) {
+        return ffi::Error::Internal(result);
+    }
+
+    cudaError_t last_error = cudaGetLastError();
+    if (last_error != cudaSuccess) {
+        return ffi::Error::Internal(std::string("CUDA error: ") + cudaGetErrorString(last_error));
+    }
+    return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    FindFirstOfEachLevelFFI, FindFirstOfEachLevelFFIHost,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<cudaStream_t>>()
+        .Arg<ffi::AnyBuffer>() // pos_ref
+        .Arg<ffi::AnyBuffer>() // irange
+        .Arg<ffi::AnyBuffer>() // posz
+        .Ret<ffi::AnyBuffer>() // index_of_lvl
+        .Attr<size_t>("block_size"),
+    {xla::ffi::Traits::kCmdBufferCompatible}
+);
+
+/* ---------------------------------------------------------------------------------------------- */
 /*                             FFI call to CUDA kernel: GetNodeGeometry                           */
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -304,5 +352,6 @@ NB_MODULE(ffi_tree, m) {
     m.def("SearchSortedZ", []() { return EncapsulateFfiCall(&SearchSortedZFFI); });
     m.def("SummarizeLeaves", []() { return EncapsulateFfiCall(&SummarizeLeavesFFI); });
     m.def("FindNodeBoundaries", []() { return EncapsulateFfiCall(&FindNodeBoundariesFFI); });
+    m.def("FindFirstOfEachLevel", []() { return EncapsulateFfiCall(&FindFirstOfEachLevelFFI); });
     m.def("GetNodeGeometry", []() { return EncapsulateFfiCall(&GetNodeGeometryFFI); });
 }
