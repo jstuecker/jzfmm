@@ -2,7 +2,6 @@ import jax
 import jax.numpy as jnp
 import pytest
 import fmdj
-import aegis
 
 def get_particles(N = 1024*1024):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (N, 3), dtype=jnp.float32) * 0.3
@@ -55,6 +54,7 @@ def particles_blob(npart):
 
 @pytest.fixture
 def particles_nfw(npart):
+    import aegis
     prof = aegis.profiles.NFWProfile(conc=10., r200c=10.)
     pos0, vel0, m = prof.sample_particles(npart, result="pos_vel_m", rpmin=1e-3, ramax=10.)
 
