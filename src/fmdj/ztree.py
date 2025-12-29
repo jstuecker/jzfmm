@@ -161,6 +161,9 @@ def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig):
     rank = jax.lax.axis_index(axis_name=axis_name)
     ndev = jax.lax.axis_size(axis_name=axis_name)
 
+    if ndev == 1:
+        return pos_zorder_sort(pos)[0]
+
     npart = determine_npart(pos)
     nparttot = jax.lax.psum(npart, axis_name=axis_name)
 

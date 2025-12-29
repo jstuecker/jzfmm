@@ -2,6 +2,39 @@ import jax
 import jax.numpy as jnp
 import pytest
 import fmdj
+import os
+import sys
+
+def _silence_process_output() -> None:
+    """
+    Redirect stdout/stderr to /dev/null at the OS FD level.
+    Also rebind sys.stdout/sys.stderr to avoid some Python-level oddities.
+    """
+    # Make Python less likely to buffer weirdly
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+    # Redirect low-level file descriptors (covers most output sources)
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull_fd, 1)  # stdout
+    os.dup2(devnull_fd, 2)  # stderr
+    os.close(devnull_fd)
+
+    # Rebind Python-level streams (some libs write to these objects directly)
+    sys.stdout = open(os.devnull, "w")
+    sys.stderr = open(os.devnull, "w")
+
+def pytest_configure(config):
+    try:
+        jax.distributed.initialize()
+    except ValueError as err:
+        print(f"Distributed mode not available ({err})")
+
+    if jax.process_index() != 0:
+        _silence_process_output()
 
 def get_particles(N = 1024*1024):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (N, 3), dtype=jnp.float32) * 0.3
@@ -64,3 +97,25 @@ def particles_nfw(npart):
     part.loc = fmdj.data.LocalExpansion(jnp.zeros((npart,4), dtype=jnp.float32))
 
     return part
+
+# ------------------------------------------------------------------------------------------------ #
+#                                       Multi GPU specific                                         #
+# ------------------------------------------------------------------------------------------------ #
+
+def pytest_report_header(config):
+    # Show once per pytest run (rank 0 only)
+    if jax.process_index() != 0:
+        return
+    return [
+        f"JAX processes: {getattr(jax, 'process_count', lambda: 1)()}",
+        f"JAX device_count: {jax.device_count()}",
+        f"JAX local_device_count: {jax.local_device_count()}",
+    ]
+
+def pytest_unconfigure(config):
+    """The final cleanup."""
+    try:
+        if hasattr(jax.distributed, 'shutdown'):
+            jax.distributed.shutdown()
+    except:
+        pass

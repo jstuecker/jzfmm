@@ -14,7 +14,7 @@ def pow2_upto(n: int) -> list[int]:
     return out
 
 _MAX = jax.device_count()          # devices visible to this process
-NDEVS = pow2_upto(_MAX)
+NDEVS = pow2_upto(_MAX)[::-1]
 
 def mk_pos(Ntot, alloc_fac=1.2, ndev=4):
     N = Ntot // ndev
@@ -43,7 +43,7 @@ def get_mesh(ndev=-1):
 @pytest.mark.parametrize("ndev", NDEVS)
 @pytest.mark.multi_gpu
 def bench_multi_zsort(jax_bench, ndev):
-    Ntot = 1024*1024*32
+    Ntot = 1024*1024*128
     
     pos = jax.jit(mk_pos(Ntot, alloc_fac=1.2, ndev=ndev))()
     fzs = jax.jit(mksort(ndev=ndev))
