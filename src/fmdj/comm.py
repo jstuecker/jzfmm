@@ -1,6 +1,7 @@
 from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
 import jax
 import jax.numpy as jnp
+from typing import Tuple
 
 #Some global variables
 
@@ -106,3 +107,13 @@ def all_to_all_with_splits(x, ispl, output, axis_name="gpus", buf_size=1024, mod
     if mode == "buffered":
         return ragged_all_to_all_through_buf(x, output, input_offsets, send_sizes, output_offsets, 
                                              recv_sizes, axis_name=axis_name, buf_size=buf_size)
+
+def get_rank_info() -> Tuple[int, int, str]:
+    mesh = jax.sharding.get_abstract_mesh()
+    assert len(mesh.axis_names) == 1, "Assuming only a single sharded axis"
+    axis_name = mesh.axis_names[0]
+
+    rank = jax.lax.axis_index(axis_name)
+    ndev = jax.lax.axis_size(axis_name)
+
+    return rank, ndev, axis_name

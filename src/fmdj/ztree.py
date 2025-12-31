@@ -9,6 +9,7 @@ from .data import TreePlane, PosMass, PackedArray, TreeHierarchy
 from .config import Config, CommunicationConfig
 from .multipoles import center_of_mass
 from .tools import cumsum_starting_with_zero
+from .comm import get_rank_info
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
@@ -215,9 +216,8 @@ def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig):
 
     return posz
 
-def distributed_define_leaves(posz: jnp.ndarray, leaf_size=32, axis_name="gpus"):
-    rank = jax.lax.axis_index(axis_name)
-    ndev = jax.lax.axis_size(axis_name)
+def distributed_define_leaves(posz: jnp.ndarray, leaf_size=32):
+    rank, ndev, axis_name = get_rank_info()
 
     nfilled = jnp.sum(~jnp.isnan(posz[...,0]))
 

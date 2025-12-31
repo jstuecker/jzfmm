@@ -30,7 +30,7 @@ def _silence_process_output() -> None:
 def pytest_configure(config):
     try:
         jax.distributed.initialize()
-    except ValueError as err:
+    except (ValueError, RuntimeError) as err:
         print(f"Distributed mode not available ({err})")
 
     if jax.process_index() != 0:
