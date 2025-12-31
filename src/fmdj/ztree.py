@@ -247,7 +247,12 @@ def distributed_define_leaves(posz: jnp.ndarray, leaf_size=32):
     posz = jnp.roll(posz, -ndel, axis=0)
 
     # adjust the calculated splits
+    ndelspl = jnp.sum(ispl < ndel)
     ispl = jnp.maximum(ispl - ndel, 0)
+    #if a full leaf at the beginning was removed, their may be two leading zeros, remove one
+    nzeros = jnp.sum(ispl[0:2] == 0)
+    ispl = ispl.at[0].set(jnp.where(nzeros > 1, ispl[-1], ispl[0]))
+    ispl = jnp.roll(ispl, -(nzeros-1), axis=0)
 
     return posz, ispl
 
