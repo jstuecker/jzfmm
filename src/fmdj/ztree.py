@@ -150,15 +150,18 @@ def get_node_geometry(posz: jnp.ndarray, lbound: jnp.ndarray, rbound: jnp.ndarra
     return lvl, node_cent, node_ext
 get_node_geometry.jit = jax.jit(get_node_geometry)
 
-def find_first_of_each_level(posz, imin=0, imax=None, block_size: int = 64):
+def find_first_of_each_level(posz, imin=0, imax=None, pos_ref=None, block_size: int = 64):
+    if pos_ref is None:
+        pos_ref = posz[imin]
+
     nlevels = 388 + 450 + 1
     out_types = (jax.ShapeDtypeStruct((nlevels,), jnp.int32),)
 
     irange = jnp.array([imin, imax])
 
     idx_of_lvl = jax.ffi.ffi_call("FindFirstOfEachLevel", out_types)(
-        posz[0], irange, posz, block_size=np.uint64(block_size)
-    )
+        pos_ref, irange, posz, block_size=np.uint64(block_size)
+    )[0]
 
     return idx_of_lvl
 

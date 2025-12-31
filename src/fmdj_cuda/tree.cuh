@@ -314,9 +314,9 @@ __global__ void KernelInitLevels(
     const int lvl_min,
     const int lvl_max
 ) {
-    int idx = blockDim.x * blockIdx.x + threadIdx.x;
-    if(idx <= lvl_max - lvl_min)
-        index_of_lvl[idx] = irange[1];
+    int ilvl = blockDim.x * blockIdx.x + threadIdx.x;
+    if(ilvl <= lvl_max - lvl_min)
+        index_of_lvl[ilvl] = irange[1];
 }
 
 __global__ void KernelFindFirstOfEachLevel(
@@ -341,7 +341,7 @@ __global__ void KernelFindFirstOfEachLevel(
     int lvl = msb_diff_level(x0, x1);
 
     int ilvl = max(min(lvl, lvl_max) - lvl_min, 0);
-    if((index_of_lvl[ilvl] >= idx) || (index_of_lvl == 0)) {
+    if(index_of_lvl[ilvl] > idx){
         atomicMin(&index_of_lvl[ilvl], idx);
     }
 }
