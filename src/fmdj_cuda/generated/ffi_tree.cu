@@ -182,6 +182,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 ffi::Error FindNodeBoundariesFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer pos_in,
+    ffi::AnyBuffer pos_boundary,
     ffi::AnyBuffer nleaves,
     ffi::Result<ffi::AnyBuffer> nodes_levels,
     ffi::Result<ffi::AnyBuffer> nodes_lbound,
@@ -196,6 +197,7 @@ ffi::Error FindNodeBoundariesFFIHost(
     // Build a bundled argument list for cudaLaunchKernel
     // For pointers we need to create a pointer to the pointer
     float3* pos_in_val = reinterpret_cast<float3*>(pos_in.untyped_data());
+    float3* pos_boundary_val = reinterpret_cast<float3*>(pos_boundary.untyped_data());
     int* nleaves_val = reinterpret_cast<int*>(nleaves.untyped_data());
     int32_t* nodes_levels_val = reinterpret_cast<int32_t*>(nodes_levels->untyped_data());
     int32_t* nodes_lbound_val = reinterpret_cast<int32_t*>(nodes_lbound->untyped_data());
@@ -203,6 +205,7 @@ ffi::Error FindNodeBoundariesFFIHost(
 
     void* args[] = {
         &pos_in_val,
+        &pos_boundary_val,
         &nleaves_val,
         &nodes_levels_val,
         &nodes_lbound_val,
@@ -223,6 +226,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // pos_in
+        .Arg<ffi::AnyBuffer>() // pos_boundary
         .Arg<ffi::AnyBuffer>() // nleaves
         .Ret<ffi::AnyBuffer>() // nodes_levels
         .Ret<ffi::AnyBuffer>() // nodes_lbound

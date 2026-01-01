@@ -209,6 +209,7 @@ __global__ void SummarizeLeaves(
 
 __global__ void FindNodeBoundaries(
     const float3* pos_in,
+    const float3* pos_boundary,
     const int *nleaves,
     int32_t* nodes_levels,
     int32_t* nodes_lbound,
@@ -218,21 +219,10 @@ __global__ void FindNodeBoundaries(
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int n = nleaves[0];
     int nnodes = n + 1;
-    bool valid_thread = idx < n;
 
-    int target_level, lvl_left, lvl_right;
-    int lbound, rbound;
-    float3 p1, p2;
-
-    if((idx == 0) || (idx == nnodes-1)) {
-        // At left and right boundary, we put a pseudo-note that spans the whole domain
-        nodes_levels[idx] = 388; // larger than any possible level
-        nodes_lbound[idx] = 0;
-        nodes_rbound[idx] = n;
-
+    if (idx >= size_nodes)
         return;
-    }
-    else if ((idx >= nnodes) && (idx < size_nodes)) {
+    if (idx >= nnodes) {
         // Set values for undefined nodes
         nodes_levels[idx] = -1000;
         nodes_lbound[idx] = n;
@@ -240,13 +230,20 @@ __global__ void FindNodeBoundaries(
 
         return;
     }
-    else if (idx >= size_nodes) {
-        return;
-    }
+
+    int target_level, lvl_left, lvl_right;
+    int lbound, rbound;
+    float3 p1, p2;
 
     // Calculate the level difference of our considered set of two points (=node)
-    p1 = pos_in[idx - 1];
-    p2 = pos_in[idx];
+    if(idx == 0)
+        p1 = pos_boundary[0];
+    else
+        p1 = pos_in[idx - 1];
+    if(idx == nnodes-1)
+        p2 = pos_boundary[1];
+    else
+        p2 = pos_in[idx];
 
     // Our node includes at least [idx-1, idx] and it goes up to the left until a
     // point has a level difference that is larger han target_level:

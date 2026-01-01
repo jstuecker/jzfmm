@@ -108,8 +108,11 @@ def all_to_all_with_splits(x, ispl, output, axis_name="gpus", buf_size=1024, mod
         return ragged_all_to_all_through_buf(x, output, input_offsets, send_sizes, output_offsets, 
                                              recv_sizes, axis_name=axis_name, buf_size=buf_size)
 
+
 def get_rank_info() -> Tuple[int, int, str]:
     mesh = jax.sharding.get_abstract_mesh()
+    if len(mesh.axis_names) == 0:
+        return 0, 1, None
     assert len(mesh.axis_names) == 1, "Assuming only a single sharded axis"
     axis_name = mesh.axis_names[0]
 
