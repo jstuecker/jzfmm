@@ -232,21 +232,43 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                             FFI call to CUDA kernel: FindFirstOfEachLevel                      */
+/*                             FFI call to CUDA kernel: GetBoundaryExtendPerLevel                 */
 /* ---------------------------------------------------------------------------------------------- */
 
-ffi::Error FindFirstOfEachLevelFFIHost(
+ffi::Error GetBoundaryExtendPerLevelFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer pos_ref,
     ffi::AnyBuffer irange,
     ffi::AnyBuffer posz,
     ffi::Result<ffi::AnyBuffer> index_of_lvl,
-    size_t block_size
+    size_t block_size,
+    bool left
 ) {
     int size = posz.element_count()/3;
 
+    // We have template parameters, so we need to instantiate all valid templates
+    // For this we select a function pointer through a map
+    using TTuple = std::tuple<bool>;
+    using TFunctionType = decltype(GetBoundaryExtendPerLevel<true>);
+
+    std::map<TTuple, TFunctionType*> instance_map;
+    instance_map[{true}] = GetBoundaryExtendPerLevel<true>;
+    instance_map[{false}] = GetBoundaryExtendPerLevel<false>;
+
+    auto it = instance_map.find({left});
+
+    if(it == instance_map.end()) {
+        return ffi::Error::Internal(
+            "\nUnsupported template parameter combination for (left)"\
+            " in GetBoundaryExtendPerLevelFFIHost -- Only supporting:\n"\
+            "(true), (false)"
+        );
+    }
+
+    TFunctionType* instance = it->second;
+
     // Now call our function
-    std::string result = FindFirstOfEachLevel(
+    std::string result = instance(
         stream,
         reinterpret_cast<float3*>(pos_ref.untyped_data()),
         reinterpret_cast<int*>(irange.untyped_data()),
@@ -268,14 +290,15 @@ ffi::Error FindFirstOfEachLevelFFIHost(
 }
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    FindFirstOfEachLevelFFI, FindFirstOfEachLevelFFIHost,
+    GetBoundaryExtendPerLevelFFI, GetBoundaryExtendPerLevelFFIHost,
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // pos_ref
         .Arg<ffi::AnyBuffer>() // irange
         .Arg<ffi::AnyBuffer>() // posz
         .Ret<ffi::AnyBuffer>() // index_of_lvl
-        .Attr<size_t>("block_size"),
+        .Attr<size_t>("block_size")
+        .Attr<bool>("left"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );
 
@@ -352,6 +375,6 @@ NB_MODULE(ffi_tree, m) {
     m.def("SearchSortedZ", []() { return EncapsulateFfiCall(&SearchSortedZFFI); });
     m.def("SummarizeLeaves", []() { return EncapsulateFfiCall(&SummarizeLeavesFFI); });
     m.def("FindNodeBoundaries", []() { return EncapsulateFfiCall(&FindNodeBoundariesFFI); });
-    m.def("FindFirstOfEachLevel", []() { return EncapsulateFfiCall(&FindFirstOfEachLevelFFI); });
+    m.def("GetBoundaryExtendPerLevel", []() { return EncapsulateFfiCall(&GetBoundaryExtendPerLevelFFI); });
     m.def("GetNodeGeometry", []() { return EncapsulateFfiCall(&GetNodeGeometryFFI); });
 }

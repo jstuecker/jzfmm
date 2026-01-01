@@ -308,6 +308,7 @@ __global__ void FindNodeBoundaries(
 /*                                         Patching Nodes                                         */
 /* ---------------------------------------------------------------------------------------------- */
 
+template<bool left>
 __global__ void KernelInitLevels(
     const int* irange,
     int32_t* index_of_lvl,
@@ -315,11 +316,14 @@ __global__ void KernelInitLevels(
     const int lvl_max
 ) {
     int ilvl = blockDim.x * blockIdx.x + threadIdx.x;
-    if(ilvl <= lvl_max - lvl_min)
+    if(left && (ilvl <= lvl_max - lvl_min))
         index_of_lvl[ilvl] = irange[1];
+    else if(!left && (ilvl <= lvl_max - lvl_min))
+        index_of_lvl[ilvl] = irange[0];
 }
 
-__global__ void KernelFindFirstOfEachLevel(
+template<bool left>
+__global__ void KernelGetBoundaryExtendPerLevel(
     const float3* pos_ref,
     const int* irange,
     const float3* posz,
@@ -341,11 +345,14 @@ __global__ void KernelFindFirstOfEachLevel(
     int lvl = msb_diff_level(x0, x1);
 
     int ilvl = max(min(lvl, lvl_max) - lvl_min, 0);
-    if(index_of_lvl[ilvl] > idx){
+
+    if(left && (index_of_lvl[ilvl] > idx))
         atomicMin(&index_of_lvl[ilvl], idx);
-    }
+    else if(!left && (index_of_lvl[ilvl] < idx+1))
+        atomicMax(&index_of_lvl[ilvl], idx+1);
 }
 
+template<bool left>
 __global__ void KernelPostProcessLevels(
     const int* irange,
     int32_t* index_of_lvl,
@@ -361,13 +368,17 @@ __global__ void KernelPostProcessLevels(
     int idx = index_of_lvl[ilvl];
     
     for(int i=nlevels-1; i>=ilvl; i--) {
-        idx = min(idx, index_of_lvl[i]); // Larger level differences also affect our level, so adapt it
+        if(left)
+            idx = min(idx, index_of_lvl[i]);
+        else
+            idx = max(idx, index_of_lvl[i]);
     }
 
     index_of_lvl[ilvl] = idx;
 }
 
-std::string FindFirstOfEachLevel(
+template<bool left>
+std::string GetBoundaryExtendPerLevel(
     cudaStream_t stream, 
     const float3* pos_ref,
     const int* irange,
@@ -382,15 +393,15 @@ std::string FindFirstOfEachLevel(
     // Initialize indices 0, 1, 2, ..., size-1
     int nlevels = lvl_max - lvl_min + 1;
 
-    KernelInitLevels<<< div_ceil(nlevels, block_size), block_size, 0, stream>>>(
+    KernelInitLevels<left><<< div_ceil(nlevels, block_size), block_size, 0, stream>>>(
         irange, index_of_lvl, lvl_min, lvl_max
     );
 
-    KernelFindFirstOfEachLevel<<< div_ceil(size, block_size), block_size, 0, stream>>>(
+    KernelGetBoundaryExtendPerLevel<left><<< div_ceil(size, block_size), block_size, 0, stream>>>(
         pos_ref, irange, posz, index_of_lvl, lvl_min, lvl_max
     );
 
-    KernelPostProcessLevels<<< div_ceil(nlevels, block_size), block_size, 0, stream>>>(
+    KernelPostProcessLevels<left><<< div_ceil(nlevels, block_size), block_size, 0, stream>>>(
         irange, index_of_lvl, lvl_min, lvl_max
     );
 

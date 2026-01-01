@@ -9,14 +9,14 @@ from .data import TreePlane, PosMass, PackedArray, TreeHierarchy
 from .config import Config, CommunicationConfig
 from .multipoles import center_of_mass
 from .tools import cumsum_starting_with_zero
-from .comm import get_rank_info
+from .comm import get_rank_info, send_to_left, send_to_right
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
 jax.ffi.register_ffi_target("FindNodeBoundaries", ffi_tree.FindNodeBoundaries(), platform="CUDA")
 jax.ffi.register_ffi_target("GetNodeGeometry", ffi_tree.GetNodeGeometry(), platform="CUDA")
 jax.ffi.register_ffi_target("SearchSortedZ", ffi_tree.SearchSortedZ(), platform="CUDA")
-jax.ffi.register_ffi_target("FindFirstOfEachLevel", ffi_tree.FindFirstOfEachLevel(), platform="CUDA")
+jax.ffi.register_ffi_target("GetBoundaryExtendPerLevel", ffi_tree.GetBoundaryExtendPerLevel(), platform="CUDA")
 
 
 # ------------------------------------------------------------------------------------------------ #
@@ -150,20 +150,33 @@ def get_node_geometry(posz: jnp.ndarray, lbound: jnp.ndarray, rbound: jnp.ndarra
     return lvl, node_cent, node_ext
 get_node_geometry.jit = jax.jit(get_node_geometry)
 
-def find_first_of_each_level(posz, imin=0, imax=None, pos_ref=None, block_size: int = 64):
-    if pos_ref is None:
-        pos_ref = posz[imin]
+def distr_boundary_extend(posz, npart=None, block_size: int = 64):
+    rank, ndev, axis_name = get_rank_info()
 
+    if npart is None:
+        npart = jnp.sum(~jnp.isnan(posz[...,0]))
+    
     nlevels = 388 + 450 + 1
     out_types = (jax.ShapeDtypeStruct((nlevels,), jnp.int32),)
 
-    irange = jnp.array([imin, imax])
+    irange = jnp.array([0, npart])
 
-    idx_of_lvl = jax.ffi.ffi_call("FindFirstOfEachLevel", out_types)(
-        pos_ref, irange, posz, block_size=np.uint64(block_size)
+    # Distance from the left boundary where each levels node ends
+    xleft = send_to_right(posz[npart-1], axis_name, invalid_val=-jnp.inf)
+    idx_left = jax.ffi.ffi_call("GetBoundaryExtendPerLevel", out_types)(
+        xleft, irange, posz, block_size=np.uint64(block_size), left=True
     )[0]
 
-    return idx_of_lvl
+    # Distance from the right boundary where each levels node starts
+    xright = send_to_left(posz[0], axis_name, invalid_val=jnp.inf)
+    idx_right = jax.ffi.ffi_call("GetBoundaryExtendPerLevel", out_types)(
+        xright, irange, posz, block_size=np.uint64(block_size), left=False
+    )[0]
+
+    ext_right = send_to_left(idx_left, axis_name, invalid_val=0)
+    ext_left =  send_to_right(idx_right-npart, axis_name, invalid_val=0)
+
+    return ext_left, ext_right
 
 # ------------------------------------------------------------------------------------------------ #
 #                                       Domain Decomposition                                       #

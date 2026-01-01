@@ -117,3 +117,21 @@ def get_rank_info() -> Tuple[int, int, str]:
     ndev = jax.lax.axis_size(axis_name)
 
     return rank, ndev, axis_name
+
+def send_to_right(x, axis_name, invalid_val=0):
+    rank = jax.lax.axis_index(axis_name)
+    ndev = jax.lax.axis_size(axis_name)
+
+    xin = jax.lax.ppermute(x, axis_name, [(i, i+1) for i in range(0,ndev-1)])
+    xin = jnp.where(rank == 0, invalid_val, xin)
+
+    return xin
+
+def send_to_left(x, axis_name, invalid_val=0):
+    rank = jax.lax.axis_index(axis_name)
+    ndev = jax.lax.axis_size(axis_name)
+
+    xin = jax.lax.ppermute(x, axis_name, [(i, i-1) for i in range(1,ndev)])
+    xin = jnp.where(rank == ndev-1, invalid_val, xin)
+
+    return xin
