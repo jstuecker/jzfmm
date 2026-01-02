@@ -173,20 +173,20 @@ def distr_boundary_extend(posz, npart=None, block_size: int = 64):
 
     # Distance from the left boundary where each levels node ends
     xleft = send_to_right(posz[npart-1], axis_name, invalid_val=-jnp.inf)
-    idx_left = jax.ffi.ffi_call("GetBoundaryExtendPerLevel", out_types)(
+    ext_lr = jax.ffi.ffi_call("GetBoundaryExtendPerLevel", out_types)(
         xleft, irange, posz, block_size=np.uint64(block_size), left=True
     )[0]
 
     # Distance from the right boundary where each levels node starts
     xright = send_to_left(posz[0], axis_name, invalid_val=jnp.inf)
-    idx_right = jax.ffi.ffi_call("GetBoundaryExtendPerLevel", out_types)(
+    ext_rl = jax.ffi.ffi_call("GetBoundaryExtendPerLevel", out_types)(
         xright, irange, posz, block_size=np.uint64(block_size), left=False
     )[0]
 
-    ext_right = send_to_left(idx_left, axis_name, invalid_val=0)
-    ext_left =  send_to_right(idx_right-npart, axis_name, invalid_val=0)
+    ext_rr = send_to_left(ext_lr, axis_name, invalid_val=0)
+    ext_ll =  send_to_right(ext_rl-npart, axis_name, invalid_val=0)
 
-    return ext_left, ext_right
+    return ext_ll, ext_lr, ext_rl, ext_rr
 
 # ------------------------------------------------------------------------------------------------ #
 #                                       Domain Decomposition                                       #
@@ -278,6 +278,61 @@ def distributed_define_leaves(posz: jnp.ndarray, leaf_size=32):
     ispl = jnp.roll(ispl, -(nzeros-1), axis=0)
 
     return posz, ispl
+
+def shift_particles_left(pos, nsend, max_send, npart=None):
+    rank, ndev, axis_name = get_rank_info()
+
+    if npart is None:
+        npart = jnp.sum(~jnp.isnan(pos[...,0]))
+    
+    # Validate that send buffer is large enough
+    def send_size_err(nsend, max_send):
+        raise ValueError(f"Cannot fit {nsend} particles into buffer of size {max_send}!")
+    npart = npart + conditional_callback(
+        nsend >= max_send, send_size_err, nsend, max_send,
+    )
+
+    # Validate that particle array has enough free space
+    nget = send_to_left(nsend, axis_name, invalid_val=0)
+    def array_size_err(nhave, nget, nsend, nmax):
+        raise MemoryError(
+            f"Cannot shift particles: have={nhave}, get={nget}, send={nsend}, max={nmax}."
+            "(fix: larger allocaction)"
+        )
+    npart = npart + conditional_callback((
+        npart + nget - nsend >= len(pos)), array_size_err, npart, nget, nsend, len(pos)
+    )
+
+    # Send the particles
+    pos_get = send_to_left(pos[0:max_send], axis_name, invalid_val=jnp.nan)
+
+    # Delete the particles that were send
+    iar = jnp.arange(len(pos))
+    pos = jnp.where((iar >= nsend)[:,None], pos, jnp.nan)
+    pos = jnp.roll(pos, -nsend, axis=0)
+
+    # Insert the received particles
+    idx = jnp.arange(max_send)
+    idx = jnp.where(idx < nget, npart - nsend + idx, len(pos)) # discard indices beyond nadd
+    pos = pos.at[idx].set(pos_get)
+
+    return pos, npart + nget - nsend
+
+def adjust_domain_for_nodesize(posz, max_node_size, npart=None):
+    """Shifts particles so that nodes with size <= max_node_size always lie on a single GPU"""
+    if npart is None:
+        npart = jnp.sum(~jnp.isnan(posz[...,0]))
+
+    ext_ll, ext_lr, ext_rl, ext_rr = distr_boundary_extend(posz, npart=npart)
+    npart_l = ext_lr - ext_ll
+    
+    ilvl_max = jnp.argmax(jnp.where(npart_l <= max_node_size, npart_l, 0))
+
+    npshift = ext_lr[ilvl_max]
+
+    posz, npart = shift_particles_left(posz, npshift, max_send=max_node_size, npart=npart)
+
+    return posz, npart
 
 # ------------------------------------------------------------------------------------------------ #
 #                                      Tree Building Functions                                     #
