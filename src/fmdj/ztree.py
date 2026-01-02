@@ -242,43 +242,6 @@ def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig):
 
     return posz
 
-def distributed_define_leaves(posz: jnp.ndarray, leaf_size=32):
-    rank, ndev, axis_name = get_rank_info()
-
-    nfilled = jnp.sum(~jnp.isnan(posz[...,0]))
-
-    # Add a sufficiently large number of ghost particles from the next GPU
-    Nghost = leaf_size
-    pghost = jax.lax.ppermute(posz[0:Nghost], axis_name, [(i, i-1) for i in range(1,ndev)])
-    pghost = jnp.where(rank < ndev-1, pghost, jnp.nan) # last device didn't receive anything
-    posz = jax.lax.dynamic_update_slice_in_dim(posz, pghost, nfilled, axis=0)
-
-    # Determine leaf boundaries
-    ispl = create_coarse_leaves(posz, leaf_size=leaf_size)
-
-    # find the first leaf-splitting-point that lies outside of our original device domain
-    nnew = ispl[jnp.argmax(ispl >= nfilled)]
-    # we will keep all particles up to that point
-    ispl = jnp.minimum(ispl, nnew)
-    # and we need to tell the next GPU to delete potential duplicates
-    ndel_next = nnew-nfilled
-    ndel = jax.lax.ppermute(ndel_next, axis_name, [(i, i+1) for i in range(0,ndev-1)])
-
-    # we delete particles by masking them to nan and shifting the array
-    iar = jnp.arange(len(posz))
-    posz = jnp.where(((iar >= ndel) & (iar < nnew))[:,None], posz, jnp.nan)
-    posz = jnp.roll(posz, -ndel, axis=0)
-
-    # adjust the calculated splits
-    ndelspl = jnp.sum(ispl < ndel)
-    ispl = jnp.maximum(ispl - ndel, 0)
-    #if a full leaf at the beginning was removed, their may be two leading zeros, remove one
-    nzeros = jnp.sum(ispl[0:2] == 0)
-    ispl = ispl.at[0].set(jnp.where(nzeros > 1, ispl[-1], ispl[0]))
-    ispl = jnp.roll(ispl, -(nzeros-1), axis=0)
-
-    return posz, ispl
-
 def shift_particles_left(pos, nsend, max_send, npart=None):
     rank, ndev, axis_name = get_rank_info()
 

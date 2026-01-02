@@ -39,7 +39,11 @@ def test_mutli_zsort():
 
 @jax.shard_map(out_specs=P("gpus"), in_specs=P("gpus"), mesh=mesh)
 def fcoarsen(posz: jnp.ndarray):
-    return fmdj.ztree.distributed_define_leaves(posz, leaf_size=256)
+    # return fmdj.ztree.distributed_define_leaves(posz, leaf_size=256)
+    posz, npart = fmdj.ztree.adjust_domain_for_nodesize(posz, 256)
+    ispl = fmdj.ztree.create_coarse_leaves(posz, leaf_size=256)
+
+    return posz, ispl
 
 @jax.shard_map(out_specs=P("gpus"), in_specs=P("gpus"), mesh=mesh)
 def splits_to_global(ispl):
