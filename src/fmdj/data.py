@@ -102,6 +102,9 @@ class PackedArray:
     
     def nfilled(self):
         return self.ispl[-1]
+    
+    def nlevels(self):
+        return len(self.ispl) - 1
 
 @jax.tree_util.register_dataclass
 @dataclass

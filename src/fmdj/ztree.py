@@ -90,7 +90,10 @@ def search_sorted_z(xz, xz_query, block_size=64, leaf_search=False):
     return inds
 search_sorted_z.jit = jax.jit(search_sorted_z, static_argnames=("block_size", "leaf_search"))
 
-def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int = 64, alloc_fac=1.0) -> jnp.ndarray:
+def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int = 64, alloc_size: int | None = None) -> jnp.ndarray:
+    if alloc_size is None:
+        alloc_size = int(div_ceil(len(posz), np.maximum(leaf_size//2, 1))) + 1
+
     out_type = jax.ShapeDtypeStruct((posz.shape[0]+1,), jnp.int32)
 
     nleaf = jnp.ones((posz.shape[0],), dtype=jnp.int32)
@@ -101,8 +104,6 @@ def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int
     flag_split = jax.ffi.ffi_call("SummarizeLeaves", (out_type,), vmap_method="sequential")(
         xnleaf, npart, max_size=np.int32(leaf_size),
         block_size=np.uint64(block_size), scan_size=np.int32(leaf_size+1))[0]
-    
-    max_new_leaves = int(div_ceil(len(posz) * alloc_fac, np.maximum(leaf_size//2, 1)))
 
     # Check that the allocation was big enough
     def alloc_err(filled, size):
@@ -111,11 +112,11 @@ def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int
     
     nfilled = jnp.sum(flag_split > -1000)
     flag_split = flag_split + conditional_callback(
-        nfilled > max_new_leaves+1, alloc_err,
-        nfilled, max_new_leaves+1,
+        nfilled > alloc_size, alloc_err,
+        nfilled, alloc_size,
     )
     
-    splits = jnp.where(flag_split > -1000, size=max_new_leaves+1, fill_value=npart)[0]
+    splits = jnp.where(flag_split > -1000, size=alloc_size, fill_value=npart)[0]
 
     return splits
 create_coarse_leaves.jit = jax.jit(create_coarse_leaves, static_argnames=("leaf_size", "block_size"))
@@ -301,18 +302,26 @@ def adjust_domain_for_nodesize(posz, max_node_size, npart=None):
 #                                      Tree Building Functions                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
-    ispl =  create_coarse_leaves(part.pos, leaf_size=cfg.fmm.max_leaf_size, alloc_fac=cfg.fmm.alloc_fac_nodes)
+def define_tree_level_node_sizes(npart, cfg):
+    max_num_leaves = int(div_ceil(npart * cfg.fmm.alloc_fac_nodes, np.maximum(cfg.fmm.max_leaf_size//2, 1)))
+
+    # can improve this!
+    nlevels = np.log(max_num_leaves / cfg.fmm.stop_coarsen) / np.log(cfg.fmm.coarse_fac)
+    nlevels = np.maximum(int(np.ceil(nlevels)), 1)
+
+    node_sizes = [int(cfg.fmm.max_leaf_size) * (cfg.fmm.coarse_fac ** i) for i in range(0, nlevels)]
+
+    return node_sizes
+
+def define_split_hiearchy(part, node_sizes, alloc_size):
+    nlevels = len(node_sizes)
+    
+    ispl =  create_coarse_leaves(part.pos, leaf_size=node_sizes[0], alloc_size=alloc_size)
 
     nleaves = jnp.argmax(ispl)
     lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
 
     npart_node = ispl[rbound] - ispl[lbound]
-
-    nlevels = np.log(len(ispl) / cfg.fmm.stop_coarsen) / np.log(cfg.fmm.coarse_fac)
-    nlevels = np.maximum(int(np.ceil(nlevels)), 1)
-
-    alloc_size = len(ispl)
     
     ispl_n2l = PackedArray(jnp.zeros(alloc_size, dtype=jnp.int32), levels=nlevels)
     ispl_n2l = ispl_n2l.set(0, jnp.arange(alloc_size, dtype=jnp.int32), num=nleaves+1, fill_value=nleaves)
@@ -320,7 +329,7 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
     ispl_n2n = ispl_n2n.set(0, ispl, num=nleaves+1, fill_value=len(part.pos))
 
     def handle_level(i, carry):
-        node_size = cfg.fmm.max_leaf_size * (cfg.fmm.coarse_fac ** i)
+        node_size = jnp.array(node_sizes, jnp.int32)[i]
 
         ispl_n2l, ispl_n2n = carry
         
@@ -338,6 +347,18 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
         return ispl_n2l, ispl_n2n
     
     ispl_n2l, ispl_n2n = jax.lax.fori_loop(1, nlevels, handle_level, (ispl_n2l, ispl_n2n))
+    
+    return ispl,ispl_n2l,ispl_n2n
+
+def build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
+    node_sizes = define_tree_level_node_sizes(len(part.pos), cfg=cfg)
+
+    alloc_size = int(div_ceil(len(part.pos) * cfg.fmm.alloc_fac_nodes, np.maximum(cfg.fmm.max_leaf_size//2, 1))) + 1
+
+    ispl, ispl_n2l, ispl_n2n = define_split_hiearchy(part, node_sizes, alloc_size)
+
+    alloc_size = ispl_n2n.size()
+    nlevels = ispl_n2n.nlevels()
 
     # Check that the allocation was big enough
     def alloc_err(filled, size):
