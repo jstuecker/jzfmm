@@ -9,8 +9,9 @@ from fmdj_utils.ics import gaussian_blob
 
 part = gaussian_blob(N=int(512*1024), scale=1.0, mass=1.)
 
-fmm_cfg = fmdj.config.FMMConfig(kahan_summation=True, multipoles_around_com=True)
-cfg = fmdj.Config(softening=1e-2, fmm=fmm_cfg)
+cfg = fmdj.Config(softening=1e-2)
+cfg.fmm.kahan_summation = True
+cfg.tree.mass_centered = False
 
 def rerr_pos(a: fmdj.data.PosMass, b: fmdj.data.PosMass):
     return jnp.linalg.norm(a.pos - b.pos, axis=-1)/jnp.linalg.norm(b.pos, axis=-1)

@@ -5,10 +5,10 @@ import jax.numpy as jnp
 from typing import Tuple
 from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
-from .data import TreePlane, PosMass, PackedArray, TreeHierarchy
+from .data import TreePlane, PosMass, PackedArray, TreeHierarchy, InteractionList
 from .config import Config, CommunicationConfig, TreeConfig
 from .multipoles import center_of_mass
-from .tools import cumsum_starting_with_zero
+from .tools import cumsum_starting_with_zero, masked_prefix_sum, div_ceil
 from .comm import get_rank_info, send_to_left, send_to_right
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
@@ -454,3 +454,58 @@ def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig) -> T
     
     return th
 build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg_tree'])
+
+# ------------------------------------------------------------------------------------------------ #
+#                                     Interaction List Helpers                                     #
+# ------------------------------------------------------------------------------------------------ #
+
+def dense_interaction_list(size: int, nnodes: jnp.ndarray = None) -> InteractionList:
+    """A dense interaction list where all nodes interact with all other nodes.
+
+    size: size of the node array that will use the interaction list. (Required at compile time)
+    nnodes: actual number of filled nodes (Can be dynamic, used to invalidating unused nodes)
+    """
+
+    if nnodes is None: # size = nnodes will only work outside of jit
+        nnodes = jnp.array(size, dtype=jnp.int32)  
+    dtype = nnodes.dtype
+
+    # We need to work around JAX's lack of dynamic array sizes
+    i1, i2 = jnp.indices((size, size), dtype=dtype)
+    
+    valid = (i1 < nnodes) & (i2 < nnodes)
+
+    ioff, nfilled = masked_prefix_sum(valid.flatten())
+
+    ilist = jnp.zeros(i1.size, dtype=i1.dtype).at[ioff].set(i2.flatten())
+
+    ispl = jnp.arange(0, size+1, dtype=i1.dtype) * nnodes
+    ispl = jnp.where(ispl < nfilled, ispl, nfilled)
+    
+    return InteractionList(ispl=ispl, iother=ilist, nfilled=nfilled)
+dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size'])
+
+def grouped_dense_interaction_list(nnodes: jnp.ndarray | int, size_ilist: int,
+                                   size_super: int | None = None, ngroup: int = 32
+                                   ) -> Tuple[jnp.ndarray, InteractionList]:
+    nsuper_nodes = div_ceil(nnodes, ngroup)
+
+    def ilist_size_error(n, size):
+        raise MemoryError(f"Cannot fit {n}*{n} interactions into ilist with size {size}")
+    nsuper_nodes = nsuper_nodes + conditional_callback(
+        nsuper_nodes*nsuper_nodes > size_ilist, ilist_size_error, nsuper_nodes, size_ilist
+    )
+    
+    idx = jnp.arange(size_ilist)
+    ilist = jnp.where(idx <= nsuper_nodes*nsuper_nodes, idx % nsuper_nodes, 0)
+    
+    # define the super node to node relation
+    if size_super is None:
+        size_super = np.ceil(np.sqrt(size_ilist)).astype(np.int64)
+    spl_super = jnp.minimum(jnp.arange(size_super) * ngroup, nnodes)
+    ispl = jnp.minimum(jnp.arange(size_super+1) * nsuper_nodes, nsuper_nodes*nsuper_nodes)
+
+    return spl_super, InteractionList(ispl=ispl, iother=ilist, nfilled=nsuper_nodes*nsuper_nodes)
+grouped_dense_interaction_list.jit = jax.jit(
+    grouped_dense_interaction_list, static_argnames=["size_ilist", "size_super"]
+)

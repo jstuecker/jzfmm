@@ -4,8 +4,8 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 from .config import Config
-from .data import TreePlane, PosMass, InteractionList, dense_interaction_list, LocalExpansion
-from .ztree import pos_zorder_sort, build_tree_hierarchy
+from .data import TreePlane, PosMass, InteractionList, LocalExpansion
+from .ztree import pos_zorder_sort, build_tree_hierarchy, dense_interaction_list, grouped_dense_interaction_list
 from .multipoles import shift_local_to_children, build_multipole_hierarchy, local_readout_pos_vjp, p_of_num_multi, shift_local_to_children_vjp_x
 
 import fmdj_cuda.ffi_fmm as ffi_fmm
@@ -44,15 +44,16 @@ def evaluate_plane_interactions(
     - loc: multipole local expansion, shape (Nchild, M)
     - new_ilist: new interaction list for children
     """
+    ilist_alloc_size = cfg.fmm.ilist_alloc_fac * plane.size()
+
     if plane_lr is None or ilist_lr is None: # Root level
-        ilist_lr = dense_interaction_list(plane.size(), nnodes=plane.nnodes)
-        spl_nodes = jnp.minimum(jnp.arange(0, plane.size() + 1, dtype=jnp.int32), plane.nnodes)
+        # ilist_lr = dense_interaction_list(plane.size(), nnodes=plane.nnodes)
+        # spl_nodes = jnp.minimum(jnp.arange(0, plane.size() + 1, dtype=jnp.int32), plane.nnodes)
+        spl_nodes, ilist_lr = grouped_dense_interaction_list(plane.nnodes, ilist_alloc_size, ngroup=8)
         node_range = jnp.array([0, plane.nnodes], dtype=jnp.int32)
     else:
         spl_nodes = plane_lr.ispl
         node_range = jnp.array([0, plane_lr.nnodes], dtype=jnp.int32)
-    
-    nint_out = cfg.fmm.ilist_alloc_fac * plane.size()
 
     children = jnp.concatenate((plane.center(), plane.lvl.view(jnp.float32)[...,None]), axis=-1)
     
@@ -73,7 +74,7 @@ def evaluate_plane_interactions(
 
     # Insert interactions
     ispl_child = jnp.pad(jnp.cumsum(interaction_counts), (1, 0))
-    out_child_ilist = jax.ShapeDtypeStruct((nint_out,), jnp.int32)
+    out_child_ilist = jax.ShapeDtypeStruct((ilist_alloc_size,), jnp.int32)
 
     child_ilist = jax.ffi.ffi_call(
         "InsertInteractions",

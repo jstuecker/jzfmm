@@ -309,32 +309,6 @@ class InteractionList:
     def dtype(self):
         return self.iother.dtype
 
-def dense_interaction_list(size: int, nnodes: jnp.ndarray = None) -> InteractionList:
-    """A dense interaction list where all nodes interact with all other nodes.
-
-    size: size of the node array that will use the interaction list. (Required at compile time)
-    nnodes: actual number of filled nodes (Can be dynamic, used to invalidating unused nodes)
-    """
-
-    if nnodes is None: # size = nnodes will only work outside of jit
-        nnodes = jnp.array(size, dtype=jnp.int32)  
-    dtype = nnodes.dtype
-
-    # We need to work around JAX's lack of dynamic array sizes
-    i1, i2 = jnp.indices((size, size), dtype=dtype)
-    
-    valid = (i1 < nnodes) & (i2 < nnodes)
-
-    ioff, nfilled = masked_prefix_sum(valid.flatten())
-
-    ilist = jnp.zeros(i1.size, dtype=i1.dtype).at[ioff].set(i2.flatten())
-
-    ispl = jnp.arange(0, size+1, dtype=i1.dtype) * nnodes
-    ispl = jnp.where(ispl < nfilled, ispl, nfilled)
-    
-    return InteractionList(ispl=ispl, iother=ilist, nfilled=nfilled)
-dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size'])
-
 def set_range(arr : jnp.ndarray, values, start, end):
     if(len(arr) / len(values) >= 4):
         # values are much smaller than arr, do a scatter based update
