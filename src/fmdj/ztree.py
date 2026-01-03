@@ -109,11 +109,9 @@ def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int
     def alloc_err(filled, size):
         raise RuntimeError(f"Coarsen Leaves: allocation too small: filled {filled}, size {size}.\n"
                             "Increase alloc_fac_nodes in FMMConfig.")
-    
     nfilled = jnp.sum(flag_split > -1000)
     flag_split = flag_split + conditional_callback(
-        nfilled > alloc_size, alloc_err,
-        nfilled, alloc_size,
+        nfilled > alloc_size, alloc_err, nfilled, alloc_size,
     )
     
     splits = jnp.where(flag_split > -1000, size=alloc_size, fill_value=npart)[0]
@@ -322,49 +320,20 @@ def define_split_hiearchy(part, node_sizes, alloc_size):
     lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
 
     npart_node = ispl[rbound] - ispl[lbound]
-    
-    ispl_n2l = PackedArray(jnp.zeros(alloc_size, dtype=jnp.int32), levels=nlevels)
-    ispl_n2l = ispl_n2l.set(0, jnp.arange(alloc_size, dtype=jnp.int32), num=nleaves+1, fill_value=nleaves)
-    ispl_n2n = PackedArray(jnp.zeros(alloc_size, dtype=jnp.int32), levels=nlevels)
-    ispl_n2n = ispl_n2n.set(0, ispl, num=nleaves+1, fill_value=len(part.pos))
-
-    def handle_level(i, carry):
-        node_size = jnp.array(node_sizes, jnp.int32)[i]
-
-        ispl_n2l, ispl_n2n = carry
-        
-        # node to leaf relation
-        new_nnodes = jnp.sum(npart_node > node_size)
-        new_ispl_n2l = jnp.where(npart_node > node_size, size=ispl_n2n.size())[0]
-        ispl_n2l = ispl_n2l.set(i, new_ispl_n2l, num=new_nnodes, fill_value=nleaves)
-
-        # node to node relation
-        last_n2l = ispl_n2l.get(i-1, ispl_n2n.size())
-        last_npart = npart_node[last_n2l]
-        new_ispl_n2n = jnp.where(last_npart > node_size, size=ispl_n2n.size())[0]
-        ispl_n2n = ispl_n2n.set(i, new_ispl_n2n, num=new_nnodes, fill_value=ispl_n2n.num(i-1)-1)
-
-        return ispl_n2l, ispl_n2n
-    
-    ispl_n2l, ispl_n2n = jax.lax.fori_loop(1, nlevels, handle_level, (ispl_n2l, ispl_n2n))
-    
-    return ispl,ispl_n2l,ispl_n2n
-
-def define_split_hiearchy_v2(part, node_sizes, alloc_size):
-    nlevels = len(node_sizes)
-    
-    ispl =  create_coarse_leaves(part.pos, leaf_size=node_sizes[0], alloc_size=alloc_size)
-
-    nleaves = jnp.argmax(ispl)
-    lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
-
-    npart_node = ispl[rbound] - ispl[lbound]
 
     # At each level of the hierarchy, the active nodes are determined by the node sizes
     active_on_level = npart_node[None,:] > jnp.array(node_sizes, dtype=jnp.int32)[:,None]
     # Calculate a prefix accross hierarchy levels to densly stack the nodes later
     offsets = jnp.cumsum(active_on_level.flatten()).reshape(active_on_level.shape)
     level_spl = jnp.pad(offsets[:,-1], (1,0), constant_values=0) # save level start/end points
+
+    # Check that the allocation is big enough
+    def alloc_err(filled, size):
+        raise RuntimeError(f"Tree allocation too small: filled {filled}, size {size}.\n"
+                            "Increase alloc_fac_nodes in Config")
+    level_spl = level_spl + conditional_callback(
+        level_spl[-1] > alloc_size, alloc_err, level_spl[-1], alloc_size,
+    )
 
     # correct offsets to exclude the element at hand and invalidate inactive elements:
     offsets = jnp.where(active_on_level, offsets - active_on_level, alloc_size)
@@ -382,33 +351,19 @@ def define_split_hiearchy_v2(part, node_sizes, alloc_size):
     
     return ispl,ispl_n2l,ispl_n2n
 
-def build_tree_hierarchy(part: PosMass, cfg: Config, mode=1) -> TreeHierarchy:
+def build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
     node_sizes = define_tree_level_node_sizes(len(part.pos), cfg=cfg)
+    nlevels = len(node_sizes)
 
     alloc_size = int(div_ceil(len(part.pos) * cfg.fmm.alloc_fac_nodes, np.maximum(cfg.fmm.max_leaf_size//2, 1))) + 1
 
-    if mode == 0:
-        ispl, ispl_n2l, ispl_n2n = define_split_hiearchy(part, node_sizes, alloc_size)
-    else:
-        ispl, ispl_n2l, ispl_n2n = define_split_hiearchy_v2(part, node_sizes, alloc_size)
-
-    alloc_size = ispl_n2n.size()
-    nlevels = ispl_n2n.nlevels()
-
-    # Check that the allocation was big enough
-    def alloc_err(filled, size):
-        raise RuntimeError(f"Tree allocation too small: filled {filled}, size {size}.\n"
-                            "Increase alloc_fac_nodes in FMMConfig.")
-    
-    ispl_n2l.data = ispl_n2l.data + conditional_callback(
-        ispl_n2l.nfilled() > ispl_n2l.size(), alloc_err,
-        ispl_n2l.nfilled(), ispl_n2l.size(),
-    )
-
-    ispl_n2p = ispl[ispl_n2l.data] # node to particle relation
+    ispl, ispl_n2l, ispl_n2n = define_split_hiearchy(part, node_sizes, alloc_size)
 
     # We can handle all levels at once for node geometry:
-    lvl, geom_cent, ext = get_node_geometry(part.pos, ispl_n2p[:-1], ispl_n2p[1:], num=ispl_n2l.nfilled()-1)
+    ispl_n2p = ispl[ispl_n2l.data] # node to particle relation
+    lvl, geom_cent, ext = get_node_geometry(
+        part.pos, ispl_n2p[:-1], ispl_n2p[1:], num=ispl_n2l.nfilled()-1
+    )
     # However, the splits are discontinuous at level boundaries. We have to delete the extra entries
     lvl = jnp.delete(lvl, ispl_n2l.ispl[1:-1]-1, assume_unique_indices=True)
     geom_cent = jnp.delete(geom_cent, ispl_n2l.ispl[1:-1]-1, axis=0, assume_unique_indices=True)
