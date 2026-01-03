@@ -359,7 +359,45 @@ def define_split_hierarchy(posz: jnp.ndarray, node_sizes: Tuple[int], alloc_size
     
     return ispl, ispl_n2l, ispl_n2n
 
+def get_tree_mass_centers(part: PosMass, ispl_n2n: PackedArray) -> Tuple[PackedArray, PackedArray]:
+    prop_array_spl = cumsum_starting_with_zero(ispl_n2n.ispl[1:] - ispl_n2n.ispl[:-1] - 1)
+
+    def handle_mcent_level(i, carry):
+        node_mcent, node_mass, posm = carry
+        posm = center_of_mass(ispl_n2n.get(i, size=len(posm.mass)+1), posm)
+        node_mass = node_mass.set(i, posm.mass, num=ispl_n2n.num(i)-1)
+        node_mcent = node_mcent.set(i, posm.pos, num=ispl_n2n.num(i)-1)
+        return node_mcent, node_mass, posm
+    
+    posm = center_of_mass(ispl_n2n.get(0), part)
+    npos = PackedArray(posm.pos, ispl=prop_array_spl, fill_values=jnp.nan)
+    node_mass = PackedArray(posm.mass, ispl=prop_array_spl, fill_values=jnp.nan)
+
+    node_mcent, node_mass, _ = jax.lax.fori_loop(
+        1, ispl_n2n.nlevels(), handle_mcent_level, (npos, node_mass, posm)
+    )
+
+    return node_mcent, node_mass
+
 def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig) -> TreeHierarchy:
+    """Builds a tree hierarchy from z-order positions
+
+    The zeroth level of the tree corresponds to leaves, which contain multiple particles.
+    Nodes (and leaves) are selected so that they are as big as possible while not containing more
+    than a maximum number of particles that starts at cfg_tree.max_leaf_size and increases per level
+    by a factor cfg_tree.coarse_fac.
+    
+    Nodes are parameterized through a set of splits. For example the particles that lie in the leaf
+    with index i are given py part[ispl_n2n.get(level=0)[i]: ispl_n2n.get(level=0)[i+1]]
+    The ith node of level n contain all level n-1 nodes in the range :
+    ispl_n2n.get(n)[i]: ispl_n2n.get(n)[i+1]
+
+    In jax memory size needs to be known at compile time, but the required number of nodes is 
+    data dependent on each level. To limit the number of allocations that we need to predict, we
+    use the PackedArray class, that helps us to stack multiple different levels into a single
+    continguous array, but to access it "almost" as if they were separate arrays.
+    """
+
     if isinstance(part, jnp.ndarray):
         assert part.shape[-1] == 3
         posz = part
@@ -384,27 +422,19 @@ def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig) -> T
     lvl = jnp.delete(lvl, ispl_n2l.ispl[1:-1]-1, assume_unique_indices=True)
     geom_cent = jnp.delete(geom_cent, ispl_n2l.ispl[1:-1]-1, axis=0, assume_unique_indices=True)
 
-    # Can predict the shapes of further packed arrays
-    leaf_array_spl = cumsum_starting_with_zero(ispl_n2l.ispl[1:]- ispl_n2l.ispl[:-1] - 1)
+    # node property arrays are on each level one element smaller than the splitting point arrays
+    prop_array_spl = cumsum_starting_with_zero(ispl_n2n.ispl[1:] - ispl_n2n.ispl[:-1] - 1)
+    lvl = PackedArray(lvl, prop_array_spl, fill_values=-1000)
+    geom_cent = PackedArray(geom_cent, prop_array_spl, fill_values=jnp.nan)
 
     if cfg_tree.mass_centered:
         assert hasattr(part, "mass"), "To use mass centering, please provide PosMass input"
-
-        def handle_mcent_level(i, carry):
-            npos, nmass, posm = carry
-            posm = center_of_mass(ispl_n2n.get(i, size=len(posm.mass)+1), posm)
-            nmass = nmass.set(i, posm.mass, num=ispl_n2n.num(i)-1)
-            npos = npos.set(i, posm.pos, num=ispl_n2n.num(i)-1)
-            return npos, nmass, posm
-        
-        posm = center_of_mass(ispl, part)
-        npos = PackedArray(posm.pos, ispl=leaf_array_spl, fill_values=jnp.nan)
-        nmass = PackedArray(posm.mass, ispl=leaf_array_spl, fill_values=jnp.nan)
-
-        nmass_cent, nmass, _ = jax.lax.fori_loop(1, nlevels, handle_mcent_level, (npos, nmass, posm))
+        nmass_cent, nmass = get_tree_mass_centers(part, ispl_n2n)
     else:
         nmass_cent, nmass = None, None
-
+        
+    # Predict maximum plane (at compile time) and check whether the prediction was large enough
+    # Note: This step can probably be skipped after I adapted the code to use fixed size arrays
     plane_sizes = [int(alloc_size / (cfg_tree.coarse_fac ** i)) for i in range(nlevels)]
 
     def plane_size_err(num, sizes):
@@ -418,11 +448,7 @@ def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig) -> T
     )
 
     th = TreeHierarchy(
-        ispl_n2n, ispl_n2l,
-        lvl = PackedArray(lvl, leaf_array_spl, fill_values=-1000),
-        geom_cent = PackedArray(geom_cent, leaf_array_spl, fill_values=jnp.nan),
-        mass = nmass,
-        mass_cent = nmass_cent,
+        ispl_n2n, ispl_n2l, lvl, geom_cent, mass = nmass, mass_cent = nmass_cent,
         plane_sizes = plane_sizes
     )
     
