@@ -350,12 +350,47 @@ def define_split_hiearchy(part, node_sizes, alloc_size):
     
     return ispl,ispl_n2l,ispl_n2n
 
-def build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
+def define_split_hiearchy_v2(part, node_sizes, alloc_size):
+    nlevels = len(node_sizes)
+    
+    ispl =  create_coarse_leaves(part.pos, leaf_size=node_sizes[0], alloc_size=alloc_size)
+
+    nleaves = jnp.argmax(ispl)
+    lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
+
+    npart_node = ispl[rbound] - ispl[lbound]
+
+    # At each level of the hierarchy, the active nodes are determined by the node sizes
+    active_on_level = npart_node[None,:] > jnp.array(node_sizes, dtype=jnp.int32)[:,None]
+    # Calculate a prefix accross hierarchy levels to densly stack the nodes later
+    offsets = jnp.cumsum(active_on_level.flatten()).reshape(active_on_level.shape)
+    level_spl = jnp.pad(offsets[:,-1], (1,0), constant_values=0) # save level start/end points
+
+    # correct offsets to exclude the element at hand and invalidate inactive elements:
+    offsets = jnp.where(active_on_level, offsets - active_on_level, alloc_size)
+    
+    # node-to-leaf relation is given by the leaf that is active at the node location
+    ispl_n2l = jnp.zeros(alloc_size, dtype=jnp.int32).at[offsets].set(offsets[0:1,:])
+    ispl_n2l = PackedArray(ispl_n2l, level_spl)
+
+    # node-to-node relation is given by the last level node that is active at the node location
+    # for the leaf-level we insert the leaf to particle relation here
+    ilevel = jnp.arange(nlevels)
+    value = jnp.where(ilevel[:,None] == 0, ispl, offsets[ilevel-1,:] - level_spl[ilevel-1,None])
+    ispl_n2n = jnp.zeros(alloc_size, dtype=jnp.int32).at[offsets].set(value)
+    ispl_n2n = PackedArray(ispl_n2n, level_spl)
+    
+    return ispl,ispl_n2l,ispl_n2n
+
+def build_tree_hierarchy(part: PosMass, cfg: Config, mode=1) -> TreeHierarchy:
     node_sizes = define_tree_level_node_sizes(len(part.pos), cfg=cfg)
 
     alloc_size = int(div_ceil(len(part.pos) * cfg.fmm.alloc_fac_nodes, np.maximum(cfg.fmm.max_leaf_size//2, 1))) + 1
 
-    ispl, ispl_n2l, ispl_n2n = define_split_hiearchy(part, node_sizes, alloc_size)
+    if mode == 0:
+        ispl, ispl_n2l, ispl_n2n = define_split_hiearchy(part, node_sizes, alloc_size)
+    else:
+        ispl, ispl_n2l, ispl_n2n = define_split_hiearchy_v2(part, node_sizes, alloc_size)
 
     alloc_size = ispl_n2n.size()
     nlevels = ispl_n2n.nlevels()
