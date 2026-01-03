@@ -6,7 +6,7 @@ from typing import Tuple
 from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
 from .data import TreePlane, PosMass, PackedArray, TreeHierarchy
-from .config import Config, CommunicationConfig
+from .config import Config, CommunicationConfig, TreeConfig
 from .multipoles import center_of_mass
 from .tools import cumsum_starting_with_zero
 from .comm import get_rank_info, send_to_left, send_to_right
@@ -300,24 +300,24 @@ def adjust_domain_for_nodesize(posz, max_node_size, npart=None):
 #                                      Tree Building Functions                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def define_tree_level_node_sizes(npart, cfg):
-    max_num_leaves = int(div_ceil(npart * cfg.fmm.alloc_fac_nodes, np.maximum(cfg.fmm.max_leaf_size//2, 1)))
+def define_tree_level_node_sizes(npart: int, cfg_tree: TreeConfig):
+    max_num_leaves = int(div_ceil(npart * cfg_tree.alloc_fac_nodes, np.maximum(cfg_tree.max_leaf_size//2, 1)))
 
     # can improve this!
-    nlevels = np.log(max_num_leaves / cfg.fmm.stop_coarsen) / np.log(cfg.fmm.coarse_fac)
+    nlevels = np.log(max_num_leaves / cfg_tree.stop_coarsen) / np.log(cfg_tree.coarse_fac)
     nlevels = np.maximum(int(np.ceil(nlevels)), 1)
 
-    node_sizes = [int(cfg.fmm.max_leaf_size) * (cfg.fmm.coarse_fac ** i) for i in range(0, nlevels)]
+    node_sizes = [int(cfg_tree.max_leaf_size) * (cfg_tree.coarse_fac ** i) for i in range(0, nlevels)]
 
     return node_sizes
 
-def define_split_hiearchy(part, node_sizes, alloc_size):
+def define_split_hierarchy(posz, node_sizes, alloc_size):
     nlevels = len(node_sizes)
     
-    ispl =  create_coarse_leaves(part.pos, leaf_size=node_sizes[0], alloc_size=alloc_size)
+    ispl =  create_coarse_leaves(posz, leaf_size=node_sizes[0], alloc_size=alloc_size)
 
     nleaves = jnp.argmax(ispl)
-    lvl, lbound, rbound = determine_znode_boundaries(part.pos[ispl[:-1]], nleaves=nleaves)
+    lvl, lbound, rbound = determine_znode_boundaries(posz[ispl[:-1]], nleaves=nleaves)
 
     npart_node = ispl[rbound] - ispl[lbound]
 
@@ -349,15 +349,16 @@ def define_split_hiearchy(part, node_sizes, alloc_size):
     ispl_n2n = jnp.zeros(alloc_size, dtype=jnp.int32).at[offsets].set(value)
     ispl_n2n = PackedArray(ispl_n2n, level_spl)
     
-    return ispl,ispl_n2l,ispl_n2n
+    return ispl, ispl_n2l, ispl_n2n
 
-def build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
-    node_sizes = define_tree_level_node_sizes(len(part.pos), cfg=cfg)
+def build_tree_hierarchy(part: PosMass, cfg_tree: TreeConfig) -> TreeHierarchy:
+
+    node_sizes = define_tree_level_node_sizes(len(part.pos), cfg_tree)
     nlevels = len(node_sizes)
 
-    alloc_size = int(div_ceil(len(part.pos) * cfg.fmm.alloc_fac_nodes, np.maximum(cfg.fmm.max_leaf_size//2, 1))) + 1
+    alloc_size = int(div_ceil(len(part.pos) * cfg_tree.alloc_fac_nodes, np.maximum(cfg_tree.max_leaf_size//2, 1))) + 1
 
-    ispl, ispl_n2l, ispl_n2n = define_split_hiearchy(part, node_sizes, alloc_size)
+    ispl, ispl_n2l, ispl_n2n = define_split_hierarchy(part.pos, node_sizes, alloc_size)
 
     # We can handle all levels at once for node geometry:
     ispl_n2p = ispl[ispl_n2l.data] # node to particle relation
@@ -371,7 +372,7 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
     # Can predict the shapes of further packed arrays
     leaf_array_spl = cumsum_starting_with_zero(ispl_n2l.ispl[1:]- ispl_n2l.ispl[:-1] - 1)
 
-    if cfg.fmm.multipoles_around_com:
+    if cfg_tree.mass_centered:
         def handle_mcent_level(i, carry):
             npos, nmass, posm = carry
             posm = center_of_mass(ispl_n2n.get(i, size=len(posm.mass)+1), posm)
@@ -387,7 +388,7 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
     else:
         nmass_cent, nmass = None, None
 
-    plane_sizes = [int(alloc_size / (cfg.fmm.coarse_fac ** i)) for i in range(nlevels)]
+    plane_sizes = [int(alloc_size / (cfg_tree.coarse_fac ** i)) for i in range(nlevels)]
 
     def plane_size_err(num, sizes):
         raise RuntimeError(f"Tree allocation too small: \nplanes filled: {num} \nsize: {sizes}.\n"
@@ -409,4 +410,4 @@ def build_tree_hierarchy(part: PosMass, cfg: Config) -> TreeHierarchy:
     )
     
     return th
-build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg'])
+build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg_tree'])

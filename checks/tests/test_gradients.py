@@ -48,7 +48,7 @@ def test_l2l_gradients(pos_mass_z, tree_planes, cfg):
     my_check_gradient(lambda l: l2l(pos_mass_z.pos, l).sum(), loc, epsrel=5e-2)
 
 def test_fmm_node_gradients(pos_mass_z, tree_planes, cfg):
-    cfg_fmm = replace(cfg.fmm, p=4, multipoles_around_com=True)
+    cfg_fmm = replace(cfg.fmm, p=4)
     cfg = replace(cfg, softening=1e-1, fmm=cfg_fmm)
 
     def f(pos):

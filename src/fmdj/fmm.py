@@ -110,7 +110,7 @@ evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, sta
 def grouped_force_and_pot(particles: PosMass, ispl: jnp.ndarray, ilist: InteractionList,
                           cfg: Config = None) -> jnp.ndarray:
     block_size = 128
-    assert cfg.fmm.max_leaf_size <= block_size
+    assert cfg.tree.max_leaf_size <= block_size
     node_range = jnp.array([0, ispl.size-1], dtype=jnp.int32)
     out_type = jax.ShapeDtypeStruct((particles.pos.shape[0], 4), jnp.float32)
 
@@ -256,7 +256,7 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jnp.ndarray | None = None, c
     if mpz is None:
         mpz = partz.mass
 
-    th = build_tree_hierarchy(jax.lax.stop_gradient(partz), cfg)
+    th = build_tree_hierarchy(jax.lax.stop_gradient(partz), cfg.tree)
     tps = list(th.planes())
 
     loc_node_node, ilist = evaluate_node_node_fmm(partz, tps, cfg=cfg)

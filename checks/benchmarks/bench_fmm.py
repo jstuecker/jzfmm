@@ -9,11 +9,11 @@ from dataclasses import replace
 
 @pytest.mark.parametrize("coarsen_fac", [2,4,6,8])
 def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
-    cfg = replace(cfg, fmm=replace(cfg.fmm, coarse_fac=coarsen_fac))
+    cfg = replace(cfg, tree=replace(cfg.tree, coarse_fac=coarsen_fac))
     if coarsen_fac <= 4:
-        cfg = replace(cfg, fmm=replace(cfg.fmm, alloc_fac_nodes=1.5))
+        cfg = replace(cfg, tree=replace(cfg.tree, alloc_fac_nodes=1.5))
     
-    th = fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg)
+    th = fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg.tree)
     tps = list(th.planes())
     mph = fmdj.multipoles.build_multipole_hierarchy.jit(tps, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
     
@@ -25,11 +25,11 @@ def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
 
 @pytest.mark.parametrize("max_leaf_size", [16,24,32,48])
 def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
-    cfg = replace(cfg, fmm=replace(cfg.fmm, max_leaf_size=max_leaf_size))
+    cfg = replace(cfg, tree=replace(cfg.tree, max_leaf_size=max_leaf_size))
 
     jb = jax_bench(jit_rounds=40, jit_warmup=20)
 
-    th = fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg)
+    th = fmdj.ztree.build_tree_hierarchy.jit(pos_mass_z, cfg.tree)
     tps = list(th.planes())
     mph = fmdj.multipoles.build_multipole_hierarchy.jit(tps, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
 
@@ -67,7 +67,7 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
     posz, isortz = jb.measure(fn_jit=fmdj.ztree.pos_zorder_sort.jit, x=pos_mass.pos, tag="zsort")[1]
     pos_mass_z = fmdj.data.PosMass(pos=posz, mass=pos_mass.mass[isortz])
 
-    th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg=cfg, tag="build_new")[1]
+    th = jb.measure(fn_jit=fmdj.ztree.build_tree_hierarchy.jit, part=pos_mass_z, cfg_tree=cfg.tree, tag="build_new")[1]
     tps = list(th.planes())
 
     mph = jb.measure(fn_jit=fmdj.multipoles.build_multipole_hierarchy.jit, 
@@ -87,7 +87,7 @@ def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_planes):
 
     jb = jax_bench(jit_rounds=200, jit_warmup=20)
 
-    cfg = Config(fmm=FMMConfig(p=p, multipoles_around_com=False))
+    cfg = Config(fmm=FMMConfig(p=p))
 
     jb.measure(
         fn_jit = fmdj.multipoles.summarize_multipoles.jit,

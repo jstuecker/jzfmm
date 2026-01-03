@@ -68,7 +68,7 @@ def pos_mass_z(npart):
 
 @pytest.fixture
 def tree_hierarchy(pos_mass_z, cfg):
-    th = jax.block_until_ready(fmdj.fmm.build_tree_hierarchy.jit(pos_mass_z, cfg=cfg))
+    th = jax.block_until_ready(fmdj.fmm.build_tree_hierarchy.jit(pos_mass_z, cfg_tree=cfg.tree))
     return th
 
 @pytest.fixture

@@ -7,7 +7,7 @@ def bench_build_tree_hierarchy(jax_bench, pos_mass_z, cfg):
 
     jb.measure(
         fn=fmdj.ztree.build_tree_hierarchy, fn_jit=fmdj.ztree.build_tree_hierarchy.jit, 
-        part=pos_mass_z, cfg=cfg, tag="new")
+        part=pos_mass_z, cfg_tree=cfg.tree, tag="new")
     
 @pytest.mark.parametrize("npart", [1024*128,1024*1024,1024*1024*8], indirect=True)
 def bench_zsort(jax_bench, pos_mass, cfg):

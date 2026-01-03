@@ -17,8 +17,6 @@ class FMMConfig():
     p : int = 3
 
     # important
-    max_leaf_size : int = 32
-    coarse_fac : float = 6.0
     opening_angle : float = 0.85
 
     # Memory
@@ -27,12 +25,19 @@ class FMMConfig():
     # Other
     kahan_summation : bool = False
 
-    # less relevant
-    alloc_fac_nodes : float = 1.0
-    stop_coarsen : int = 1024
+@dataclass(unsafe_hash=True)
+class TreeConfig():
+    # structure:
+    max_leaf_size: int = 32
+    coarse_fac: float = 6.0
+    stop_coarsen: int = 1024
 
-    # untested:
-    multipoles_around_com : bool = True
+    # memory usage:
+    alloc_fac_nodes: float = 1.0
+
+    # other:
+    mass_centered: bool = True
+
 
 @dataclass(unsafe_hash=True)
 class CommunicationConfig():
@@ -55,6 +60,7 @@ class LoggingConfig():
 @dataclass(unsafe_hash=True)
 class Config():
     # Sub config objects
+    tree : TreeConfig | None = TreeConfig()
     fmm : FMMConfig | None = FMMConfig()
     logging : LoggingConfig = LoggingConfig()
     old : OldConfig = OldConfig()
