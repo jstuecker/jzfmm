@@ -311,7 +311,15 @@ def define_tree_level_node_sizes(npart: int, cfg_tree: TreeConfig):
 
     return node_sizes
 
-def define_split_hierarchy(posz, node_sizes, alloc_size):
+def define_split_hierarchy(posz: jnp.ndarray, node_sizes: Tuple[int], alloc_size: int
+                           ) -> Tuple[jnp.ndarray, PackedArray, PackedArray]:
+    """Finds the splitting point of the tree hierarchy
+
+    returns
+      ispl: the splitting points of leafs in the particle array
+      ispl_n2n: a PackedArray that defines the node to node splitting points per level
+      ispl_n2l: a PackedArray that defines the node to leaf splitting points per level
+    """
     nlevels = len(node_sizes)
     
     ispl =  create_coarse_leaves(posz, leaf_size=node_sizes[0], alloc_size=alloc_size)
@@ -351,19 +359,26 @@ def define_split_hierarchy(posz, node_sizes, alloc_size):
     
     return ispl, ispl_n2l, ispl_n2n
 
-def build_tree_hierarchy(part: PosMass, cfg_tree: TreeConfig) -> TreeHierarchy:
+def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig) -> TreeHierarchy:
+    if isinstance(part, jnp.ndarray):
+        assert part.shape[-1] == 3
+        posz = part
+    elif hasattr(part, "pos"):
+        posz = part.pos
+    else:
+        raise ValueError("Invalid input particles")
 
-    node_sizes = define_tree_level_node_sizes(len(part.pos), cfg_tree)
+    node_sizes = define_tree_level_node_sizes(len(posz), cfg_tree)
     nlevels = len(node_sizes)
 
-    alloc_size = int(div_ceil(len(part.pos) * cfg_tree.alloc_fac_nodes, np.maximum(cfg_tree.max_leaf_size//2, 1))) + 1
+    alloc_size = int(div_ceil(len(posz) * cfg_tree.alloc_fac_nodes, np.maximum(cfg_tree.max_leaf_size//2, 1))) + 1
 
-    ispl, ispl_n2l, ispl_n2n = define_split_hierarchy(part.pos, node_sizes, alloc_size)
+    ispl, ispl_n2l, ispl_n2n = define_split_hierarchy(posz, node_sizes, alloc_size)
 
     # We can handle all levels at once for node geometry:
     ispl_n2p = ispl[ispl_n2l.data] # node to particle relation
     lvl, geom_cent, ext = get_node_geometry(
-        part.pos, ispl_n2p[:-1], ispl_n2p[1:], num=ispl_n2l.nfilled()-1
+        posz, ispl_n2p[:-1], ispl_n2p[1:], num=ispl_n2l.nfilled()-1
     )
     # However, the splits are discontinuous at level boundaries. We have to delete the extra entries
     lvl = jnp.delete(lvl, ispl_n2l.ispl[1:-1]-1, assume_unique_indices=True)
@@ -373,6 +388,8 @@ def build_tree_hierarchy(part: PosMass, cfg_tree: TreeConfig) -> TreeHierarchy:
     leaf_array_spl = cumsum_starting_with_zero(ispl_n2l.ispl[1:]- ispl_n2l.ispl[:-1] - 1)
 
     if cfg_tree.mass_centered:
+        assert hasattr(part, "mass"), "To use mass centering, please provide PosMass input"
+
         def handle_mcent_level(i, carry):
             npos, nmass, posm = carry
             posm = center_of_mass(ispl_n2n.get(i, size=len(posm.mass)+1), posm)
