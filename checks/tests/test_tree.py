@@ -6,7 +6,22 @@ import fmdj_jaxonly.jaxonly_multipoles as jmp
 import pytest
 import numpy.testing as npt
 
-def test_tree_hierarchy(tree_planes : list[TreePlane]):
+def test_tree_hierarchy(tree_hierarchy : TreeHierarchy):
+    th = tree_hierarchy
+
+    nleaves = jnp.argmax(th.ispl_n2l.get(0))
+    for lvl in range(1, th.num_planes()):
+        in2l = th.ispl_n2l.get(lvl)
+        in2n = th.ispl_n2n.get(lvl)
+
+        assert jnp.all(in2l[1:] >= in2l[:-1])
+        assert jnp.all(in2n[1:] >= in2n[:-1])
+        
+        assert jnp.max(in2l) == nleaves
+        assert jnp.max(in2n) == jnp.argmax(th.ispl_n2n.get(lvl-1))
+    
+    tree_planes = list(th.planes())
+    
     npart = jnp.sum(tree_planes[0].npart)
     for tplane  in tree_planes:
         assert jnp.sum(tplane.npart) == npart
