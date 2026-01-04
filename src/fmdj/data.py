@@ -105,6 +105,15 @@ class PackedArray:
     
     def nlevels(self):
         return len(self.ispl) - 1
+    
+    def all_equal(self, other: "PackedArray"):
+        def eq_nan(x, y):
+            return (x == y) | (jnp.isnan(x) & jnp.isnan(y))
+
+        equal  = jnp.all(eq_nan(self.data, other.data))
+        equal &= jnp.all(self.ispl == other.ispl)
+        equal &= jnp.all(eq_nan(self.fill_values, other.fill_values))
+        return equal
 
 @jax.tree_util.register_dataclass
 @dataclass

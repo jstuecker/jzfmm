@@ -40,12 +40,6 @@ def test_node_geometry(pos_mass_z: PosMass):
             continue
         pnode = pos[ispl[i]:ispl[i+1]]
 
-        # print("----")
-        # print(pnode[0], pnode[-1])
-        # print(jnp.min(pnode, axis=0), cent[i] - ext[i]*0.5)
-        # print(jnp.mean(pnode, axis=0), cent[i])
-        # print(jnp.max(pnode, axis=0), cent[i] + ext[i]*0.5)
-
         pmin, pmax = jnp.min(pnode, axis=0), jnp.max(pnode, axis=0)
                 
         npt.assert_array_less(cent[i] - ext[i]*0.5, pmin)
@@ -109,3 +103,22 @@ def test_leaf_search(pos_mass_z: PosMass, tree_hierarchy: TreeHierarchy):
     spl2 = jnp.searchsorted(ileaf, jnp.arange(len(xleaf)+1), side="left")
 
     assert jnp.all(spl == spl2), "Leaf ranges should be identical"
+
+def test_tree_nans(pos_mass_z: PosMass, cfg: fmdj.Config):
+    npart = len(pos_mass_z.pos)
+    nextra = 1356
+
+    pos_mass_z2 = PosMass(
+        pos = jnp.pad(pos_mass_z.pos, ((0,nextra),(0,0)), constant_values=jnp.nan),
+        mass = jnp.pad(pos_mass_z.mass, (0, nextra), constant_values=jnp.nan)
+    )
+
+    th1 = fmdj.ztree.build_tree_hierarchy(pos_mass_z, cfg.tree, npart_tot=npart)
+    th2 = fmdj.ztree.build_tree_hierarchy(pos_mass_z2, cfg.tree, npart_tot=npart)
+
+    assert th1.ispl_n2l.all_equal(th2.ispl_n2l)
+    assert th1.ispl_n2n.all_equal(th2.ispl_n2n)
+    assert th1.geom_cent.all_equal(th2.geom_cent)
+    assert th1.lvl.all_equal(th2.lvl)
+    assert th1.mass.all_equal(th2.mass)
+    assert th1.mass_cent.all_equal(th2.mass_cent)

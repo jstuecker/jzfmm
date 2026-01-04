@@ -392,7 +392,8 @@ def get_tree_mass_centers(part: PosMass, ispl_n2n: PackedArray) -> Tuple[PackedA
 
     return node_mcent, node_mass
 
-def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig) -> TreeHierarchy:
+def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig,
+                         npart_tot: int | None = None) -> TreeHierarchy:
     """Builds a tree hierarchy from z-order positions
 
     The zeroth level of the tree corresponds to leaves, which contain multiple particles.
@@ -418,11 +419,14 @@ def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig) -> T
         posz = part.pos
     else:
         raise ValueError("Invalid input particles")
+    
+    if npart_tot is None:
+        npart_tot = len(posz)
 
-    node_sizes = define_tree_level_node_sizes(len(posz), cfg_tree)
+    node_sizes = define_tree_level_node_sizes(npart_tot, cfg_tree)
     nlevels = len(node_sizes)
 
-    alloc_size = estimate_node_number(len(posz), cfg_tree.max_leaf_size, cfg_tree.alloc_fac_nodes)
+    alloc_size = estimate_node_number(npart_tot, cfg_tree.max_leaf_size, cfg_tree.alloc_fac_nodes)
 
     ispl, ispl_n2l, ispl_n2n = define_split_hierarchy(posz, node_sizes, alloc_size)
 
@@ -448,7 +452,7 @@ def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig) -> T
         
     # Predict maximum plane (at compile time) and check whether the prediction was large enough
     # Note: This step can probably be skipped after I adapted the code to use fixed size arrays
-    plane_sizes = [estimate_node_number(len(posz), node_sizes[i], alloc_fac=cfg_tree.alloc_fac_nodes)
+    plane_sizes = [estimate_node_number(npart_tot, node_sizes[i], alloc_fac=cfg_tree.alloc_fac_nodes)
                    for i in range(0, nlevels)]
 
     def plane_size_err(num, sizes):
@@ -467,7 +471,7 @@ def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig) -> T
     )
     
     return th
-build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg_tree'])
+build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg_tree', 'npart_tot'])
 
 # ------------------------------------------------------------------------------------------------ #
 #                                     Interaction List Helpers                                     #
