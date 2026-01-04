@@ -46,6 +46,8 @@ def evaluate_plane_interactions(
     """
     ilist_alloc_size = cfg.fmm.ilist_alloc_fac * plane.size()
 
+    assert ilist_alloc_size < 2**31, "So far only int32 supported {ilist_alloc_size/2**31}"
+
     if plane_lr is None or ilist_lr is None: # Root level
         spl_nodes, ilist_lr, nnodes = grouped_dense_interaction_list(plane.nnodes, ilist_alloc_size, ngroup=8)
         node_range = jnp.array([0, nnodes], dtype=jnp.int32)
