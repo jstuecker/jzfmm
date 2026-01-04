@@ -41,6 +41,7 @@ def get_mesh(ndev=-1):
     return jax.sharding.Mesh(jax.devices()[:ndev], ('gpus',), axis_types=(AxisType.Auto))
 
 @pytest.mark.parametrize("ndev", NDEVS)
+@pytest.mark.skipif(jax.device_count() <= 1, reason="Requires multiple devices")
 @pytest.mark.multi_gpu
 def bench_multi_zsort(jax_bench, ndev):
     Ntot = 1024*1024*128
