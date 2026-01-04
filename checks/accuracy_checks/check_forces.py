@@ -12,8 +12,6 @@ part = gaussian_blob(N=int(512*1024), scale=1.0, mass=1.)
 cfg = fmdj.Config(softening=1e-2)
 cfg.fmm.kahan_summation = True
 cfg.tree.mass_centered = True
-# Somehow the node alloc factor has a small effect on forces... this must be a bug... fix later...
-cfg.tree.alloc_fac_nodes = 1.2
 
 def rerr_force(a: fmdj.data.LocalExpansion, b: fmdj.data.LocalExpansion):
     return jnp.linalg.norm(a.force() - b.force(), axis=-1)/jnp.linalg.norm(b.force(), axis=-1)

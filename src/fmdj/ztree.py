@@ -300,10 +300,20 @@ def adjust_domain_for_nodesize(posz, max_node_size, npart=None):
 #                                      Tree Building Functions                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def define_tree_level_node_sizes(npart: int, cfg_tree: TreeConfig):
-    max_num_leaves = int(div_ceil(npart * cfg_tree.alloc_fac_nodes, np.maximum(cfg_tree.max_leaf_size//2, 1)))
+def estimate_node_number(npart, max_node_size, alloc_fac=1.):
+    """Gives an estimate of the number of nodes
+    
+    Assumes that particles are grouped in z-order into nodes that have <= node_size particles each.
+    """
+    # Since most nodes with size <= max_node_size/2 can be grouped, we generally get a reasonably 
+    # safe estimate by dividing node_size/2. However, the estimate is not totally guaranteed, since
+    # imbalanced distributions may require some nodes with size >= max_node_size/2 may block
+    # multiple nodes with size <= max_node_size/2 from being summarized.
+    return int(div_ceil(npart*alloc_fac, np.maximum(max_node_size//2, 1))) + 1
 
-    # can improve this!
+def define_tree_level_node_sizes(npart: int, cfg_tree: TreeConfig):
+    max_num_leaves = estimate_node_number(npart, cfg_tree.max_leaf_size)
+
     nlevels = np.log(max_num_leaves / cfg_tree.stop_coarsen) / np.log(cfg_tree.coarse_fac)
     nlevels = np.maximum(int(np.ceil(nlevels)), 1)
 
@@ -412,7 +422,7 @@ def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig) -> T
     node_sizes = define_tree_level_node_sizes(len(posz), cfg_tree)
     nlevels = len(node_sizes)
 
-    alloc_size = int(div_ceil(len(posz) * cfg_tree.alloc_fac_nodes, np.maximum(cfg_tree.max_leaf_size//2, 1))) + 1
+    alloc_size = estimate_node_number(len(posz), cfg_tree.max_leaf_size, cfg_tree.alloc_fac_nodes)
 
     ispl, ispl_n2l, ispl_n2n = define_split_hierarchy(posz, node_sizes, alloc_size)
 
@@ -438,7 +448,8 @@ def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig) -> T
         
     # Predict maximum plane (at compile time) and check whether the prediction was large enough
     # Note: This step can probably be skipped after I adapted the code to use fixed size arrays
-    plane_sizes = [int(alloc_size / (cfg_tree.coarse_fac ** i)) for i in range(nlevels)]
+    plane_sizes = [estimate_node_number(len(posz), node_sizes[i], alloc_fac=cfg_tree.alloc_fac_nodes)
+                   for i in range(0, nlevels)]
 
     def plane_size_err(num, sizes):
         raise RuntimeError(f"Tree allocation too small: \nplanes filled: {num} \nsize: {sizes}.\n"
