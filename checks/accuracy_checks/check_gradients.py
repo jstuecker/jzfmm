@@ -11,7 +11,7 @@ part = gaussian_blob(N=int(512*1024), scale=1.0, mass=1.)
 
 cfg = fmdj.Config(softening=1e-2)
 cfg.fmm.kahan_summation = True
-cfg.tree.mass_centered = False
+cfg.tree.mass_centered = True
 
 def rerr_pos(a: fmdj.data.PosMass, b: fmdj.data.PosMass):
     return jnp.linalg.norm(a.pos - b.pos, axis=-1)/jnp.linalg.norm(b.pos, axis=-1)

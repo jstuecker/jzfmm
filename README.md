@@ -2,6 +2,9 @@
 Fast Multipoles Done with Jax
 
 # ToDo:
+* Set up a unit test to verify that node splits behave correctly at domain boundary
+* Check why node_alloc_fac has a small effect on forces...
+
 * Add a unit test that compares the tree structure for different coarsening
 * Adapt code to use new tree hierarchy efficiently / Don't materialize tree-planes
 * Improve dense interaction allocation handling

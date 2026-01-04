@@ -334,6 +334,7 @@ def define_split_hierarchy(posz: jnp.ndarray, node_sizes: Tuple[int], alloc_size
     # Calculate a prefix accross hierarchy levels to densly stack the nodes later
     offsets = jnp.cumsum(active_on_level.flatten()).reshape(active_on_level.shape)
     level_spl = jnp.pad(offsets[:,-1], (1,0), constant_values=0) # save level start/end points
+    nnodes_on_level = level_spl[1:] - level_spl[:-1] - 1 # -1 since splits are always 1 larger than nodes
 
     # Check that the allocation is big enough
     def alloc_err(filled, size):
@@ -348,14 +349,16 @@ def define_split_hierarchy(posz: jnp.ndarray, node_sizes: Tuple[int], alloc_size
     
     # node-to-leaf relation is given by the leaf that is active at the node location
     ispl_n2l = jnp.zeros(alloc_size, dtype=jnp.int32).at[offsets].set(offsets[0:1,:])
-    ispl_n2l = PackedArray(ispl_n2l, level_spl)
+    ispl_n2l = PackedArray(ispl_n2l, level_spl, fill_values=nnodes_on_level[0])
 
     # node-to-node relation is given by the last level node that is active at the node location
     # for the leaf-level we insert the leaf to particle relation here
     ilevel = jnp.arange(nlevels)
     value = jnp.where(ilevel[:,None] == 0, ispl, offsets[ilevel-1,:] - level_spl[ilevel-1,None])
     ispl_n2n = jnp.zeros(alloc_size, dtype=jnp.int32).at[offsets].set(value)
-    ispl_n2n = PackedArray(ispl_n2n, level_spl)
+    # out of bounds access shall give nnodes of next smaller level (or npart for leaves):
+    fill_val = jnp.pad(nnodes_on_level[:-1], (1,0), constant_values=ispl[-1])
+    ispl_n2n = PackedArray(ispl_n2n, level_spl, fill_values=fill_val)
     
     return ispl, ispl_n2l, ispl_n2n
 
@@ -470,42 +473,44 @@ def dense_interaction_list(size: int, nnodes: jnp.ndarray = None) -> Interaction
         nnodes = jnp.array(size, dtype=jnp.int32)  
     dtype = nnodes.dtype
 
-    # We need to work around JAX's lack of dynamic array sizes
-    i1, i2 = jnp.indices((size, size), dtype=dtype)
+    nfilled = nnodes*nnodes
+
+    idx = jnp.arange(size*size)
+    ilist = idx % nnodes
     
-    valid = (i1 < nnodes) & (i2 < nnodes)
-
-    ioff, nfilled = masked_prefix_sum(valid.flatten())
-
-    ilist = jnp.zeros(i1.size, dtype=i1.dtype).at[ioff].set(i2.flatten())
-
-    ispl = jnp.arange(0, size+1, dtype=i1.dtype) * nnodes
-    ispl = jnp.where(ispl < nfilled, ispl, nfilled)
+    ispl = jnp.minimum(jnp.arange(0, size+1, dtype=dtype) * nnodes, nfilled)
     
     return InteractionList(ispl=ispl, iother=ilist, nfilled=nfilled)
 dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size'])
 
 def grouped_dense_interaction_list(nnodes: jnp.ndarray | int, size_ilist: int,
                                    size_super: int | None = None, ngroup: int = 32
-                                   ) -> Tuple[jnp.ndarray, InteractionList]:
+                                   ) -> Tuple[jnp.ndarray, InteractionList, jnp.ndarray]:
     nsuper_nodes = div_ceil(nnodes, ngroup)
+    ninteractions = nsuper_nodes*nsuper_nodes
+
+    # Somehow if I keep the following check, I get slight differences in the resulting gradients
+    # Have to check carefully whether I ever read from any uninitialized memory, which might
+    # get affected by reordering the computation through this callback (?)
 
     def ilist_size_error(n, size):
         raise MemoryError(f"Cannot fit {n}*{n} interactions into ilist with size {size}")
     nsuper_nodes = nsuper_nodes + conditional_callback(
-        nsuper_nodes*nsuper_nodes > size_ilist, ilist_size_error, nsuper_nodes, size_ilist
+        ninteractions > size_ilist, ilist_size_error, nsuper_nodes, size_ilist
     )
     
     idx = jnp.arange(size_ilist)
-    ilist = jnp.where(idx <= nsuper_nodes*nsuper_nodes, idx % nsuper_nodes, 0)
+    ilist = jnp.where(idx < ninteractions, idx % nsuper_nodes, 0)
     
     # define the super node to node relation
     if size_super is None:
         size_super = np.ceil(np.sqrt(size_ilist)).astype(np.int64)
-    spl_super = jnp.minimum(jnp.arange(size_super) * ngroup, nnodes)
-    ispl = jnp.minimum(jnp.arange(size_super+1) * nsuper_nodes, nsuper_nodes*nsuper_nodes)
+    spl_super = jnp.minimum(jnp.arange(size_super+1) * ngroup, nnodes)
+    ispl = jnp.minimum(jnp.arange(size_super+1) * nsuper_nodes, ninteractions)
 
-    return spl_super, InteractionList(ispl=ispl, iother=ilist, nfilled=nsuper_nodes*nsuper_nodes)
+    ilist = InteractionList(ispl=ispl, iother=ilist, nfilled=ninteractions)
+
+    return spl_super, ilist, nsuper_nodes
 grouped_dense_interaction_list.jit = jax.jit(
     grouped_dense_interaction_list, static_argnames=["size_ilist", "size_super"]
 )

@@ -47,10 +47,8 @@ def evaluate_plane_interactions(
     ilist_alloc_size = cfg.fmm.ilist_alloc_fac * plane.size()
 
     if plane_lr is None or ilist_lr is None: # Root level
-        # ilist_lr = dense_interaction_list(plane.size(), nnodes=plane.nnodes)
-        # spl_nodes = jnp.minimum(jnp.arange(0, plane.size() + 1, dtype=jnp.int32), plane.nnodes)
-        spl_nodes, ilist_lr = grouped_dense_interaction_list(plane.nnodes, ilist_alloc_size, ngroup=8)
-        node_range = jnp.array([0, plane.nnodes], dtype=jnp.int32)
+        spl_nodes, ilist_lr, nnodes = grouped_dense_interaction_list(plane.nnodes, ilist_alloc_size, ngroup=8)
+        node_range = jnp.array([0, nnodes], dtype=jnp.int32)
     else:
         spl_nodes = plane_lr.ispl
         node_range = jnp.array([0, plane_lr.nnodes], dtype=jnp.int32)
