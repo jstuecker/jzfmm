@@ -4,15 +4,25 @@ import jax.numpy as jnp
 from typing import Tuple
 from .tools import conditional_callback
 
-#Some global variables
+# ------------------------------------------------------------------------------------------------ #
+#                                        General Device Info                                       #
+# ------------------------------------------------------------------------------------------------ #
 
-mesh = jax.sharding.Mesh(jax.devices(), ('gpus',), axis_types=(AxisType.Auto))
-sharding = NamedSharding(mesh, P('gpus'))
-ndev = len(jax.devices())
+def get_rank_info() -> Tuple[int, int, str]:
+    mesh = jax.sharding.get_abstract_mesh()
+    if len(mesh.axis_names) == 0:
+        return 0, 1, None
+    assert len(mesh.axis_names) == 1, "Assuming only a single sharded axis"
+    axis_name = mesh.axis_names[0]
 
-def global_splits(n, axis_name="gpus"):
-    alln = jax.lax.all_gather(n, axis_name)
-    return jnp.pad(jnp.cumsum(alln), (1,0), constant_values=0)
+    rank = jax.lax.axis_index(axis_name)
+    ndev = jax.lax.axis_size(axis_name)
+
+    return rank, ndev, axis_name
+
+# ------------------------------------------------------------------------------------------------ #
+#                                       Tiny Helper Functions                                      #
+# ------------------------------------------------------------------------------------------------ #
 
 def pytree_len(x):
     """Returns the leading axis of the first leaf of a pytree"""
@@ -28,6 +38,36 @@ def empty_like(x, float_val=jnp.nan, int_val=0):
             return jnp.full_like(xi, fill_value=int_val)
 
     return jax.tree.map(empty_el, x)
+
+# ------------------------------------------------------------------------------------------------ #
+#                                  Simple Communication Directives                                 #
+# ------------------------------------------------------------------------------------------------ #
+
+def global_splits(n, axis_name="gpus"):
+    alln = jax.lax.all_gather(n, axis_name)
+    return jnp.pad(jnp.cumsum(alln), (1,0), constant_values=0)
+
+def send_to_right(x, axis_name, invalid_val=0):
+    rank = jax.lax.axis_index(axis_name)
+    ndev = jax.lax.axis_size(axis_name)
+
+    xin = jax.lax.ppermute(x, axis_name, [(i, i+1) for i in range(0,ndev-1)])
+    xin = jnp.where(rank == 0, invalid_val, xin)
+
+    return xin
+
+def send_to_left(x, axis_name, invalid_val=0):
+    rank = jax.lax.axis_index(axis_name)
+    ndev = jax.lax.axis_size(axis_name)
+
+    xin = jax.lax.ppermute(x, axis_name, [(i, i-1) for i in range(1,ndev)])
+    xin = jnp.where(rank == ndev-1, invalid_val, xin)
+
+    return xin
+
+# ------------------------------------------------------------------------------------------------ #
+#                                     All To All communication                                     #
+# ------------------------------------------------------------------------------------------------ #
 
 def all_to_all_with_splits(x, ispl, output=None, axis_name="gpus", verify=True, copy_self=True):
     """all_to_all communication with data-dependent communication volume
@@ -85,33 +125,3 @@ def all_to_all_with_splits(x, ispl, output=None, axis_name="gpus", verify=True, 
         )
 
     return jax.tree.map(comm, x, output)
-
-def get_rank_info() -> Tuple[int, int, str]:
-    mesh = jax.sharding.get_abstract_mesh()
-    if len(mesh.axis_names) == 0:
-        return 0, 1, None
-    assert len(mesh.axis_names) == 1, "Assuming only a single sharded axis"
-    axis_name = mesh.axis_names[0]
-
-    rank = jax.lax.axis_index(axis_name)
-    ndev = jax.lax.axis_size(axis_name)
-
-    return rank, ndev, axis_name
-
-def send_to_right(x, axis_name, invalid_val=0):
-    rank = jax.lax.axis_index(axis_name)
-    ndev = jax.lax.axis_size(axis_name)
-
-    xin = jax.lax.ppermute(x, axis_name, [(i, i+1) for i in range(0,ndev-1)])
-    xin = jnp.where(rank == 0, invalid_val, xin)
-
-    return xin
-
-def send_to_left(x, axis_name, invalid_val=0):
-    rank = jax.lax.axis_index(axis_name)
-    ndev = jax.lax.axis_size(axis_name)
-
-    xin = jax.lax.ppermute(x, axis_name, [(i, i-1) for i in range(1,ndev)])
-    xin = jnp.where(rank == ndev-1, invalid_val, xin)
-
-    return xin
