@@ -6,7 +6,7 @@ from typing import Tuple
 from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
 from .data import TreePlane, Pos, PosMass, PackedArray, TreeHierarchy, InteractionList
-from .config import Config, CommunicationConfig, TreeConfig
+from .config import Config, TreeConfig
 from .multipoles import center_of_mass
 from .tools import cumsum_starting_with_zero, masked_prefix_sum, div_ceil
 from .comm import get_rank_info, send_to_left, send_to_right
@@ -207,20 +207,24 @@ def determine_npart(pos):
     valid = ~jnp.isnan(pos)
     return jnp.sum(valid[...,0] & valid[...,1] & valid[...,2])
 
-def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig):
-    axis_name = cfg_com.axis_name
-
-    rank = jax.lax.axis_index(axis_name=axis_name)
-    ndev = jax.lax.axis_size(axis_name=axis_name)
+def distributed_zsort(x: jnp.ndarray | Pos, nsamp: int = 1024):
+    rank, ndev, axis_name = get_rank_info()
 
     if ndev == 1:
-        return pos_zorder_sort(pos)[0]
+        return pos_zorder_sort(x)[0]
+
+    def get_pos(x):
+        if isinstance(x, jax.typing.ArrayLike):
+            return x
+        else: # assume x is a pytree with .pos attribute
+            return x.pos
+
+    pos = get_pos(x)
 
     npart = determine_npart(pos)
     nparttot = jax.lax.psum(npart, axis_name=axis_name)
 
     # Sample based domain decomposition
-    nsamp = cfg_com.zsort_domain_samples
     key = jax.random.key(0)
     isamp = jax.random.randint(key, shape=(nsamp,), minval=0, maxval=npart)
     posall = jax.lax.all_gather(pos[isamp], axis_name=axis_name, tiled=True)
@@ -228,8 +232,8 @@ def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig):
     xpivot = jnp.pad(xpivot, ((1,1), (0,0)), constant_values=jnp.inf).at[0].set(-jnp.inf)
 
     # Now organize and determine which chunks need to be send to each rank
-    posz, idz = pos_zorder_sort(pos)
-    spl = search_sorted_z(posz, xpivot)
+    xz, idz = pos_zorder_sort(x)
+    spl = search_sorted_z(get_pos(xz), xpivot)
 
     def err(n1, n2):
         raise MemoryError(f"Size of buffer is too small: need {n1}, have {n2}.\n")
@@ -238,19 +242,19 @@ def distributed_zsort(pos: jnp.ndarray, cfg_com: CommunicationConfig):
 
     from .comm import all_to_all_with_splits, global_splits
 
-    pos = all_to_all_with_splits(posz, spl, jnp.full_like(posz, jnp.nan), axis_name=axis_name)
-    posz, idz = pos_zorder_sort(pos)
+    x = all_to_all_with_splits(xz, spl, axis_name=axis_name)
+    xz, idz = pos_zorder_sort(x)
 
     # We have posz globally and locally in z-order now
     # Let's do another communication step to improve the balance
-    npart = determine_npart(posz)
+    npart = determine_npart(get_pos(xz))
     spl_have = global_splits(npart, axis_name=axis_name)
     spl_target = (jnp.arange(0, ndev+1) * (nparttot // ndev)).at[-1].set(nparttot)
     spl_send = jnp.clip(spl_target - spl_have[rank], 0, npart)
 
-    posz = all_to_all_with_splits(posz, spl_send, jnp.full_like(posz, jnp.nan), axis_name=axis_name)
+    xz = all_to_all_with_splits(xz, spl_send, axis_name=axis_name)
 
-    return posz
+    return xz
 
 def shift_particles_left(pos, nsend, max_send, npart=None):
     rank, ndev, axis_name = get_rank_info()

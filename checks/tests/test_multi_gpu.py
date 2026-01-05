@@ -17,7 +17,7 @@ def myzsort():
     pos = jax.random.uniform(jax.random.key(rank), (int(4096+1024),3))
     pos = pos.at[-1024:].set(jnp.nan)
 
-    posz = fmdj.ztree.distributed_zsort(pos, fmdj.config.CommunicationConfig())
+    posz = fmdj.ztree.distributed_zsort(pos)
     return pos, posz
 
 @pytest.mark.multi_gpu
@@ -135,7 +135,7 @@ def test_tree_properties():
         rank, ndev, axis_name = get_rank_info()
 
         pos, nparttot = get_pos()
-        posz = fmdj.ztree.distributed_zsort(pos, fmdj.config.CommunicationConfig())
+        posz = fmdj.ztree.distributed_zsort(pos)
 
         npart = jnp.sum(~jnp.isnan(posz[...,0]))
 

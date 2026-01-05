@@ -38,13 +38,6 @@ class TreeConfig():
     # other:
     mass_centered: bool = True
 
-
-@dataclass(unsafe_hash=True)
-class CommunicationConfig():
-    axis_name : str = "gpus"
-    zsort_domain_samples: int = 1024
-    domain_fac: float = 1.2
-
 class OldConfig():
     interact_unroll: int | bool = False
 

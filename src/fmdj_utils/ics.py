@@ -4,12 +4,28 @@ import jax.numpy as jnp
 import fmdj
 import aegis
 
-def gaussian_blob(N, scale=1.0, mass=1., seed=0, zsort=False):
+def pad_pytree(x, num, float_val=jnp.nan, int_val=0):
+    def pad(xi):
+        if xi.dtype.kind == "f":
+            val = float_val
+        else:
+            val = int_val
+        
+        return jnp.pad(xi, [(0, num)] + [(0,0)]*(xi.ndim - 1), constant_values=val)
+
+    return jax.tree.map(pad, x)
+
+def gaussian_blob(N, scale=1.0, mass=1., seed=0, zsort=False, npad=0):
     pos = jax.random.normal(jax.random.PRNGKey(seed), (N,3), dtype=jnp.float32) * scale
     if zsort:
         pos, isort = fmdj.ztree.pos_zorder_sort(pos)
     mass0 = jnp.ones(len(pos), dtype=pos.dtype) * (mass/N)
-    return fmdj.data.PosMass(pos, mass0)
+    posmass = fmdj.data.PosMass(pos, mass0)
+
+    if npad > 0:
+        return pad_pytree(posmass, npad)
+    else:
+        return posmass
 
 def hernquist(N, a=1., M=1., anisotropy=0., seed=None):
     if seed is not None:

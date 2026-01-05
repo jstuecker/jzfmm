@@ -32,7 +32,7 @@ def mk_pos(Ntot, alloc_fac=1.2, ndev=4):
 def mksort(ndev=4):
     @jax.shard_map(out_specs=P("gpus"), in_specs=P("gpus"), mesh=get_mesh(ndev))
     def f(pos):
-        posz = fmdj.ztree.distributed_zsort(pos, fmdj.config.CommunicationConfig())
+        posz = fmdj.ztree.distributed_zsort(pos)
         return posz
 
     return lambda pos=1: f(pos) # Hack to make function accept kw arguments
