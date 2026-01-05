@@ -317,7 +317,7 @@ def define_tree_level_node_sizes(npart: int, cfg_tree: TreeConfig):
     nlevels = np.log(max_num_leaves / cfg_tree.stop_coarsen) / np.log(cfg_tree.coarse_fac)
     nlevels = np.maximum(int(np.ceil(nlevels)), 1)
 
-    node_sizes = [int(cfg_tree.max_leaf_size) * (cfg_tree.coarse_fac ** i) for i in range(0, nlevels)]
+    node_sizes = [int(cfg_tree.max_leaf_size * (cfg_tree.coarse_fac ** i)) for i in range(0, nlevels)]
 
     return node_sizes
 
@@ -411,6 +411,7 @@ def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig,
     use the PackedArray class, that helps us to stack multiple different levels into a single
     continguous array, but to access it "almost" as if they were separate arrays.
     """
+    rank, ndev, axis_name = get_rank_info()
 
     if isinstance(part, jnp.ndarray):
         assert part.shape[-1] == 3
@@ -422,11 +423,12 @@ def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig,
     
     if npart_tot is None:
         npart_tot = len(posz)
+    npart_loc = npart_tot // ndev # static estimate of number of unpadded-particles
 
     node_sizes = define_tree_level_node_sizes(npart_tot, cfg_tree)
     nlevels = len(node_sizes)
 
-    alloc_size = estimate_node_number(npart_tot, cfg_tree.max_leaf_size, cfg_tree.alloc_fac_nodes)
+    alloc_size = estimate_node_number(npart_loc, cfg_tree.max_leaf_size, cfg_tree.alloc_fac_nodes)
 
     ispl, ispl_n2l, ispl_n2n = define_split_hierarchy(posz, node_sizes, alloc_size)
 
@@ -452,7 +454,7 @@ def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig,
         
     # Predict maximum plane (at compile time) and check whether the prediction was large enough
     # Note: This step can probably be skipped after I adapted the code to use fixed size arrays
-    plane_sizes = [estimate_node_number(npart_tot, node_sizes[i], alloc_fac=cfg_tree.alloc_fac_nodes)
+    plane_sizes = [estimate_node_number(npart_loc, node_sizes[i], alloc_fac=cfg_tree.alloc_fac_nodes)
                    for i in range(0, nlevels)]
 
     def plane_size_err(num, sizes):

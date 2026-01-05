@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
+from fmdj.comm import get_rank_info
 
 mesh = jax.sharding.Mesh(jax.devices(), ('gpus',), axis_types=(AxisType.Auto))
 sharding = NamedSharding(mesh, P('gpus'))
@@ -79,3 +80,76 @@ def test_multi_leaves():
     ispln2 = jax.device_put(ispln2, jax.sharding.SingleDeviceSharding(jax.devices()[0]))
 
     assert jnp.all(remove_duplicates(ispln2) == remove_duplicates(ispl0))
+
+def get_pos():
+    rank, ndev, axis_name = get_rank_info()
+
+    npart, nextra = 1024*128, 1024*32
+
+    pos = jax.random.uniform(jax.random.key(rank), (npart+nextra,3))
+    pos = pos.at[-nextra:].set(jnp.nan)
+
+    return pos, npart*ndev
+
+
+@pytest.mark.multi_gpu
+def test_tree_properties():
+    # Builds a tree hierarchy once on a single device and once accross multiple devices
+    # We check their consistency by performing a couple of reduction operations
+
+    cfg = fmdj.Config()
+    cfg.tree.mass_centered = True
+    cfg.tree.alloc_fac_nodes = 2.0
+
+    # Build a reference structure
+    posref, nparttot = jax.shard_map(get_pos, out_specs=(P("gpus"), P()), in_specs=(), mesh=mesh)()
+    posrefz = fmdj.ztree.pos_zorder_sort(posref)[0]
+    pmref = fmdj.data.PosMass(posrefz, jnp.ones(posrefz.shape[0]))
+
+    thref = fmdj.ztree.build_tree_hierarchy(pmref, cfg.tree, npart_tot=nparttot)
+
+    def reductions(th: fmdj.data.TreeHierarchy, axis_name=None):
+        res = []
+        for ispl in th.ispl_n2n, th.ispl_n2l:
+            for n in range(th.ispl_n2n.nlevels()):
+                # For now it seems that level 0 is consistent, but level 1 isn't
+                res.append(jnp.sum((ispl.get(n)[1:] - ispl.get(n)[:-1])))
+
+        lvlsum = jnp.sum(jnp.where(th.lvl.data > -1000, th.lvl.data, 0))
+        csum = jnp.nansum(th.geom_cent.data)
+        msum = jnp.nansum(th.mass.data**2)
+        mcsum = jnp.nansum(th.mass_cent.data**2)
+        res = res + [lvlsum, csum, msum, mcsum]
+
+        if axis_name is None:
+            return jnp.array(res)
+        else:
+            return jnp.array([jax.lax.psum(x, axis_name) for x in res])
+
+    @jax.jit
+    @jax.shard_map(out_specs=(P()), in_specs=(), mesh=mesh)
+    def distributed_tree_hierarchy_reductions():
+        rank, ndev, axis_name = get_rank_info()
+
+        pos, nparttot = get_pos()
+        posz = fmdj.ztree.distributed_zsort(pos, fmdj.config.CommunicationConfig())
+
+        npart = jnp.sum(~jnp.isnan(posz[...,0]))
+
+        top_node_size = fmdj.ztree.define_tree_level_node_sizes(nparttot, cfg.tree)[-1]
+        posz, npart = fmdj.ztree.adjust_domain_for_nodesize(posz, top_node_size, npart=npart)
+
+        pm = fmdj.data.PosMass(posz, jnp.ones(posz.shape[0]))
+
+        th = fmdj.ztree.build_tree_hierarchy(pm, cfg.tree, npart_tot=nparttot)
+
+        return reductions(th, axis_name)
+    
+    results1 = reductions(thref)
+    results2 = distributed_tree_hierarchy_reductions()
+
+    print(results1)
+    print(results2)
+
+    assert results1[:-3] == pytest.approx(results2[:-3], rel=1e-6) # integer sums
+    assert results1[-3:] == pytest.approx(results2[-3:], rel=1e-5) # floating point sums
