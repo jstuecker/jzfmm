@@ -25,6 +25,11 @@ class LocalExpansion:
 
 @jax.tree_util.register_dataclass
 @dataclass
+class Pos: # this class is mostly defined to declare an interface that particle class should follow
+    pos: jnp.ndarray
+
+@jax.tree_util.register_dataclass
+@dataclass
 class PosMass:
     pos: jnp.ndarray  # (Nparticles, 3)
     mass: jnp.ndarray  # (Nparticles,)

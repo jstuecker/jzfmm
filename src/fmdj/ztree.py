@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from typing import Tuple
 from fmdj_cuda import ffi_tree
 from .tools import conditional_callback, div_ceil
-from .data import TreePlane, PosMass, PackedArray, TreeHierarchy, InteractionList
+from .data import TreePlane, Pos, PosMass, PackedArray, TreeHierarchy, InteractionList
 from .config import Config, CommunicationConfig, TreeConfig
 from .multipoles import center_of_mass
 from .tools import cumsum_starting_with_zero, masked_prefix_sum, div_ceil
@@ -37,7 +37,7 @@ def get_node_box(x, level_binary):
 #                                             FFI Calls                                            #
 # ------------------------------------------------------------------------------------------------ #
 
-def _pos_zorder_sort_impl(x, block_size=64):
+def _pos_zorder_sort_impl(x: jnp.ndarray, block_size=64):
     assert x.dtype == jnp.float32
     assert x.shape[-1] == 3
 
@@ -54,20 +54,36 @@ def _pos_zorder_sort_impl(x, block_size=64):
 
     return pos, ids
 
-def pos_zorder_sort(x):
+def pos_zorder_sort(x: jnp.ndarray | Pos):
+    """Brings 3d-positions into z-order
+
+    If x is a pytree, it needs to have a "pos" attribute which will be used as the sorting key. 
+    All remaining leaves of the pytree will be sorted accordingly along the leading axis (which 
+    should have consistent length)
+    """
     @jax.custom_vjp
     def eval(x):
-        return _pos_zorder_sort_impl(x)
+        if isinstance(x, (jax.typing.ArrayLike)):
+            return _pos_zorder_sort_impl(x)
+        else: # assuming x is a pytree with x.pos attribute
+            posz, idz = _pos_zorder_sort_impl(x.pos)
+            def apply_sort(val):
+                return val[idz]
+            out = jax.tree.map(apply_sort, x)
+            out.pos = posz # overwiting here allows jit to discard the unnecessary position gather
+
+            return out, idz
     
     def eval_fwd(x):
-        pos, ids = eval(x)
-        return (pos, ids), ids
+        pos, idz = eval(x)
+        return (pos, idz), idz
     
-    def eval_bwd(ids, g):
-        gpos, gids = g
+    def eval_bwd(idz, g):
+        gxout, gids = g
         # Scatter the gradients back to the original ordering
-        gpos_unsort = jax.numpy.zeros_like(gpos).at[ids].set(gpos)
-        return (gpos_unsort,)
+        idinv = jnp.zeros_like(idz).at[idz].set(jnp.arange(len(idz), dtype=idz.dtype))
+        
+        return (jax.tree.map(lambda x: x[idinv], gxout),)
     
     eval.defvjp(eval_fwd, eval_bwd)
 
