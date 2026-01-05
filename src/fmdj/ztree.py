@@ -124,15 +124,10 @@ def determine_znode_boundaries(posz: jnp.ndarray, block_size: int = 64, nleaves:
     if nleaves is None:
         nleaves = jnp.array(len(posz))
     
-    # Define positions that lie beyond the local domain to get first and last node right
-    rank, ndev, axis_name = get_rank_info()
-    if ndev > 1:
-        npart = jnp.sum(~jnp.isnan(posz[...,0]))
-        pos_left = send_to_right(posz[npart-1], axis_name, invalid_val=jnp.nan)
-        pos_right = send_to_left(posz[0], axis_name, invalid_val=jnp.nan)
-        pos_bound = jnp.stack([pos_left, pos_right], axis=0)
-    else:
-        pos_bound = jnp.full((2,3), jnp.nan, dtype=posz.dtype)
+    # Set domain boundaries to behave like infinities
+    # Note that this is fine for multi-GPU, because we ensure in advance that no
+    # top-node intersects the boundary.
+    pos_bound = jnp.full((2,3), jnp.nan, dtype=posz.dtype)
 
     out_types = (jax.ShapeDtypeStruct((posz.shape[0]+1,), jnp.int32),)*3
     lvl, lbound, rbound = jax.ffi.ffi_call("FindNodeBoundaries", out_types)(

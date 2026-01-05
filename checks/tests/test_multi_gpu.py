@@ -109,14 +109,16 @@ def test_tree_properties():
     thref = fmdj.ztree.build_tree_hierarchy(pmref, cfg.tree, npart_tot=nparttot)
 
     def reductions(th: fmdj.data.TreeHierarchy, axis_name=None):
+        # Do a couple of reductions on node-properties to check identity of tree structures
+        # We use some squares to make it unlikely that the sum agrees if there are any differences
+        # in the node definitions
         res = []
         for ispl in th.ispl_n2n, th.ispl_n2l:
             for n in range(th.ispl_n2n.nlevels()):
-                # For now it seems that level 0 is consistent, but level 1 isn't
-                res.append(jnp.sum((ispl.get(n)[1:] - ispl.get(n)[:-1])))
+                res.append(jnp.sum((ispl.get(n)[1:] - ispl.get(n)[:-1])**2))
 
         lvlsum = jnp.sum(jnp.where(th.lvl.data > -1000, th.lvl.data, 0))
-        csum = jnp.nansum(th.geom_cent.data)
+        csum = jnp.nansum(th.geom_cent.data**2)
         msum = jnp.nansum(th.mass.data**2)
         mcsum = jnp.nansum(th.mass_cent.data**2)
         res = res + [lvlsum, csum, msum, mcsum]
@@ -148,8 +150,5 @@ def test_tree_properties():
     results1 = reductions(thref)
     results2 = distributed_tree_hierarchy_reductions()
 
-    print(results1)
-    print(results2)
-
-    assert results1[:-3] == pytest.approx(results2[:-3], rel=1e-6) # integer sums
-    assert results1[-3:] == pytest.approx(results2[-3:], rel=1e-5) # floating point sums
+    assert results1[:-3] == pytest.approx(results2[:-3], rel=1e-7) # integer sums, be very strict
+    assert results1[-3:] == pytest.approx(results2[-3:], rel=1e-6) # floating point sums
