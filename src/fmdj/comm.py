@@ -20,7 +20,16 @@ def pytree_len(x):
 
     return len(leaves[0])
 
-def all_to_all_with_splits(x, ispl, output, axis_name="gpus", verify=True, copy_self=True):
+def empty_like(x, float_val=jnp.nan, int_val=0):
+    def empty_el(xi):
+        if xi.dtype.kind == "f":
+            return jnp.full_like(xi, fill_value=float_val)
+        else:
+            return jnp.full_like(xi, fill_value=int_val)
+
+    return jax.tree.map(empty_el, x)
+
+def all_to_all_with_splits(x, ispl, output=None, axis_name="gpus", verify=True, copy_self=True):
     """all_to_all communication with data-dependent communication volume
     
     We send to rank i: x[ispl[i]:ispl[i+1]] 
@@ -29,10 +38,14 @@ def all_to_all_with_splits(x, ispl, output, axis_name="gpus", verify=True, copy_
     x: jnp.ndarray or pytree. If it is a pytree the communication will be applied over the leading
        dimensions of all leaves (undefined behaviour if some leaves have different lengths)
     output: jnp.ndarray or pytree. If x is a pytree output needs to be of identical structure.
+            If not provided, we use a copy of x filled with jnp.nan (or 0 for integers)
     verify: If True, throws an error if output buffer is too small. Otherwise out-of-range values
             will simply be discarded.
     copy_self: Extract self-send data and copy it directly (surprisingly this is faster)
     """
+    if output is None:
+        output = empty_like(x)
+
     out_size = pytree_len(output)
 
     input_offsets = ispl[:-1]
