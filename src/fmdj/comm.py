@@ -9,29 +9,6 @@ mesh = jax.sharding.Mesh(jax.devices(), ('gpus',), axis_types=(AxisType.Auto))
 sharding = NamedSharding(mesh, P('gpus'))
 ndev = len(jax.devices())
 
-def ragged_all_to_all_through_buf(operand, output, input_offsets, send_sizes, output_offsets, recv_sizes, *, axis_name, buf_size=1024):
-    """Does the same as jax.lax.ragged_all_to_all, but works on CPU and needs a buffer"""
-    def comm(icom, output):
-        igpu, ioff = jnp.indices((ndev, buf_size))
-        inoff = input_offsets[igpu] + icom*buf_size + ioff
-        xbuf = operand[inoff]
-
-        xrecv = jax.lax.all_to_all(xbuf, axis_name, 0, 0, tiled=True)
-
-        valid = icom*buf_size + ioff < recv_sizes[igpu]
-        outoff = output_offsets[igpu] + icom*buf_size + ioff
-        outoff = jnp.where(valid, outoff, output.size)
-        output = output.at[outoff].set(xrecv)
-
-        return output
-    
-    max_size = jax.lax.pmax(jnp.max(send_sizes), "gpus")
-    ncomm = (max_size + buf_size - 1) // buf_size
-
-    output = jax.lax.fori_loop(0, ncomm, comm, jax.lax.pvary(output, axis_name))
-
-    return output
-
 from jax.experimental import io_callback
 def conditional_callback(flag, f, *args, **kwargs):
     """Calls a device function f, only if the flag is True. Useful for raising exceptions that 
@@ -53,16 +30,16 @@ def global_splits(n, axis_name="gpus"):
     alln = jax.lax.all_gather(n, axis_name)
     return jnp.pad(jnp.cumsum(alln), (1,0), constant_values=0)
 
-def all_to_all_with_splits(x, ispl, output, axis_name="gpus", buf_size=1024, mode="auto", verify=True, copy_self=True):
-    """all_to_all communication where we send to rank i: x[ispl[i]:ispl[i+1]]
+def all_to_all_with_splits(x, ispl, output, axis_name="gpus", verify=True, copy_self=True):
+    """all_to_all communication with data-dependent communication volume
+    
+    We send to rank i: x[ispl[i]:ispl[i+1]] 
+    all received values will be inserted continguously into output (starting at 0).
     
     output: array where outputs are written to
-    mode: can be "auto", "ragged" or "buffered". "ragged" will use `jax.lax.ragged_all_to_all`.
-        "auto" will use "ragged", but fall back to "buffered" when `jax.lax.ragged_all_to_all` 
-        is not available
-    buf_size: size of the buffer per GPU -- only used in "buffered" mode.
     verify: If True, throws an error if output buffer is too small. Otherwise out-of-range values
             will simply be discarded.
+    copy_self: Extract self-send data and copy it directly (surprisingly this is faster)
     """
 
     input_offsets = ispl[:-1]
@@ -89,25 +66,13 @@ def all_to_all_with_splits(x, ispl, output, axis_name="gpus", buf_size=1024, mod
         send_sizes = send_sizes.at[rank].set(0)
         recv_sizes = recv_sizes.at[rank].set(0)
 
-    if mode in ("auto", "ragged"):
-        try:
-            # funnily jax.lax.ragged_all_to_all wants to know the output_offsets on the
-            # sending GPU rather than the receiving one... So we need to communicate the offsets
-            output_offsets = jax.lax.all_to_all(output_offsets, axis_name, 0, 0, tiled=True)
-            return jax.lax.ragged_all_to_all(x, output, input_offsets, send_sizes, output_offsets, 
-                                             recv_sizes, axis_name=axis_name)
-        except jax.errors.JaxRuntimeError as e:
-            print("Cannout use jax.lax.ragged_all_to_all (likely because not implemented for CPU) :")
-            if mode == "ragged":
-                raise e
-            else:
-                print(e)
-                print(f"Falling back to less efficient buffered approach with buf_size={buf_size}")
-                mode = "buffered"
-    if mode == "buffered":
-        return ragged_all_to_all_through_buf(x, output, input_offsets, send_sizes, output_offsets, 
-                                             recv_sizes, axis_name=axis_name, buf_size=buf_size)
+    # funnily jax.lax.ragged_all_to_all wants to know the output_offsets on the
+    # sending GPU rather than the receiving one... So we need to communicate the offsets
+    output_offsets = jax.lax.all_to_all(output_offsets, axis_name, 0, 0, tiled=True)
 
+    return jax.lax.ragged_all_to_all(
+        x, output, input_offsets, send_sizes, output_offsets, recv_sizes, axis_name=axis_name
+    )
 
 def get_rank_info() -> Tuple[int, int, str]:
     mesh = jax.sharding.get_abstract_mesh()
