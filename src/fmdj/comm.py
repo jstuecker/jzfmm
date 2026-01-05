@@ -2,6 +2,7 @@ from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
 import jax
 import jax.numpy as jnp
 from typing import Tuple
+from .tools import conditional_callback
 
 #Some global variables
 
@@ -9,26 +10,15 @@ mesh = jax.sharding.Mesh(jax.devices(), ('gpus',), axis_types=(AxisType.Auto))
 sharding = NamedSharding(mesh, P('gpus'))
 ndev = len(jax.devices())
 
-from jax.experimental import io_callback
-def conditional_callback(flag, f, *args, **kwargs):
-    """Calls a device function f, only if the flag is True. Useful for raising exceptions that 
-    truly stop the execution of a jitted program
-
-    returns an integer that is set to 0 if the callback is not triggered. This can be used to force
-    the jax graph to resolve the condition before continuing the graph, e.g. as in
-    """
-
-    res = jax.lax.cond(
-        flag, 
-        lambda : io_callback(f, jax.ShapeDtypeStruct((), jnp.int32), *args, **kwargs),
-        lambda : jnp.int32(0)
-    )
-
-    return res
-
 def global_splits(n, axis_name="gpus"):
     alln = jax.lax.all_gather(n, axis_name)
     return jnp.pad(jnp.cumsum(alln), (1,0), constant_values=0)
+
+def pytree_len(x):
+    """Returns the leading axis of the first leaf of a pytree"""
+    leaves = jax.tree_util.tree_leaves(x)
+
+    return len(leaves[0])
 
 def all_to_all_with_splits(x, ispl, output, axis_name="gpus", verify=True, copy_self=True):
     """all_to_all communication with data-dependent communication volume
@@ -36,11 +26,14 @@ def all_to_all_with_splits(x, ispl, output, axis_name="gpus", verify=True, copy_
     We send to rank i: x[ispl[i]:ispl[i+1]] 
     all received values will be inserted continguously into output (starting at 0).
     
-    output: array where outputs are written to
+    x: jnp.ndarray or pytree. If it is a pytree the communication will be applied over the leading
+       dimensions of all leaves (undefined behaviour if some leaves have different lengths)
+    output: jnp.ndarray or pytree. If x is a pytree output needs to be of identical structure.
     verify: If True, throws an error if output buffer is too small. Otherwise out-of-range values
             will simply be discarded.
     copy_self: Extract self-send data and copy it directly (surprisingly this is faster)
     """
+    out_size = pytree_len(output)
 
     input_offsets = ispl[:-1]
     send_sizes = ispl[1:] - ispl[:-1]
@@ -51,28 +44,34 @@ def all_to_all_with_splits(x, ispl, output, axis_name="gpus", verify=True, copy_
         def myerr(need, have):
             raise MemoryError(f"The receiving buffer is too small, need={need}, have={have}")
         need = jnp.sum(recv_sizes)
-        have = len(output)
-        recv_sizes = recv_sizes + conditional_callback(need > have, myerr, need, have)
+        recv_sizes = recv_sizes + conditional_callback(need > out_size, myerr, need, out_size)
 
     if copy_self:
         # avoid communication for self i/o
         rank = jax.lax.axis_index("gpus")
-        iout = jnp.arange(len(output)) #+ output_offsets[rank]
-        iin = jnp.arange(len(output)) + input_offsets[rank] - output_offsets[rank]
-        sel = (iout >= output_offsets[rank]) & (iout < output_offsets[rank] + send_sizes[rank])
-        sel = jnp.reshape(sel, (len(sel),) + (1,)*(x.ndim -1))
-
-        output = jnp.where(sel, x[iin], output)
+        iout = jnp.arange(out_size) #+ output_offsets[rank]
+        iin = jnp.arange(out_size) + input_offsets[rank] - output_offsets[rank]
+        mask = (iout >= output_offsets[rank]) & (iout < output_offsets[rank] + send_sizes[rank])
+        
         send_sizes = send_sizes.at[rank].set(0)
         recv_sizes = recv_sizes.at[rank].set(0)
+
+        def copy(xi, outi):
+            mask_rs = jnp.reshape(mask, (len(mask),) + (1,)*(xi.ndim -1))
+            return jnp.where(mask_rs, xi[iin], outi)
+
+        output = jax.tree.map(copy, x, output)
 
     # funnily jax.lax.ragged_all_to_all wants to know the output_offsets on the
     # sending GPU rather than the receiving one... So we need to communicate the offsets
     output_offsets = jax.lax.all_to_all(output_offsets, axis_name, 0, 0, tiled=True)
 
-    return jax.lax.ragged_all_to_all(
-        x, output, input_offsets, send_sizes, output_offsets, recv_sizes, axis_name=axis_name
-    )
+    def comm(xi, outi):
+        return jax.lax.ragged_all_to_all(
+            xi, outi, input_offsets, send_sizes, output_offsets, recv_sizes, axis_name=axis_name
+        )
+
+    return jax.tree.map(comm, x, output)
 
 def get_rank_info() -> Tuple[int, int, str]:
     mesh = jax.sharding.get_abstract_mesh()

@@ -46,6 +46,7 @@ def fcoarsen(posz: jnp.ndarray):
 
     return posz, ispl
 
+@jax.jit
 @jax.shard_map(out_specs=P("gpus"), in_specs=P("gpus"), mesh=mesh)
 def splits_to_global(ispl):
     """Adds offsets to locally calculated splits so they correspond to global array splits"""
