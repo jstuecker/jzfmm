@@ -25,7 +25,6 @@ readme = "README.md"
 cmake.version = ">=3.24"
 build-dir = "build"
 logging.level = "INFO"
-# build.requires = ["jax[cuda13]", "nvidia-cuda-cccl>=13.0.0"]
 build.requires = ["jax", "scikit-build-core>=0.11", "nanobind>=2.9.2", "cmake>=3.24"]
 editable.rebuild = false
 

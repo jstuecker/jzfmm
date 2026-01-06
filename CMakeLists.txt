@@ -122,22 +122,22 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xptxas=-v")
 
 include_directories(SYSTEM ${XLA_DIR})
 
-foreach(var IN ZIP_LISTS MODULES MODULE_PATHS)
-    set(MODULE_NAME ${var_0})
-    set(MODULE_SOURCE ${var_1})
+# foreach(var IN ZIP_LISTS MODULES MODULE_PATHS)
+#     set(MODULE_NAME ${var_0})
+#     set(MODULE_SOURCE ${var_1})
 
-    nanobind_add_module(${MODULE_NAME} ${MODULE_SOURCE})
+#     nanobind_add_module(${MODULE_NAME} ${MODULE_SOURCE})
 
-    target_compile_options(${MODULE_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O3> $<$<COMPILE_LANGUAGE:CUDA>:-O3>)
-    target_compile_features(${MODULE_NAME} PRIVATE cxx_std_17)
+#     target_compile_options(${MODULE_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O3> $<$<COMPILE_LANGUAGE:CUDA>:-O3>)
+#     target_compile_features(${MODULE_NAME} PRIVATE cxx_std_17)
 
-  # If this is the multipoles FFI module, link in the separately compiled CUDA object
-  # if (${MODULE_NAME} STREQUAL "ffi_multipoles")
-  #   target_link_libraries(${MODULE_NAME} PRIVATE $<TARGET_OBJECTS:multipoles_cuda>)
-  # endif()
+#   # If this is the multipoles FFI module, link in the separately compiled CUDA object
+#   # if (${MODULE_NAME} STREQUAL "ffi_multipoles")
+#   #   target_link_libraries(${MODULE_NAME} PRIVATE $<TARGET_OBJECTS:multipoles_cuda>)
+#   # endif()
 
-  install(TARGETS ${MODULE_NAME} LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME}_cuda)
-endforeach()
+#   install(TARGETS ${MODULE_NAME} LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME}_cuda)
+# endforeach()
 
 
 # ----------------------------------------------------------------------------------------------- #
