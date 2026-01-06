@@ -9,7 +9,7 @@ from .data import TreePlane, Pos, PosMass, PackedArray, TreeHierarchy, Interacti
 from .config import Config, TreeConfig
 from .multipoles import center_of_mass
 from .tools import cumsum_starting_with_zero, masked_prefix_sum, div_ceil
-from .comm import get_rank_info, send_to_left, send_to_right
+from .comm import get_rank_info, send_to_left, send_to_right, shift_particles_left
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
@@ -202,9 +202,15 @@ def distr_boundary_extend(posz, npart=None, block_size: int = 64):
 #                                       Domain Decomposition                                       #
 # ------------------------------------------------------------------------------------------------ #
 
-def determine_npart(pos):
+def get_pos(x):
+    if isinstance(x, jax.typing.ArrayLike):
+        return x
+    else: # assume x is a pytree with .pos attribute
+        return x.pos
+
+def determine_npart(x):
     """Determines the number of valid particles (that are not nan)"""
-    valid = ~jnp.isnan(pos)
+    valid = ~jnp.isnan(get_pos(x))
     return jnp.sum(valid[...,0] & valid[...,1] & valid[...,2])
 
 def distributed_zsort(x: jnp.ndarray | Pos, nsamp: int = 1024):
@@ -213,15 +219,9 @@ def distributed_zsort(x: jnp.ndarray | Pos, nsamp: int = 1024):
     if ndev == 1:
         return pos_zorder_sort(x)[0]
 
-    def get_pos(x):
-        if isinstance(x, jax.typing.ArrayLike):
-            return x
-        else: # assume x is a pytree with .pos attribute
-            return x.pos
-
     pos = get_pos(x)
 
-    npart = determine_npart(pos)
+    npart = determine_npart(x)
     nparttot = jax.lax.psum(npart, axis_name=axis_name)
 
     # Sample based domain decomposition
@@ -247,7 +247,7 @@ def distributed_zsort(x: jnp.ndarray | Pos, nsamp: int = 1024):
 
     # We have posz globally and locally in z-order now
     # Let's do another communication step to improve the balance
-    npart = determine_npart(get_pos(xz))
+    npart = determine_npart(xz)
     spl_have = global_splits(npart, axis_name=axis_name)
     spl_target = (jnp.arange(0, ndev+1) * (nparttot // ndev)).at[-1].set(nparttot)
     spl_send = jnp.clip(spl_target - spl_have[rank], 0, npart)
@@ -256,49 +256,12 @@ def distributed_zsort(x: jnp.ndarray | Pos, nsamp: int = 1024):
 
     return xz
 
-def shift_particles_left(pos, nsend, max_send, npart=None):
-    rank, ndev, axis_name = get_rank_info()
-
-    if npart is None:
-        npart = jnp.sum(~jnp.isnan(pos[...,0]))
-    
-    # Validate that send buffer is large enough
-    def send_size_err(nsend, max_send):
-        raise ValueError(f"Cannot fit {nsend} particles into buffer of size {max_send}!")
-    npart = npart + conditional_callback(
-        nsend >= max_send, send_size_err, nsend, max_send,
-    )
-
-    # Validate that particle array has enough free space
-    nget = send_to_left(nsend, axis_name, invalid_val=0)
-    def array_size_err(nhave, nget, nsend, nmax):
-        raise MemoryError(
-            f"Cannot shift particles: have={nhave}, get={nget}, send={nsend}, max={nmax}."
-            "(fix: larger allocaction)"
-        )
-    npart = npart + conditional_callback((
-        npart + nget - nsend >= len(pos)), array_size_err, npart, nget, nsend, len(pos)
-    )
-
-    # Send the particles
-    pos_get = send_to_left(pos[0:max_send], axis_name, invalid_val=jnp.nan)
-
-    # Delete the particles that were send
-    iar = jnp.arange(len(pos))
-    pos = jnp.where((iar >= nsend)[:,None], pos, jnp.nan)
-    pos = jnp.roll(pos, -nsend, axis=0)
-
-    # Insert the received particles
-    idx = jnp.arange(max_send)
-    idx = jnp.where(idx < nget, npart - nsend + idx, len(pos)) # discard indices beyond nadd
-    pos = pos.at[idx].set(pos_get)
-
-    return pos, npart + nget - nsend
-
-def adjust_domain_for_nodesize(posz, max_node_size, npart=None):
+def adjust_domain_for_nodesize(xz: jnp.ndarray | Pos, max_node_size: int, npart: int = None):
     """Shifts particles so that nodes with size <= max_node_size always lie on a single GPU"""
+    posz = get_pos(xz)
+
     if npart is None:
-        npart = jnp.sum(~jnp.isnan(posz[...,0]))
+        npart = determine_npart(xz)
 
     ext_ll, ext_lr, ext_rl, ext_rr = distr_boundary_extend(posz, npart=npart)
     npart_l = ext_lr - ext_ll
@@ -307,9 +270,9 @@ def adjust_domain_for_nodesize(posz, max_node_size, npart=None):
 
     npshift = ext_lr[ilvl_max]
 
-    posz, npart = shift_particles_left(posz, npshift, max_send=max_node_size, npart=npart)
+    xz, npart = shift_particles_left(xz, npshift, max_send=max_node_size, npart=npart)
 
-    return posz, npart
+    return xz, npart
 
 # ------------------------------------------------------------------------------------------------ #
 #                                      Tree Building Functions                                     #

@@ -65,6 +65,48 @@ def send_to_left(x, axis_name, invalid_val=0):
 
     return xin
 
+def get_pos(x):
+    if isinstance(x, jax.typing.ArrayLike):
+        return x
+    else: # assume x is a pytree with .pos attribute
+        return x.pos
+
+def shift_particles_left(pos, nsend, max_send, npart):
+    rank, ndev, axis_name = get_rank_info()
+    
+    # Validate that send buffer is large enough
+    def send_size_err(nsend, max_send):
+        raise ValueError(f"Cannot fit {nsend} particles into buffer of size {max_send}!")
+    npart = npart + conditional_callback(
+        nsend >= max_send, send_size_err, nsend, max_send,
+    )
+
+    # Validate that particle array has enough free space
+    nget = send_to_left(nsend, axis_name, invalid_val=0)
+    def array_size_err(nhave, nget, nsend, nmax):
+        raise MemoryError(
+            f"Cannot shift particles: have={nhave}, get={nget}, send={nsend}, max={nmax}."
+            "(fix: larger allocaction)"
+        )
+    npart = npart + conditional_callback((
+        npart + nget - nsend >= len(pos)), array_size_err, npart, nget, nsend, len(pos)
+    )
+
+    # Send the particles
+    pos_get = send_to_left(pos[0:max_send], axis_name, invalid_val=jnp.nan)
+
+    # Delete the particles that were send
+    iar = jnp.arange(len(pos))
+    pos = jnp.where((iar >= nsend)[:,None], pos, jnp.nan)
+    pos = jnp.roll(pos, -nsend, axis=0)
+
+    # Insert the received particles
+    idx = jnp.arange(max_send)
+    idx = jnp.where(idx < nget, npart - nsend + idx, len(pos)) # discard indices beyond nadd
+    pos = pos.at[idx].set(pos_get)
+
+    return pos, npart + nget - nsend
+
 # ------------------------------------------------------------------------------------------------ #
 #                                     All To All communication                                     #
 # ------------------------------------------------------------------------------------------------ #
