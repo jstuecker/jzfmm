@@ -2,7 +2,7 @@ from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
 import jax
 import jax.numpy as jnp
 from typing import Tuple
-from .tools import conditional_callback
+from .tools import conditional_callback, cumsum_starting_with_zero
 
 # ------------------------------------------------------------------------------------------------ #
 #                                        General Device Info                                       #
@@ -177,3 +177,36 @@ def all_to_all_with_splits(x, ispl, output=None, axis_name="gpus", verify=True, 
         )
 
     return jax.tree.map(comm, x, output)
+
+def dynamic_all_gather(x, nsend, output=None, axis_name="gpus", verify=True):
+    """An all-gather where each task may send different amounts.
+    
+    returns output, dev_spl -- where output[dev_spl[i]:dev_spl[i+1]] contains rank i's input
+    """
+    if output is None:
+        output = empty_like(x)
+    
+    rank = jax.lax.axis_index(axis_name)
+    ndev = jax.lax.axis_size(axis_name)
+
+    nrecv = jax.lax.all_gather(nsend, axis_name)
+    dev_spl = cumsum_starting_with_zero(nrecv)
+
+    if verify:
+        out_size = pytree_len(output)
+        def recv_buffer_err(need, out_size):
+            raise MemoryError(f"The receive buffer (size: {out_size}) is to small (need: {need})")
+        dev_spl = dev_spl + conditional_callback(
+            dev_spl[-1] >= out_size, recv_buffer_err, dev_spl[-1], out_size
+        )
+
+    input_off = jnp.zeros(ndev, jnp.int32)
+    nsend = jnp.full(ndev, nsend, dtype=jnp.int32)
+    output_off = jnp.full(ndev, dev_spl[rank])
+
+    def comm(xi, outi):
+        return jax.lax.ragged_all_to_all(
+            xi, outi, input_off, nsend, output_off, nrecv, axis_name=axis_name
+        )
+
+    return jax.tree.map(comm, x, output), dev_spl

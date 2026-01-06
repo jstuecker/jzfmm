@@ -255,6 +255,7 @@ def distributed_zsort(x: jnp.ndarray | Pos, nsamp: int = 1024):
     xz = all_to_all_with_splits(xz, spl_send, axis_name=axis_name)
 
     return xz
+distributed_zsort.jit = jax.jit(distributed_zsort, static_argnames="nsamp")
 
 def adjust_domain_for_nodesize(xz: jnp.ndarray | Pos, max_node_size: int, npart: int = None):
     """Shifts particles so that nodes with size <= max_node_size always lie on a single GPU"""
@@ -271,6 +272,7 @@ def adjust_domain_for_nodesize(xz: jnp.ndarray | Pos, max_node_size: int, npart:
     xz, npart = shift_particles_left(xz, npshift, max_send=max_node_size, npart=npart)
 
     return xz, npart
+adjust_domain_for_nodesize.jit = jax.jit(adjust_domain_for_nodesize, static_argnames="max_node_size")
 
 # ------------------------------------------------------------------------------------------------ #
 #                                      Tree Building Functions                                     #
