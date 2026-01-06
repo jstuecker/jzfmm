@@ -135,16 +135,15 @@ def test_tree_properties():
         rank, ndev, axis_name = get_rank_info()
 
         pos, nparttot = get_pos()
-        posz = fmdj.ztree.distributed_zsort(pos)
+        part = fmdj.data.PosMass(pos, jnp.ones(pos.shape[0]))
+        partz = fmdj.ztree.distributed_zsort(part)
 
-        npart = jnp.sum(~jnp.isnan(posz[...,0]))
+        npart = jnp.sum(~jnp.isnan(partz.pos[...,0]))
 
         top_node_size = fmdj.ztree.define_tree_level_node_sizes(nparttot, cfg.tree)[-1]
-        posz, npart = fmdj.ztree.adjust_domain_for_nodesize(posz, top_node_size, npart=npart)
+        partz, npart = fmdj.ztree.adjust_domain_for_nodesize(partz, top_node_size, npart=npart)
 
-        pm = fmdj.data.PosMass(posz, jnp.ones(posz.shape[0]))
-
-        th = fmdj.ztree.build_tree_hierarchy(pm, cfg.tree, npart_tot=nparttot)
+        th = fmdj.ztree.build_tree_hierarchy(partz, cfg.tree, npart_tot=nparttot)
 
         return reductions(th, axis_name)
     
