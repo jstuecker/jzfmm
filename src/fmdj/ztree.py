@@ -182,19 +182,19 @@ def distr_boundary_extend(posz, npart=None, block_size: int = 64):
     irange = jnp.array([0, npart])
 
     # Distance from the left boundary where each levels node ends
-    xleft = send_to_right(posz[npart-1], axis_name, invalid_val=-jnp.inf)
+    xleft = send_to_right(posz[npart-1], axis_name, invalid_float=-jnp.inf)
     ext_lr = jax.ffi.ffi_call("GetBoundaryExtendPerLevel", out_types)(
         xleft, irange, posz, block_size=np.uint64(block_size), left=True
     )[0]
 
     # Distance from the right boundary where each levels node starts
-    xright = send_to_left(posz[0], axis_name, invalid_val=jnp.inf)
+    xright = send_to_left(posz[0], axis_name, invalid_float=jnp.inf)
     ext_rl = jax.ffi.ffi_call("GetBoundaryExtendPerLevel", out_types)(
         xright, irange, posz, block_size=np.uint64(block_size), left=False
     )[0]
 
-    ext_rr = send_to_left(ext_lr, axis_name, invalid_val=0)
-    ext_ll =  send_to_right(ext_rl-npart, axis_name, invalid_val=0)
+    ext_rr = send_to_left(ext_lr, axis_name, invalid_int=0)
+    ext_ll =  send_to_right(ext_rl-npart, axis_name, invalid_int=0)
 
     return ext_ll, ext_lr, ext_rl, ext_rr
 
@@ -258,12 +258,10 @@ def distributed_zsort(x: jnp.ndarray | Pos, nsamp: int = 1024):
 
 def adjust_domain_for_nodesize(xz: jnp.ndarray | Pos, max_node_size: int, npart: int = None):
     """Shifts particles so that nodes with size <= max_node_size always lie on a single GPU"""
-    posz = get_pos(xz)
-
     if npart is None:
         npart = determine_npart(xz)
 
-    ext_ll, ext_lr, ext_rl, ext_rr = distr_boundary_extend(posz, npart=npart)
+    ext_ll, ext_lr, ext_rl, ext_rr = distr_boundary_extend(get_pos(xz), npart=npart)
     npart_l = ext_lr - ext_ll
     
     ilvl_max = jnp.argmax(jnp.where(npart_l <= max_node_size, npart_l, 0))

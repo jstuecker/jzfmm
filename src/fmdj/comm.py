@@ -30,14 +30,24 @@ def pytree_len(x):
 
     return len(leaves[0])
 
+def value_for_dtype(dtype, float_val=jnp.nan, int_val=0):
+    if dtype.kind == "f":
+        return float_val
+    else:
+        return int_val
+
 def empty_like(x, float_val=jnp.nan, int_val=0):
     def empty_el(xi):
-        if xi.dtype.kind == "f":
-            return jnp.full_like(xi, fill_value=float_val)
-        else:
-            return jnp.full_like(xi, fill_value=int_val)
+        return jnp.full_like(xi, fill_value=value_for_dtype(xi.dtype, float_val, int_val))
 
     return jax.tree.map(empty_el, x)
+
+def invalidate(x, mask, invalid_float=jnp.nan, invalid_int=0):
+    def inv(x):
+        mask_rs = jnp.reshape(mask, mask.shape + (1,)*(x.ndim-1))
+        return jnp.where(mask_rs, value_for_dtype(x.dtype, invalid_float, invalid_int), x)
+    
+    return jax.tree.map(inv, x)
 
 # ------------------------------------------------------------------------------------------------ #
 #                                  Simple Communication Directives                                 #
@@ -47,21 +57,21 @@ def global_splits(n, axis_name="gpus"):
     alln = jax.lax.all_gather(n, axis_name)
     return jnp.pad(jnp.cumsum(alln), (1,0), constant_values=0)
 
-def send_to_right(x, axis_name, invalid_val=0):
+def send_to_right(x, axis_name, invalid_float=jnp.nan, invalid_int=0):
     rank = jax.lax.axis_index(axis_name)
     ndev = jax.lax.axis_size(axis_name)
 
     xin = jax.lax.ppermute(x, axis_name, [(i, i+1) for i in range(0,ndev-1)])
-    xin = jnp.where(rank == 0, invalid_val, xin)
+    xin = invalidate(xin, rank == 0, invalid_float, invalid_int)
 
     return xin
 
-def send_to_left(x, axis_name, invalid_val=0):
+def send_to_left(x, axis_name, invalid_float=jnp.nan, invalid_int=0):
     rank = jax.lax.axis_index(axis_name)
     ndev = jax.lax.axis_size(axis_name)
 
     xin = jax.lax.ppermute(x, axis_name, [(i, i-1) for i in range(1,ndev)])
-    xin = jnp.where(rank == ndev-1, invalid_val, xin)
+    xin = invalidate(xin, rank == ndev-1, invalid_float, invalid_int)
 
     return xin
 
@@ -71,7 +81,7 @@ def get_pos(x):
     else: # assume x is a pytree with .pos attribute
         return x.pos
 
-def shift_particles_left(pos, nsend, max_send, npart):
+def shift_particles_left(x, nsend, max_send, npart):
     rank, ndev, axis_name = get_rank_info()
     
     # Validate that send buffer is large enough
@@ -82,30 +92,30 @@ def shift_particles_left(pos, nsend, max_send, npart):
     )
 
     # Validate that particle array has enough free space
-    nget = send_to_left(nsend, axis_name, invalid_val=0)
+    nget = send_to_left(nsend, axis_name)
     def array_size_err(nhave, nget, nsend, nmax):
         raise MemoryError(
             f"Cannot shift particles: have={nhave}, get={nget}, send={nsend}, max={nmax}."
             "(fix: larger allocaction)"
         )
     npart = npart + conditional_callback((
-        npart + nget - nsend >= len(pos)), array_size_err, npart, nget, nsend, len(pos)
+        npart + nget - nsend >= pytree_len(x)), array_size_err, npart, nget, nsend, pytree_len(x)
     )
 
     # Send the particles
-    pos_get = send_to_left(pos[0:max_send], axis_name, invalid_val=jnp.nan)
+    x_get = send_to_left(jax.tree.map(lambda v: v[0:max_send], x), axis_name, invalid_float=jnp.nan)
 
     # Delete the particles that were send
-    iar = jnp.arange(len(pos))
-    pos = jnp.where((iar >= nsend)[:,None], pos, jnp.nan)
-    pos = jnp.roll(pos, -nsend, axis=0)
+    iar = jnp.arange(pytree_len(x))
+    x = invalidate(x, iar < nsend)
+    x = jax.tree.map(lambda v: jnp.roll(v, -nsend, axis=0), x)
 
     # Insert the received particles
     idx = jnp.arange(max_send)
-    idx = jnp.where(idx < nget, npart - nsend + idx, len(pos)) # discard indices beyond nadd
-    pos = pos.at[idx].set(pos_get)
+    idx = jnp.where(idx < nget, npart - nsend + idx, pytree_len(x)) # discard indices beyond nadd
+    x = jax.tree.map(lambda u,v: u.at[idx].set(v), x, x_get)
 
-    return pos, npart + nget - nsend
+    return x, npart + nget - nsend
 
 # ------------------------------------------------------------------------------------------------ #
 #                                     All To All communication                                     #
