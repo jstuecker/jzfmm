@@ -479,29 +479,48 @@ def dense_interaction_list(size: int, nnodes: jnp.ndarray = None) -> Interaction
 dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size'])
 
 def grouped_dense_interaction_list(nnodes: jnp.ndarray | int, size_ilist: int,
-                                   size_super: int | None = None, ngroup: int = 32
+                                   ngroup: int = 32, size_super: int | None = None,
+                                   node_range: jnp.ndarray | None = None
                                    ) -> Tuple[jnp.ndarray, InteractionList, jnp.ndarray]:
-    nsuper_nodes = div_ceil(nnodes, ngroup)
-    ninteractions = nsuper_nodes*nsuper_nodes
+    """Defines an all-to-all interaction list over super-nodes and a super-node to node relation
 
-    # Somehow if I keep the following check, I get slight differences in the resulting gradients
-    # Have to check carefully whether I ever read from any uninitialized memory, which might
-    # get affected by reordering the computation through this callback (?)
+    This is useful for evaluating all-to-all interactions in a grouped manner on GPU
+
+    node_range: if specified, the interaction list will only contain interactions with
+                receiving indices in node_range will be evaluated
+    """
+
+    if size_super is None: # if not provided, guarantee a sufficient allocation
+        size_super = np.ceil(np.sqrt(size_ilist)).astype(np.int64) + 2
+    
+    # define the super node to node relation
+    if node_range is None:
+        nsuper_nodes = div_ceil(nnodes, ngroup)
+        ninteractions = nsuper_nodes*nsuper_nodes
+        spl_super = jnp.minimum(jnp.arange(size_super+1) * ngroup, nnodes)
+        ispl = jnp.minimum(jnp.arange(size_super+1) * nsuper_nodes, ninteractions)
+    else:
+        node_range = jnp.asarray(node_range)
+        super_range = node_range // ngroup
+        # In this case we only evaluate receiving nodes that lie inside of the node_range
+        # further, we have to make sure that spl_super splits at our indices
+        nsuper_nodes = div_ceil(nnodes, ngroup) + 2
+        spl_super = jnp.minimum(jnp.arange(size_super+1) * ngroup, nnodes)
+        spl_super = jnp.insert(spl_super, super_range + 1, node_range)
+
+        valid = (spl_super[:-1] >= node_range[0]) & (spl_super[1:] <= node_range[1])
+        valid = valid & (spl_super[1:] > spl_super[:-1]) # may have some 0 nodes due to way we inserted
+        ispl = cumsum_starting_with_zero(jnp.where(valid, nsuper_nodes, 0))
+        ninteractions = nsuper_nodes*(ispl[-1] // nsuper_nodes)
 
     def ilist_size_error(n, size):
-        raise MemoryError(f"Cannot fit {n}*{n} interactions into ilist with size {size}")
+        raise MemoryError(f"Cannot fit {n} interactions into ilist with size {size}")
     nsuper_nodes = nsuper_nodes + conditional_callback(
-        ninteractions > size_ilist, ilist_size_error, nsuper_nodes, size_ilist
+        ninteractions > size_ilist, ilist_size_error, ninteractions, size_ilist
     )
     
     idx = jnp.arange(size_ilist)
     ilist = jnp.where(idx < ninteractions, idx % nsuper_nodes, 0)
-    
-    # define the super node to node relation
-    if size_super is None:
-        size_super = np.ceil(np.sqrt(size_ilist)).astype(np.int64)
-    spl_super = jnp.minimum(jnp.arange(size_super+1) * ngroup, nnodes)
-    ispl = jnp.minimum(jnp.arange(size_super+1) * nsuper_nodes, ninteractions)
 
     ilist = InteractionList(ispl=ispl, iother=ilist, nfilled=ninteractions)
 
