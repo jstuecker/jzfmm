@@ -10,6 +10,7 @@ from .config import Config, TreeConfig
 from .multipoles import center_of_mass
 from .tools import cumsum_starting_with_zero, masked_prefix_sum, div_ceil
 from .comm import get_rank_info, send_to_left, send_to_right, shift_particles_left
+from dataclasses import replace
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
@@ -528,3 +529,32 @@ def grouped_dense_interaction_list(nnodes: jnp.ndarray | int, size_ilist: int,
 grouped_dense_interaction_list.jit = jax.jit(
     grouped_dense_interaction_list, static_argnames=["size_ilist", "size_super"]
 )
+
+def masked_scatter(mask, arr, indices, values):
+    indices = jnp.where(mask, indices, len(arr))
+    return arr.at[indices].set(values)
+
+def simplify_interaction_list(ilist: InteractionList, ids: jnp.ndarray, dev_spl: jnp.ndarray
+                              ) -> Tuple[InteractionList, jnp.ndarray, jnp.ndarray]:
+    """Get reduced version of the interaction and node list skipping nodes without interactions
+    
+    Useful in multi-GPU scenarios where many non-local nodes will not have any local interactions
+    """
+    size_nodes = ilist.ispl.size - 1
+    idx = jnp.arange(ilist.iother.size)
+
+    # flag all nodes that appear at least in one interaction
+    ioth = jnp.where(idx < ilist.ispl[-1], ilist.iother, size_nodes)
+    flag = ilist.ispl[1:] > ilist.ispl[:-1] # appears as receiver
+    flag = flag.at[ioth].set(True) # appears as source
+    
+    # create reduced child id list
+    prefix = cumsum_starting_with_zero(flag)
+    reduced_ids = masked_scatter(flag, jnp.zeros_like(ids), prefix[:-1], ids)
+    reduced_dev_spl = prefix[dev_spl]
+
+    # change the label and the offsets of the interaction list
+    ispl = jnp.full(ilist.ispl.shape, ilist.ispl[-1], ilist.ispl.dtype).at[prefix].set(ilist.ispl)
+    reduced_ilist = replace(ilist, ispl=ispl, iother=prefix[ilist.iother])
+    
+    return reduced_ilist, reduced_ids, reduced_dev_spl
