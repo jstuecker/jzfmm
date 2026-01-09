@@ -228,7 +228,7 @@ def arange_for_comm(irank: jax.Array, x: jax.typing.ArrayLike,
 
     xsort = jax.tree.map(lambda d: d[isort], x)
 
-    return xsort, dev_spl
+    return xsort, dev_spl, isort
 
 def all_to_all_with_irank(
         irank: jax.Array,
@@ -243,5 +243,28 @@ def all_to_all_with_irank(
 
     To understand most arguments, see documentation of all_to_all_with_splits
     """
-    xsort, dev_spl = arange_for_comm(irank, x, num=num, axis_name=axis_name)
-    return all_to_all_with_splits(x, dev_spl, output, axis_name, verify=verify, copy_self=copy_self)
+    xsort, dev_spl, isort = arange_for_comm(irank, x, num=num, axis_name=axis_name)
+    return all_to_all_with_splits(xsort, dev_spl, output, axis_name, verify=verify, copy_self=copy_self)
+
+def all_to_all_request(
+    irank: jax.Array,
+    indices: jax.Array,
+    x: jax.Array | Pytree,
+    output: jax.Array | Pytree | None = None,
+    num: jax.Array | int | None = None,
+    axis_name: str = "gpus",
+    verify: bool = True, 
+    copy_self: bool = True
+) -> jax.Array:
+    # First inform the task with the data which indices we need
+    indices_sort, dev_spl, isort = arange_for_comm(irank, indices, num=num, axis_name=axis_name)
+    indices, dev_spl = all_to_all_with_splits(
+        indices_sort, dev_spl, output=None, axis_name=axis_name, verify=verify, copy_self=copy_self
+    )
+    # Then send back the data at those locations
+    xsort, dev_spl = all_to_all_with_splits(
+        x[indices], dev_spl, output, axis_name=axis_name, verify=verify, copy_self=copy_self
+    )
+    # rearange to the original order
+    invsort = jnp.zeros_like(isort).at[isort].set(jnp.arange(len(isort), dtype=isort.dtype))
+    return jax.tree.map(lambda xi: xi[invsort], xsort)
