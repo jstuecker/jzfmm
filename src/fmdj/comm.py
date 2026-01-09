@@ -1,8 +1,12 @@
 from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
 import jax
 import jax.numpy as jnp
-from typing import Tuple
+from typing import Tuple, Any, TypeAlias
 from .tools import conditional_callback, cumsum_starting_with_zero
+from jax.typing import ArrayLike
+
+# Currently jax doesn't have a typehint for pytrees. We simply define one ourselves for clarity
+PyTree: TypeAlias = Any
 
 # ------------------------------------------------------------------------------------------------ #
 #                                        General Device Info                                       #
@@ -212,7 +216,8 @@ def dynamic_all_gather(x, nsend, output=None, axis_name="gpus", verify=True):
 
     return jax.tree.map(comm, x, output), dev_spl
 
-def arange_for_comm(irank: jnp.ndarray, data, num=None, axis_name="gpus"):
+def arange_for_comm(irank: jax.Array, x: jax.typing.ArrayLike, 
+                    num: jax.Array | int |None = None, axis_name="gpus"):
     rank = jax.lax.axis_index(axis_name)
     ndev = jax.lax.axis_size(axis_name)
 
@@ -221,6 +226,22 @@ def arange_for_comm(irank: jnp.ndarray, data, num=None, axis_name="gpus"):
     isort = jnp.argsort(irank)
     dev_spl = jnp.searchsorted(irank[isort], jnp.arange(ndev+1, dtype=irank.dtype), side="left")
 
-    datasort = jax.tree.map(lambda d: d[isort], data)
+    xsort = jax.tree.map(lambda d: d[isort], x)
 
-    return datasort, dev_spl
+    return xsort, dev_spl
+
+def all_to_all_with_irank(
+        irank: jax.Array,
+        x: jax.Array | Pytree,
+        output: jax.Array | Pytree | None = None,
+        num: jax.Array | int | None = None,
+        axis_name: str = "gpus",
+        verify: bool = True, 
+        copy_self: bool = True
+    ):
+    """Communicate by indicating the rank of the receiving device
+
+    To understand most arguments, see documentation of all_to_all_with_splits
+    """
+    xsort, dev_spl = arange_for_comm(irank, x, num=num, axis_name=axis_name)
+    return all_to_all_with_splits(x, dev_spl, output, axis_name, verify=verify, copy_self=copy_self)
