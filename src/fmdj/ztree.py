@@ -38,7 +38,7 @@ def get_node_box(x, level_binary):
 #                                             FFI Calls                                            #
 # ------------------------------------------------------------------------------------------------ #
 
-def _pos_zorder_sort_impl(x: jnp.ndarray, block_size=64):
+def _pos_zorder_sort_impl(x: jax.Array, block_size=64):
     assert x.dtype == jnp.float32
     assert x.shape[-1] == 3
 
@@ -55,7 +55,7 @@ def _pos_zorder_sort_impl(x: jnp.ndarray, block_size=64):
 
     return pos, ids
 
-def pos_zorder_sort(x: jnp.ndarray | Pos):
+def pos_zorder_sort(x: jax.Array | Pos):
     """Brings 3d-positions into z-order
 
     If x is a pytree, it needs to have a "pos" attribute which will be used as the sorting key. 
@@ -107,7 +107,7 @@ def search_sorted_z(xz, xz_query, block_size=64, leaf_search=False):
     return inds
 search_sorted_z.jit = jax.jit(search_sorted_z, static_argnames=("block_size", "leaf_search"))
 
-def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int = 64, alloc_size: int | None = None) -> jnp.ndarray:
+def create_coarse_leaves(posz: jax.Array, leaf_size: int = 32, block_size: int = 64, alloc_size: int | None = None) -> jax.Array:
     if alloc_size is None:
         alloc_size = int(div_ceil(len(posz), np.maximum(leaf_size//2, 1))) + 1
 
@@ -136,7 +136,7 @@ def create_coarse_leaves(posz: jnp.ndarray, leaf_size: int = 32, block_size: int
     return splits
 create_coarse_leaves.jit = jax.jit(create_coarse_leaves, static_argnames=("leaf_size", "block_size"))
 
-def determine_znode_boundaries(posz: jnp.ndarray, block_size: int = 64, nleaves: jnp.array = None) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+def determine_znode_boundaries(posz: jax.Array, block_size: int = 64, nleaves: jnp.array = None) -> Tuple[jax.Array, jax.Array, jax.Array]:
     """Builds a Z-order tree from positions"""
     if nleaves is None:
         nleaves = jnp.array(len(posz))
@@ -154,9 +154,9 @@ def determine_znode_boundaries(posz: jnp.ndarray, block_size: int = 64, nleaves:
     return lvl, lbound, rbound
 determine_znode_boundaries.jit = jax.jit(determine_znode_boundaries)
 
-def get_node_geometry(posz: jnp.ndarray, lbound: jnp.ndarray, rbound: jnp.ndarray, 
+def get_node_geometry(posz: jax.Array, lbound: jax.Array, rbound: jax.Array, 
                       num: jnp.array = None, block_size: int = 64
-                      ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+                      ) -> Tuple[jax.Array, jax.Array, jax.Array]:
     if num is None:
         num = jnp.array(len(lbound))
 
@@ -214,7 +214,7 @@ def determine_npart(x):
     valid = ~jnp.isnan(get_pos(x))
     return jnp.sum(valid[...,0] & valid[...,1] & valid[...,2])
 
-def distributed_zsort(x: jnp.ndarray | Pos, nsamp: int = 1024):
+def distributed_zsort(x: jax.Array | Pos, nsamp: int = 1024):
     rank, ndev, axis_name = get_rank_info()
 
     if ndev == 1:
@@ -258,7 +258,7 @@ def distributed_zsort(x: jnp.ndarray | Pos, nsamp: int = 1024):
     return xz
 distributed_zsort.jit = jax.jit(distributed_zsort, static_argnames="nsamp")
 
-def adjust_domain_for_nodesize(xz: jnp.ndarray | Pos, max_node_size: int, npart: int = None):
+def adjust_domain_for_nodesize(xz: jax.Array | Pos, max_node_size: int, npart: int = None):
     """Shifts particles so that nodes with size <= max_node_size always lie on a single GPU"""
     if npart is None:
         npart = determine_npart(xz)
@@ -300,8 +300,8 @@ def define_tree_level_node_sizes(npart: int, cfg_tree: TreeConfig):
 
     return node_sizes
 
-def define_split_hierarchy(posz: jnp.ndarray, node_sizes: Tuple[int], alloc_size: int
-                           ) -> Tuple[jnp.ndarray, PackedArray, PackedArray]:
+def define_split_hierarchy(posz: jax.Array, node_sizes: Tuple[int], alloc_size: int
+                           ) -> Tuple[jax.Array, PackedArray, PackedArray]:
     """Finds the splitting point of the tree hierarchy
 
     returns
@@ -371,7 +371,7 @@ def get_tree_mass_centers(part: PosMass, ispl_n2n: PackedArray) -> Tuple[PackedA
 
     return node_mcent, node_mass
 
-def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig,
+def build_tree_hierarchy(part: PosMass | jax.Array, cfg_tree: TreeConfig,
                          npart_tot: int | None = None) -> TreeHierarchy:
     """Builds a tree hierarchy from z-order positions
 
@@ -392,7 +392,7 @@ def build_tree_hierarchy(part: PosMass | jnp.ndarray, cfg_tree: TreeConfig,
     """
     rank, ndev, axis_name = get_rank_info()
 
-    if isinstance(part, jnp.ndarray):
+    if isinstance(part, jax.Array):
         assert part.shape[-1] == 3
         posz = part
     elif hasattr(part, "pos"):
@@ -458,7 +458,7 @@ build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg_t
 #                                     Interaction List Helpers                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def dense_interaction_list(size: int, nnodes: jnp.ndarray = None) -> InteractionList:
+def dense_interaction_list(size: int, nnodes: jax.Array = None) -> InteractionList:
     """A dense interaction list where all nodes interact with all other nodes.
 
     size: size of the node array that will use the interaction list. (Required at compile time)
@@ -479,10 +479,10 @@ def dense_interaction_list(size: int, nnodes: jnp.ndarray = None) -> Interaction
     return InteractionList(ispl=ispl, iother=ilist, nfilled=nfilled)
 dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size'])
 
-def grouped_dense_interaction_list(nnodes: jnp.ndarray | int, size_ilist: int,
+def grouped_dense_interaction_list(nnodes: jax.Array | int, size_ilist: int,
                                    ngroup: int = 32, size_super: int | None = None,
-                                   node_range: jnp.ndarray | None = None
-                                   ) -> Tuple[jnp.ndarray, InteractionList, jnp.ndarray]:
+                                   node_range: jax.Array | None = None
+                                   ) -> Tuple[jax.Array, InteractionList, jax.Array]:
     """Defines an all-to-all interaction list over super-nodes and a super-node to node relation
 
     This is useful for evaluating all-to-all interactions in a grouped manner on GPU
@@ -534,8 +534,8 @@ def masked_scatter(mask, arr, indices, values):
     indices = jnp.where(mask, indices, len(arr))
     return arr.at[indices].set(values)
 
-def simplify_interaction_list(ilist: InteractionList, ids: jnp.ndarray, dev_spl: jnp.ndarray
-                              ) -> Tuple[InteractionList, jnp.ndarray, jnp.ndarray]:
+def simplify_interaction_list(ilist: InteractionList, ids: jax.Array, dev_spl: jax.Array
+                              ) -> Tuple[InteractionList, jax.Array, jax.Array]:
     """Get reduced version of the interaction and node list skipping nodes without interactions
     
     Useful in multi-GPU scenarios where many non-local nodes will not have any local interactions

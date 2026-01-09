@@ -37,7 +37,7 @@ jax.ffi.register_ffi_target("CenterOfMass", ffi_multipoles.CenterOfMass(), platf
 jax.ffi.register_ffi_target("SummarizeMultipoles", ffi_multipoles.SummarizeMultipoles(), platform="CUDA")
 jax.ffi.register_ffi_target("TranslateLocalToLocal_XVJP", ffi_multipoles.TranslateLocalToLocal_XVJP(), platform="CUDA")
 
-def center_of_mass(ispl: jnp.ndarray, part: PosMass, kahan_summation: bool = True, block_size=32
+def center_of_mass(ispl: jax.Array, part: PosMass, kahan_summation: bool = True, block_size=32
                    ) -> PosMass:
     """Computes the center of mass of the nodes in the tree plane"""
     assert part.pos.dtype == jnp.float32
@@ -74,12 +74,12 @@ def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg, block_size=32):
     return mpnew
 
 def summarize_multipoles(
-        ispl: jnp.ndarray,
-        mp: jnp.ndarray,
-        xnode: jnp.ndarray,
-        xchild: jnp.ndarray,
+        ispl: jax.Array,
+        mp: jax.Array,
+        xnode: jax.Array,
+        xchild: jax.Array,
         *, cfg: Config
-    ) -> jnp.ndarray:
+    ) -> jax.Array:
 
     if mp.ndim == 1:
         mp = mp.reshape(-1,1)
@@ -105,8 +105,8 @@ def summarize_multipoles(
     return eval(xchild, mp)
 summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', ])
 
-def build_multipole_hierarchy(th: list[TreePlane], pos: jnp.ndarray, mp: jnp.ndarray, *, cfg: Config
-                              ) -> list[jnp.ndarray]:
+def build_multipole_hierarchy(th: list[TreePlane], pos: jax.Array, mp: jax.Array, *, cfg: Config
+                              ) -> list[jax.Array]:
     if len(mp.shape) == 1:
         mp = mp.reshape(-1,1)
 
@@ -179,7 +179,7 @@ def shift_local_to_children(
         xchild: jnp.array,
         cfg: Config,
         pout: int = None
-    ) -> jnp.ndarray:
+    ) -> jax.Array:
 
     if loc.ndim == 1:
         loc = loc.reshape(-1,1)
@@ -206,10 +206,10 @@ def shift_local_to_children(
     return eval(xchild, loc)
 shift_local_to_children.jit = jax.jit(shift_local_to_children, static_argnames=["cfg", "pout"])
 
-def multipole_readout_pos_vjp(mp: jnp.ndarray, gmp: jnp.ndarray):
+def multipole_readout_pos_vjp(mp: jax.Array, gmp: jax.Array):
     return local_readout_pos_vjp(gmp, mp) # turns out, math is identical with transposed inputs
 
-def local_readout_pos_vjp(loc: jnp.ndarray, gloc: jnp.ndarray):
+def local_readout_pos_vjp(loc: jax.Array, gloc: jax.Array):
     p_loc, p_glocx = p_of_num_multi(loc.shape[1]), p_of_num_multi(gloc.shape[1])
 
     imap = get_index_map(p_loc)

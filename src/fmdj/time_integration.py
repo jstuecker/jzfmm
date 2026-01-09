@@ -106,7 +106,7 @@ def simulate_fwd(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: fl
 
     return p, p
 
-def simulate_bwd(tend: float, nsteps: int, cfg: Config, tstart: float, p: Particles, gp: jnp.ndarray):
+def simulate_bwd(tend: float, nsteps: int, cfg: Config, tstart: float, p: Particles, gp: jax.Array):
     dt = (tend - tstart) / nsteps
 
     def step(i, carry):

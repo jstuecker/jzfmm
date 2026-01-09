@@ -24,12 +24,12 @@ jax.ffi.register_ffi_target("BwdForceAndPotential", ffi_forces.BwdForceAndPotent
 
 def evaluate_plane_interactions(
         plane: TreePlane,
-        mp: jnp.ndarray,
+        mp: jax.Array,
         plane_lr: TreePlane | None = None,
         ilist_lr: InteractionList | None = None,
-        loc_lr: jnp.ndarray | None = None,
+        loc_lr: jax.Array | None = None,
         cfg: Config = None
-    ) -> Tuple[jnp.ndarray, InteractionList]:
+    ) -> Tuple[jax.Array, InteractionList]:
     """
     Evaluates M2L for a tree plane and generates child interaction list.
     
@@ -108,8 +108,8 @@ evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, sta
 #                           Leaf-Leaf (Particle to Particle) Interactions                          #
 # ------------------------------------------------------------------------------------------------ #
 
-def grouped_force_and_pot(particles: PosMass, ispl: jnp.ndarray, ilist: InteractionList,
-                          cfg: Config = None) -> jnp.ndarray:
+def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: InteractionList,
+                          cfg: Config = None) -> jax.Array:
     block_size = 128
     assert cfg.tree.max_leaf_size <= block_size
     node_range = jnp.array([0, ispl.size-1], dtype=jnp.int32)
@@ -148,7 +148,7 @@ grouped_force_and_pot.jit = jax.jit(grouped_force_and_pot, static_argnames=['cfg
 # ------------------------------------------------------------------------------------------------ #
 
 def direct_force_and_potential(posm: PosMass, softening: float = 1e-2, kahan: bool = False
-                               ) -> jnp.ndarray:
+                               ) -> jax.Array:
     block_size = 64
     out_type = jax.ShapeDtypeStruct(posm.posm().shape, posm.posm().dtype)
     
@@ -219,7 +219,7 @@ direct_potential_scan_jax.jit = jax.jit(direct_potential_scan_jax, static_argnam
 # ------------------------------------------------------------------------------------------------ #
 
 
-def evaluate_node_node_fmm(partz: PosMass, th: list[TreePlane], *, cfg: Config) -> Tuple[jnp.ndarray, InteractionList]:
+def evaluate_node_node_fmm(partz: PosMass, th: list[TreePlane], *, cfg: Config) -> Tuple[jax.Array, InteractionList]:
     
     def eval_fwd(pos, mp, pout=1):
         mph = build_multipole_hierarchy(th, pos, mp, cfg=cfg)
@@ -251,7 +251,7 @@ def evaluate_node_node_fmm(partz: PosMass, th: list[TreePlane], *, cfg: Config) 
     return eval(partz.pos, partz.mass.reshape(-1,1))
 evaluate_node_node_fmm.jit = jax.jit(evaluate_node_node_fmm, static_argnames=['cfg', ])
 
-def fast_multipole_method_z(partz: PosMass, *, mpz: jnp.ndarray | None = None, cfg: Config, pout: int = 1) -> LocalExpansion:
+def fast_multipole_method_z(partz: PosMass, *, mpz: jax.Array | None = None, cfg: Config, pout: int = 1) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
 
     if mpz is None:

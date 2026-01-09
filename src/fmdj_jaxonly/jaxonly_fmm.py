@@ -15,7 +15,7 @@ from .jaxonly_multipoles import ilist_node_to_node, shift_local_to_local_jax
 
 def expand_interactions(
         ilist: InteractionList, 
-        ispl: jnp.ndarray, 
+        ispl: jax.Array, 
         size_children: int, 
         size_new_ilist: int) -> InteractionList:
     """Expands the interaction list to the children"""
@@ -61,10 +61,10 @@ expand_interactions.jit = jax.jit(expand_interactions, static_argnames=['size_ch
 #                                             Tree Walk                                            #
 # ------------------------------------------------------------------------------------------------ #
 
-def norm2(dx: jnp.ndarray) -> jnp.ndarray:
+def norm2(dx: jax.Array) -> jax.Array:
     return dx[...,0]**2 + dx[...,1]**2 + dx[...,2]**2
 
-def opening_criterion_bnh(plane: TreePlane, i0: jnp.ndarray, i1: jnp.ndarray, cfg: Config):
+def opening_criterion_bnh(plane: TreePlane, i0: jax.Array, i1: jax.Array, cfg: Config):
     """Barnes & Hut Opening Criterion."""
     theta = cfg.fmm.opening_angle
 
@@ -80,12 +80,12 @@ def opening_criterion_bnh(plane: TreePlane, i0: jnp.ndarray, i1: jnp.ndarray, cf
     return need_open
 
 def jaxonly_evaluate_plane_interactions(plane: TreePlane,
-                                mp: jnp.ndarray,
+                                mp: jax.Array,
                                 plane_lr: TreePlane | None = None,
                                 ilist_lr: InteractionList | None = None,
-                                loc_lr: jnp.ndarray | None = None,
+                                loc_lr: jax.Array | None = None,
                                 cfg: Config = None
-                                ) -> Tuple[jnp.ndarray, InteractionList]:
+                                ) -> Tuple[jax.Array, InteractionList]:
     """Evaluate all interactions for a given tree plane."""
     if plane_lr is None or ilist_lr is None: # Root level
         ilist = dense_interaction_list(plane.size(), nnodes=plane.nnodes)
@@ -127,12 +127,12 @@ jaxonly_evaluate_plane_interactions.jit = jax.jit(jaxonly_evaluate_plane_interac
 
 def new_eval(
         plane: TreePlane,
-        mp: jnp.ndarray,
+        mp: jax.Array,
         plane_lr: TreePlane | None = None,
         ilist_lr: InteractionList | None = None,
-        loc_lr: jnp.ndarray | None = None,
+        loc_lr: jax.Array | None = None,
         cfg: Config = None
-    ) -> Tuple[jnp.ndarray, InteractionList]:
+    ) -> Tuple[jax.Array, InteractionList]:
     unroll = cfg.old.interact_unroll
 
     spl_nodes = plane_lr.ispl

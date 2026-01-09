@@ -131,9 +131,9 @@ def all_to_all_with_splits(x, ispl, output=None, axis_name="gpus", verify=True, 
     We send to rank i: x[ispl[i]:ispl[i+1]] 
     all received values will be inserted continguously into output (starting at 0).
     
-    x: jnp.ndarray or pytree. If it is a pytree the communication will be applied over the leading
+    x: jax.Array or pytree. If it is a pytree the communication will be applied over the leading
        dimensions of all leaves (undefined behaviour if some leaves have different lengths)
-    output: jnp.ndarray or pytree. If x is a pytree output needs to be of identical structure.
+    output: jax.Array or pytree. If x is a pytree output needs to be of identical structure.
             If not provided, we use a copy of x filled with jnp.nan (or 0 for integers)
     verify: If True, throws an error if output buffer is too small. Otherwise out-of-range values
             will simply be discarded.

@@ -68,7 +68,7 @@ def shift_multipoles(m, x0):
 def x_moment(x, c):
     return x[...,0]**c[0] * x[...,1]**c[1] * x[...,2]**c[2]
 
-def coarsen_multipoles_jax(mp: jnp.ndarray, tp: TreePlane, *, cfg: Config) -> jnp.ndarray:
+def coarsen_multipoles_jax(mp: jax.Array, tp: TreePlane, *, cfg: Config) -> jax.Array:
     """Determines the multipoles at the next coarser tree plane"""
     parent = inverse_of_splits(tp.ispl, mp.size)
     kwargs = dict(
@@ -97,7 +97,7 @@ def coarsen_multipoles_jax(mp: jnp.ndarray, tp: TreePlane, *, cfg: Config) -> jn
     return jnp.stack(mp_coarse, axis=-1)
 coarsen_multipoles_jax.jit = jax.jit(coarsen_multipoles_jax, static_argnames=['cfg'])
 
-def multipoles_from_particles_jax(tp: TreePlane, part: PosMass, *, cfg: Config) -> jnp.ndarray:
+def multipoles_from_particles_jax(tp: TreePlane, part: PosMass, *, cfg: Config) -> jax.Array:
     dtype = part.mass.dtype
 
     parent = inverse_of_splits(tp.ispl, mp.size)

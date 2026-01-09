@@ -10,7 +10,7 @@ def static_field(*args, **kwargs):
 @jax.tree_util.register_dataclass
 @dataclass
 class LocalExpansion:
-    values: jnp.ndarray
+    values: jax.Array
 
     def fphi(self):
         return jnp.concatenate([self.force(), self.potential()[...,None]], axis=-1)
@@ -26,13 +26,13 @@ class LocalExpansion:
 @jax.tree_util.register_dataclass
 @dataclass
 class Pos: # this class is mostly defined to declare an interface that particle class should follow
-    pos: jnp.ndarray
+    pos: jax.Array
 
 @jax.tree_util.register_dataclass
 @dataclass
 class PosMass:
-    pos: jnp.ndarray  # (Nparticles, 3)
-    mass: jnp.ndarray  # (Nparticles,)
+    pos: jax.Array  # (Nparticles, 3)
+    mass: jax.Array  # (Nparticles,)
 
     def posm(self):
         return jnp.concatenate([self.pos, self.mass[:, None]], axis=-1)
@@ -40,11 +40,11 @@ class PosMass:
 @jax.tree_util.register_dataclass
 @dataclass
 class Particles(PosMass):
-    vel : jnp.ndarray
+    vel : jax.Array
     loc : LocalExpansion | None = None
 
-    cpos : jnp.ndarray | None = None
-    cvel : jnp.ndarray | None = None
+    cpos : jax.Array | None = None
+    cvel : jax.Array | None = None
 
     def apos(self):
         return self.pos if self.cpos is None else self.pos + self.cpos
@@ -54,9 +54,9 @@ class Particles(PosMass):
 @jax.tree_util.register_dataclass
 @dataclass
 class PackedArray:
-    data: jnp.ndarray
-    ispl: jnp.ndarray
-    fill_values: jnp.ndarray | None = None
+    data: jax.Array
+    ispl: jax.Array
+    fill_values: jax.Array | None = None
 
     def __init__(self, data, ispl=None, levels=None, fill_values=None):
         assert (ispl is not None) or (levels is not None), "Either ispl or num_arr must be provided"
@@ -124,14 +124,14 @@ class PackedArray:
 @dataclass
 class TreePlane():
     # Defined per node:
-    ispl: jnp.ndarray # relation to children
+    ispl: jax.Array # relation to children
 
-    npart: jnp.ndarray
-    lvl: jnp.ndarray
-    geom_cent: jnp.ndarray
+    npart: jax.Array
+    lvl: jax.Array
+    geom_cent: jax.Array
 
     # Scalars (data dependent)
-    nnodes: jnp.ndarray
+    nnodes: jax.Array
 
     around_com: bool = static_field()
 
@@ -140,13 +140,13 @@ class TreePlane():
 
     def size(self) -> int: # needed
         return self.lvl.shape[0]
-    def center(self) -> jnp.ndarray:
+    def center(self) -> jax.Array:
         if self.around_com:
             assert self.mass_cent is not None, "Mass center not available"
             return self.mass_cent.pos
         else:
             return self.geom_cent
-    def node_extent(self, diag2=False) -> jnp.ndarray: # only jax
+    def node_extent(self, diag2=False) -> jax.Array: # only jax
         # return jnp.ldexp(1., self.lvl)
         olvl, omod = self.lvl//3, self.lvl % 3
 
@@ -174,7 +174,7 @@ class TreeHierarchy():
 
     plane_sizes: List[int] = static_field(default_factory=list)
 
-    def npart(self, level: int, size=None) -> jnp.ndarray:
+    def npart(self, level: int, size=None) -> jax.Array:
         if size is None:
             size = self.plane_sizes[level]
         ispl_n2p = self.ispl_n2n.get(0)[self.ispl_n2l.get(level, size+1)]
@@ -236,7 +236,7 @@ class SegmentedNDArray():
     and the largest element in the split is the product of the lower levels + the new one
     """
 
-    ispl: List[jnp.ndarray]
+    ispl: List[jax.Array]
 
     def global_ispl(self, axis=0):
         if axis == len(self.ispl) - 1:
@@ -290,10 +290,10 @@ class SegmentedNDArray():
 @dataclass
 class InteractionList:
     """Node i0 will interact with all indices iother[ispl[i0]:ispl[i0+1]]"""
-    ispl: jnp.ndarray
-    iother: jnp.ndarray
+    ispl: jax.Array
+    iother: jax.Array
 
-    nfilled : jnp.ndarray  # Total number of filled interactions
+    nfilled : jax.Array  # Total number of filled interactions
 
     def get_interactions(self, get_valid=False):
         """Returns (i0, i1, valid) indicating two interaction nodes and validity"""
@@ -306,7 +306,7 @@ class InteractionList:
         else:
             return i0, i1
     
-    def filter(self, mask: jnp.ndarray, size: int | None = None) -> 'InteractionList':
+    def filter(self, mask: jax.Array, size: int | None = None) -> 'InteractionList':
         """Returns a filtered interaction list according to the boolean mask"""
         if size is None:
             size = mask.size
@@ -323,7 +323,7 @@ class InteractionList:
     def dtype(self):
         return self.iother.dtype
 
-def set_range(arr : jnp.ndarray, values, start, end):
+def set_range(arr : jax.Array, values, start, end):
     if(len(arr) / len(values) >= 4):
         # values are much smaller than arr, do a scatter based update
         idx = jnp.arange(len(values)) + start
