@@ -243,7 +243,7 @@ def distributed_zsort(x: jnp.ndarray | Pos, nsamp: int = 1024):
 
     from .comm import all_to_all_with_splits, global_splits
 
-    x = all_to_all_with_splits(xz, spl, axis_name=axis_name)
+    x = all_to_all_with_splits(xz, spl, axis_name=axis_name)[0]
     xz, idz = pos_zorder_sort(x)
 
     # We have posz globally and locally in z-order now
@@ -253,7 +253,7 @@ def distributed_zsort(x: jnp.ndarray | Pos, nsamp: int = 1024):
     spl_target = (jnp.arange(0, ndev+1) * (nparttot // ndev)).at[-1].set(nparttot)
     spl_send = jnp.clip(spl_target - spl_have[rank], 0, npart)
 
-    xz = all_to_all_with_splits(xz, spl_send, axis_name=axis_name)
+    xz = all_to_all_with_splits(xz, spl_send, axis_name=axis_name)[0]
 
     return xz
 distributed_zsort.jit = jax.jit(distributed_zsort, static_argnames="nsamp")

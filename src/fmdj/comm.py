@@ -143,7 +143,8 @@ def all_to_all_with_splits(x, ispl, output=None, axis_name="gpus", verify=True, 
     input_offsets = ispl[:-1]
     send_sizes = ispl[1:] - ispl[:-1]
     recv_sizes = jax.lax.all_to_all(send_sizes, axis_name, 0, 0, tiled=True)
-    output_offsets = jnp.cumsum(recv_sizes) - recv_sizes
+    dev_spl = cumsum_starting_with_zero(recv_sizes)
+    output_offsets = dev_spl[:-1]
 
     if verify:
         def myerr(need, have):
@@ -176,7 +177,7 @@ def all_to_all_with_splits(x, ispl, output=None, axis_name="gpus", verify=True, 
             xi, outi, input_offsets, send_sizes, output_offsets, recv_sizes, axis_name=axis_name
         )
 
-    return jax.tree.map(comm, x, output)
+    return jax.tree.map(comm, x, output), dev_spl
 
 def dynamic_all_gather(x, nsend, output=None, axis_name="gpus", verify=True):
     """An all-gather where each task may send different amounts.
@@ -210,3 +211,16 @@ def dynamic_all_gather(x, nsend, output=None, axis_name="gpus", verify=True):
         )
 
     return jax.tree.map(comm, x, output), dev_spl
+
+def arange_for_comm(irank: jnp.ndarray, data, num=None, axis_name="gpus"):
+    rank = jax.lax.axis_index(axis_name)
+    ndev = jax.lax.axis_size(axis_name)
+
+    if num is not None:
+        irank = jnp.where(jnp.arange(len(irank), dtype=irank.dtype) < num, irank, ndev)
+    isort = jnp.argsort(irank)
+    dev_spl = jnp.searchsorted(irank[isort], jnp.arange(ndev+1, dtype=irank.dtype), side="left")
+
+    datasort = jax.tree.map(lambda d: d[isort], data)
+
+    return datasort, dev_spl
