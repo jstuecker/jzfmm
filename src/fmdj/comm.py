@@ -6,7 +6,7 @@ from .tools import conditional_callback, cumsum_starting_with_zero
 from jax.typing import ArrayLike
 
 # Currently jax doesn't have a typehint for pytrees. We simply define one ourselves for clarity
-PyTree: TypeAlias = Any
+Pytree: TypeAlias = Any
 
 # ------------------------------------------------------------------------------------------------ #
 #                                        General Device Info                                       #

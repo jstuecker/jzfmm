@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import jax
 import jax.numpy as jnp
 from .config import Config, PotentialField
 
