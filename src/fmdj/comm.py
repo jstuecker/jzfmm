@@ -2,7 +2,7 @@ from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
 import jax
 import jax.numpy as jnp
 from typing import Tuple, Any, TypeAlias
-from .tools import conditional_callback, cumsum_starting_with_zero
+from .tools import conditional_callback, cumsum_starting_with_zero, inverse_of_splits
 from jax.typing import ArrayLike
 
 # Currently jax doesn't have a typehint for pytrees. We simply define one ourselves for clarity
@@ -268,3 +268,43 @@ def all_to_all_request(
     # rearange to the original order
     invsort = jnp.zeros_like(isort).at[isort].set(jnp.arange(len(isort), dtype=isort.dtype))
     return jax.tree.map(lambda xi: xi[invsort], xsort)
+
+def all_to_all_request_children(
+    dev_spl: jax.Array,
+    indices: jax.Array,
+    spl: jax.Array,
+    data: jax.Array | Pytree,
+    output: jax.Array | Pytree | None = None,
+    axis_name: str = "gpus",
+    verify: bool = True, 
+    copy_self: bool = True
+):
+    if output is None:
+        output = empty_like(data)
+
+    size = pytree_len(output)
+
+    # First inform the task with the data which indices we need
+    indices, dev_spl = all_to_all_with_splits(
+        indices, dev_spl, output=None, axis_name=axis_name, verify=verify, copy_self=copy_self
+    )
+        
+    # fill a continous buffer with the requested data
+    node_sizes = (spl[1:] - spl[:-1])[indices]
+    out_node_spl = cumsum_starting_with_zero(node_sizes)
+    child_inode = inverse_of_splits(out_node_spl, size)
+    child_inode_offset = jnp.arange(size) - out_node_spl[child_inode]
+    child_id = spl[indices[child_inode]] + child_inode_offset
+    child_data = jax.tree.map(lambda xi: xi[child_id],  data)
+    child_dev_spl = out_node_spl[dev_spl]
+
+    # send back the node_sizes so the receiver knows where each node starts
+    node_sizes, node_dev_spl = all_to_all_with_splits(node_sizes, dev_spl, axis_name=axis_name)
+    node_spl = cumsum_starting_with_zero(node_sizes)
+    
+    # Now send the child data
+    xchild, child_dev_spl = all_to_all_with_splits(
+        child_data, child_dev_spl, output, axis_name=axis_name, verify=verify, copy_self=copy_self
+    )
+    
+    return xchild, node_spl, child_dev_spl

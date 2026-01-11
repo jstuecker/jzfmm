@@ -458,26 +458,30 @@ build_tree_hierarchy.jit = jax.jit(build_tree_hierarchy, static_argnames=['cfg_t
 #                                     Interaction List Helpers                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def dense_interaction_list(size: int, nnodes: jax.Array = None) -> InteractionList:
+def dense_interaction_list(nnodes: jax.Array, size_nodes: int, size_ilist: int,
+                           node_range: jax.Array | None = None) -> InteractionList:
     """A dense interaction list where all nodes interact with all other nodes.
 
-    size: size of the node array that will use the interaction list. (Required at compile time)
+    size_ilist: size of the interaction list. (Required at compile time)
     nnodes: actual number of filled nodes (Can be dynamic, used to invalidating unused nodes)
     """
 
-    if nnodes is None: # size = nnodes will only work outside of jit
-        nnodes = jnp.array(size, dtype=jnp.int32)  
     dtype = nnodes.dtype
 
-    nfilled = nnodes*nnodes
-
-    idx = jnp.arange(size*size)
-    ilist = idx % nnodes
-    
-    ispl = jnp.minimum(jnp.arange(0, size+1, dtype=dtype) * nnodes, nfilled)
+    idx = jnp.arange(size_ilist)
+    if node_range is not None:
+        # !!! Put some checks here!
+        nfilled = nnodes*(node_range[1] - node_range[0])
+        ilist = jnp.where(idx < nfilled, idx % nnodes, 0)
+        node_idx = jnp.arange(size_nodes)
+        ispl = cumsum_starting_with_zero((node_idx >= node_range[0]) & (node_idx < node_range[1])) * nnodes
+    else:
+        nfilled = nnodes*nnodes
+        ilist = jnp.where(idx < nfilled, idx % nnodes, 0)
+        ispl = jnp.minimum(jnp.arange(0, size_nodes+1, dtype=dtype) * nnodes, nfilled)
     
     return InteractionList(ispl=ispl, iother=ilist, nfilled=nfilled)
-dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size'])
+dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size_ilist'])
 
 def grouped_dense_interaction_list(nnodes: jax.Array | int, size_ilist: int,
                                    ngroup: int = 32, size_super: int | None = None,
@@ -534,7 +538,8 @@ def masked_scatter(mask, arr, indices, values):
     indices = jnp.where(mask, indices, len(arr))
     return arr.at[indices].set(values)
 
-def simplify_interaction_list(ilist: InteractionList, ids: jax.Array, dev_spl: jax.Array
+def simplify_interaction_list(ilist: InteractionList, ids: jax.Array, dev_spl: jax.Array, 
+                              num_always_keep: jax.Array | None = None
                               ) -> Tuple[InteractionList, jax.Array, jax.Array]:
     """Get reduced version of the interaction and node list skipping nodes without interactions
     
@@ -547,9 +552,12 @@ def simplify_interaction_list(ilist: InteractionList, ids: jax.Array, dev_spl: j
     ioth = jnp.where(idx < ilist.ispl[-1], ilist.iother, size_nodes)
     flag = ilist.ispl[1:] > ilist.ispl[:-1] # appears as receiver
     flag = flag.at[ioth].set(True) # appears as source
+    if num_always_keep is not None:
+        flag = flag | (jnp.arange(len(ids)) < num_always_keep)
     
-    # create reduced child id list
+    # create reduced id list
     prefix = cumsum_starting_with_zero(flag)
+
     reduced_ids = masked_scatter(flag, jnp.zeros_like(ids), prefix[:-1], ids)
     reduced_dev_spl = prefix[dev_spl]
 
