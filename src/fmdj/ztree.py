@@ -138,6 +138,7 @@ def determine_znode_boundaries(posz: jax.Array, block_size: int = 64, nleaves: j
     """Builds a Z-order tree from positions"""
     if nleaves is None:
         nleaves = jnp.array(len(posz))
+    nleaves = jnp.minimum(len(posz), nleaves)
     
     # Set domain boundaries to behave like infinities
     # Note that this is fine for multi-GPU, because we ensure in advance that no
@@ -161,6 +162,9 @@ def get_node_geometry(posz: jax.Array, lbound: jax.Array, rbound: jax.Array,
     out_types = (jax.ShapeDtypeStruct((lbound.shape[0],), jnp.int32),
                  jax.ShapeDtypeStruct((lbound.shape[0], 3), jnp.float32),
                  jax.ShapeDtypeStruct((lbound.shape[0], 3), jnp.float32))
+    
+    lbound = jnp.maximum(lbound, 0)
+    rbound = jnp.minimum(rbound, len(posz))
     
     lvl, node_cent, node_ext = jax.ffi.ffi_call("GetNodeGeometry", out_types)(
         posz, lbound, rbound, num, block_size=np.uint64(block_size)
