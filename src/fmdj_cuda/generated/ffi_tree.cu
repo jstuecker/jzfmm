@@ -322,6 +322,7 @@ ffi::Error GetNodeGeometryFFIHost(
     size_t block_size
 ) {
     int size_nodes = level->element_count();
+    int size_part = pos.element_count()/3;
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(size_nodes, block_size));
     size_t smem = 0;
@@ -344,7 +345,8 @@ ffi::Error GetNodeGeometryFFIHost(
         &level_val,
         &center_val,
         &extent_val,
-        &size_nodes
+        &size_nodes,
+        &size_part
     };
     cudaLaunchKernel((const void*)GetNodeGeometry, gridDim, blockDim, args, smem, stream);
 

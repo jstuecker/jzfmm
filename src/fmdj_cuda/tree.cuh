@@ -404,6 +404,10 @@ std::string GetBoundaryExtendPerLevel(
 /*                                         Node Properties                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
+__device__ int clip(int a, int imin, int imax) {
+    return min(max(a, imin), imax);
+}
+
 __global__ void GetNodeGeometry(
     const float3* pos,
     const int* lbound,
@@ -412,22 +416,23 @@ __global__ void GetNodeGeometry(
     int32_t* level,
     float3* center,
     float3* extent,
-    const int size_nodes
+    const int size_nodes,
+    const int size_part
 ) {
     // Gets the properties of the smallest node that contains pos[lbound[idx]] and pos[rbound[idx]-1]
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
+    if(idx >= size_nodes)
+        return;
     if(idx >= nnodes[0]) {
-        if(idx < size_nodes) {
-            level[idx] = -1000;
-            center[idx] = make_float3(CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F);
-            extent[idx] = make_float3(0, 0, 0);
-        }
+        level[idx] = -1000;
+        center[idx] = make_float3(CUDART_NAN_F, CUDART_NAN_F, CUDART_NAN_F);
+        extent[idx] = make_float3(0, 0, 0);
         return;
     }
     
-    float3 x0 = pos[lbound[idx]];
-    float3 x1 = pos[rbound[idx]-1];
+    float3 x0 = pos[clip(lbound[idx], 0, size_part-1)];
+    float3 x1 = pos[clip(rbound[idx]-1, 0, size_part-1)];
 
     int lvl = msb_diff_level(x0, x1);
     NodeWithExt node_ext = get_common_node(x0, x1);

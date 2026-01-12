@@ -109,6 +109,7 @@ functions["FindNodeBoundaries"].par["size_nodes"].expression = "nodes_levels->el
 functions["FindNodeBoundaries"].grid_size_expression = "div_ceil(size_nodes, block_size)"
 
 functions["GetNodeGeometry"].par["size_nodes"].expression = "level->element_count()"
+functions["GetNodeGeometry"].par["size_part"].expression = "pos.element_count()/3"
 functions["GetNodeGeometry"].grid_size_expression = "div_ceil(size_nodes, block_size)"
 
 functions["SearchSortedZ"].par["n_have"].expression = "posz_have.element_count()/3"
