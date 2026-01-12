@@ -99,7 +99,7 @@ def test_force_gradients(pos_mass: fmdj.data.PosMass):
     cfg = fmdj.Config(softening=0.05, fmm=fmmcfg)
     
     ispl = jnp.arange(part.pos.shape[0]//32 + 1, dtype=jnp.int32) * 32
-    ilist = fmdj.fmm.dense_interaction_list.jit(len(ispl)-1)
+    ilist = fmdj.ztree.dense_interaction_list.jit(len(ispl)-1, len(ispl)-1, (len(ispl)-1)**2)
 
     fphi1 = fmdj.fmm.direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True)
     fphi2 = fmdj.fmm.grouped_force_and_pot.jit(part, ispl, ilist, cfg)

@@ -479,7 +479,7 @@ def dense_interaction_list(nnodes: jax.Array, size_nodes: int, size_ilist: int,
         ispl = jnp.minimum(jnp.arange(0, size_nodes+1, dtype=dtype) * nnodes, nfilled)
     
     return InteractionList(ispl=ispl, iother=ilist, nfilled=nfilled)
-dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size_ilist'])
+dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size_ilist', 'size_nodes'])
 
 def grouped_dense_interaction_list(nnodes: jax.Array | int, size_ilist: int,
                                    ngroup: int = 32, size_super: int | None = None,

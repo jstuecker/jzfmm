@@ -16,7 +16,7 @@ def stripping_cfg():
 
     return cfg, host
 
-@pytest.mark.parametrize("npart", [1024*16, 1024*128, 1024*1024], indirect=True)
+@pytest.mark.parametrize("npart", [1024*128, 1024*1024], indirect=True)
 def bench_simulate(jax_bench, particles_nfw: fmdj.data.Particles, stripping_cfg):
     jb = jax_bench(jit_rounds=1, jit_warmup=0, eager_rounds=0, eager_warmup=0)
     cfg, host = stripping_cfg
