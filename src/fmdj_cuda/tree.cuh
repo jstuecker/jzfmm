@@ -129,23 +129,18 @@ __global__ void SearchSortedZ(
 }
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                                         SummarizeLeaves                                        */
+/*                                      DetectLeafBoundaries                                      */
 /* ---------------------------------------------------------------------------------------------- */
 
-struct PosN {
-    float3 pos;
-    int32_t n;
-};
-
-__global__ void SummarizeLeaves(
-    const PosN* xnleaf,
-    const int* nleaves_filled,
-    int32_t* split_flags,
+__global__ void FlagLeafBoundaries(
+    const float3* posz,
+    const int* npart,
+    int8_t* split_flags,
     int max_size,
-    int n_leaves,
+    int size_part,
     int scan_size
 ) {
-    int nfilled = nleaves_filled[0];
+    int nump = npart[0];
 
     // Finds splitting points where the group of particles between each splitting point
     // can be summarized into a single leaf node that represents <= max_size particles
@@ -154,8 +149,8 @@ __global__ void SummarizeLeaves(
     // Load data preceding and following our block into shared memory
     int nload = blockDim.x + 2*scan_size + 1;
     extern __shared__ unsigned char smem[];
-    PosN*   xn = reinterpret_cast<PosN*>(smem);
-    int32_t* level = reinterpret_cast<int32_t*>(xn + nload);
+    float3*   x = reinterpret_cast<float3*>(smem);
+    int32_t* level = reinterpret_cast<int32_t*>(x + nload);
 
     int ioff = blockIdx.x * blockDim.x - scan_size - 1;
     
@@ -164,16 +159,16 @@ __global__ void SummarizeLeaves(
     for(int i = threadIdx.x; i < nload; i += blockDim.x) {
         int ifrom = ioff + i;
         if(ifrom < 0)
-            xn[i] = {make_float3(-CUDART_INF_F, -CUDART_INF_F, -CUDART_INF_F), 0};
-        else if(ifrom >= nfilled)
-            xn[i] = {make_float3(CUDART_INF_F, CUDART_INF_F, CUDART_INF_F), 0};
+            x[i] = make_float3(-CUDART_INF_F, -CUDART_INF_F, -CUDART_INF_F);
+        else if(ifrom >= nump)
+            x[i] = make_float3(CUDART_INF_F, CUDART_INF_F, CUDART_INF_F);
         else
-            xn[i] = xnleaf[ifrom];
+            x[i] = posz[ifrom];
     }
 
     __syncthreads();
     for(int i = threadIdx.x; i < nload-1; i += blockDim.x) {
-        level[i] = msb_diff_level(xn[i].pos, xn[i + 1].pos);
+        level[i] = msb_diff_level(x[i], x[i + 1]);
     }
     __syncthreads();
 
@@ -182,11 +177,11 @@ __global__ void SummarizeLeaves(
     int mylevel = level[idx];
     int lsize = 0;
     for(int i = idx - scan_size; i < idx; i++) {
-        lsize = xn[i+1].n + (level[i] >= mylevel ? 0 : lsize);
+        lsize = (level[i] >= mylevel ? 0 : lsize) + 1;
     }
     int rsize = 0;
     for(int i = idx + scan_size; i > idx; i--) {
-        rsize = xn[i].n + (level[i] >= mylevel ? 0 : rsize);
+        rsize = (level[i] >= mylevel ? 0 : rsize) + 1;
     }
 
     // Each maximum size node that is <= max_size is bounded by nodes that are > max_size
@@ -194,12 +189,12 @@ __global__ void SummarizeLeaves(
     bool is_split = lsize + rsize > max_size;
 
     // Additionally we set the beginning and end points to be splits
+    is_split &= node_idx <= nump;
     is_split |= node_idx == 0; 
-    is_split |= node_idx == nfilled;
-    is_split &= node_idx <= nfilled;
+    is_split |= node_idx == nump;
 
-    if (node_idx <= n_leaves) {
-        split_flags[node_idx] = is_split ? mylevel : -1000;
+    if (node_idx < size_part + 1) {
+        split_flags[node_idx] = is_split;
     }
 }
 

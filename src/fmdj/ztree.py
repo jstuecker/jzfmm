@@ -13,7 +13,7 @@ from .comm import get_rank_info, send_to_left, send_to_right, shift_particles_le
 from dataclasses import replace
 
 jax.ffi.register_ffi_target("PosZorderSort", ffi_tree.PosZorderSort(), platform="CUDA")
-jax.ffi.register_ffi_target("SummarizeLeaves", ffi_tree.SummarizeLeaves(), platform="CUDA")
+jax.ffi.register_ffi_target("FlagLeafBoundaries", ffi_tree.FlagLeafBoundaries(), platform="CUDA")
 jax.ffi.register_ffi_target("FindNodeBoundaries", ffi_tree.FindNodeBoundaries(), platform="CUDA")
 jax.ffi.register_ffi_target("GetNodeGeometry", ffi_tree.GetNodeGeometry(), platform="CUDA")
 jax.ffi.register_ffi_target("SearchSortedZ", ffi_tree.SearchSortedZ(), platform="CUDA")
@@ -107,34 +107,32 @@ def search_sorted_z(xz, xz_query, block_size=64, leaf_search=False):
     return inds
 search_sorted_z.jit = jax.jit(search_sorted_z, static_argnames=("block_size", "leaf_search"))
 
-def create_coarse_leaves(posz: jax.Array, leaf_size: int = 32, block_size: int = 64, alloc_size: int | None = None) -> jax.Array:
+def detect_leaf_boundaries(posz: jax.Array, leaf_size: int = 32, block_size: int = 64, alloc_size: int | None = None) -> jax.Array:
     if alloc_size is None:
         alloc_size = int(div_ceil(len(posz), np.maximum(leaf_size//2, 1))) + 1
 
-    out_type = jax.ShapeDtypeStruct((posz.shape[0]+1,), jnp.int32)
-
-    nleaf = jnp.ones((posz.shape[0],), dtype=jnp.int32)
-    xnleaf = jnp.concatenate((posz, nleaf[:,None].view(jnp.float32)), axis=-1)
+    out_type = jax.ShapeDtypeStruct((posz.shape[0]+1,), jnp.int8)
 
     npart = jnp.sum(~jnp.isnan(posz[...,0]))
 
-    flag_split = jax.ffi.ffi_call("SummarizeLeaves", (out_type,), vmap_method="sequential")(
-        xnleaf, npart, max_size=np.int32(leaf_size),
-        block_size=np.uint64(block_size), scan_size=np.int32(leaf_size+1))[0]
+    flag_split = jax.ffi.ffi_call("FlagLeafBoundaries", (out_type,), vmap_method="sequential")(
+        posz, npart, max_size=np.int32(leaf_size),
+        block_size=np.uint64(block_size), scan_size=np.int32(leaf_size+1)
+    )[0]
 
     # Check that the allocation was big enough
     def alloc_err(filled, size):
         raise RuntimeError(f"Coarsen Leaves: allocation too small: filled {filled}, size {size}.\n"
                             "Increase alloc_fac_nodes in FMMConfig.")
-    nfilled = jnp.sum(flag_split > -1000)
+    nfilled = jnp.sum(flag_split)
     flag_split = flag_split + conditional_callback(
         nfilled > alloc_size, alloc_err, nfilled, alloc_size,
     )
     
-    splits = jnp.where(flag_split > -1000, size=alloc_size, fill_value=npart)[0]
+    splits = jnp.where(flag_split, size=alloc_size, fill_value=npart)[0]
 
     return splits
-create_coarse_leaves.jit = jax.jit(create_coarse_leaves, static_argnames=("leaf_size", "block_size"))
+detect_leaf_boundaries.jit = jax.jit(detect_leaf_boundaries, static_argnames=("leaf_size", "block_size"))
 
 def determine_znode_boundaries(posz: jax.Array, block_size: int = 64, nleaves: jnp.array = None) -> Tuple[jax.Array, jax.Array, jax.Array]:
     """Builds a Z-order tree from positions"""
@@ -311,7 +309,7 @@ def define_split_hierarchy(posz: jax.Array, node_sizes: Tuple[int], alloc_size: 
     """
     nlevels = len(node_sizes)
     
-    ispl =  create_coarse_leaves(posz, leaf_size=node_sizes[0], alloc_size=alloc_size)
+    ispl =  detect_leaf_boundaries(posz, leaf_size=node_sizes[0], alloc_size=alloc_size)
 
     nleaves = jnp.argmax(ispl)
     lvl, lbound, rbound = determine_znode_boundaries(posz[ispl[:-1]], nleaves=nleaves)

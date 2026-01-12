@@ -93,7 +93,7 @@ gen.generate_ffi_module_file(
 
 functions = parse.get_functions_from_file(
     str(HERE / "tree.cuh"),
-    names=["PosZorderSort", "SummarizeLeaves", "FindNodeBoundaries", "GetNodeGeometry", 
+    names=["PosZorderSort", "FlagLeafBoundaries", "FindNodeBoundaries", "GetNodeGeometry", 
            "SearchSortedZ", "GetBoundaryExtendPerLevel"],
     only_kernels=False
 )
@@ -101,9 +101,9 @@ functions = parse.get_functions_from_file(
 functions["PosZorderSort"].par["size"].expression = "pos_in.element_count()/3"
 functions["PosZorderSort"].par["tmp_bytes"].expression = "tmp_buffer->size_bytes()"
 
-functions["SummarizeLeaves"].par["n_leaves"].expression = "xnleaf.element_count()/4"
-functions["SummarizeLeaves"].grid_size_expression = "div_ceil(n_leaves+1, block_size)"
-functions["SummarizeLeaves"].smem_size_expression = "(block_size + 2*scan_size + 1) * (sizeof(PosN) + sizeof(int32_t))"
+functions["FlagLeafBoundaries"].par["size_part"].expression = "posz.element_count()/3"
+functions["FlagLeafBoundaries"].grid_size_expression = "div_ceil(size_part+1, block_size)"
+functions["FlagLeafBoundaries"].smem_size_expression = "(block_size + 2*scan_size + 1) * (sizeof(float3) + sizeof(int32_t))"
 
 functions["FindNodeBoundaries"].par["size_nodes"].expression = "nodes_levels->element_count()"
 functions["FindNodeBoundaries"].grid_size_expression = "div_ceil(size_nodes, block_size)"

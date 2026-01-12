@@ -42,7 +42,7 @@ def test_mutli_zsort():
 def fcoarsen(posz: jnp.ndarray):
     # return fmdj.ztree.distributed_define_leaves(posz, leaf_size=256)
     posz, npart = fmdj.ztree.adjust_domain_for_nodesize(posz, 256)
-    ispl = fmdj.ztree.create_coarse_leaves(posz, leaf_size=256)
+    ispl = fmdj.ztree.detect_leaf_boundaries(posz, leaf_size=256)
 
     return posz, ispl
 
@@ -72,7 +72,7 @@ def test_multi_leaves():
 
     # Check splits against locally calculated ones
     posz0 = jax.device_put(posz, jax.sharding.SingleDeviceSharding(jax.devices()[0]))
-    ispl0 = fmdj.ztree.create_coarse_leaves(remove_invalid(posz0), leaf_size=256)
+    ispl0 = fmdj.ztree.detect_leaf_boundaries(remove_invalid(posz0), leaf_size=256)
 
     def remove_duplicates(i):
         return i[jnp.where(i[1:] != i[:-1])]

@@ -122,38 +122,38 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                             FFI call to CUDA kernel: SummarizeLeaves                           */
+/*                             FFI call to CUDA kernel: FlagLeafBoundaries                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-ffi::Error SummarizeLeavesFFIHost(
+ffi::Error FlagLeafBoundariesFFIHost(
     cudaStream_t stream,
-    ffi::AnyBuffer xnleaf,
-    ffi::AnyBuffer nleaves_filled,
+    ffi::AnyBuffer posz,
+    ffi::AnyBuffer npart,
     ffi::Result<ffi::AnyBuffer> split_flags,
     int max_size,
     int scan_size,
     size_t block_size
 ) {
-    int n_leaves = xnleaf.element_count()/4;
+    int size_part = posz.element_count()/3;
     dim3 blockDim(block_size);
-    dim3 gridDim(div_ceil(n_leaves+1, block_size));
-    size_t smem = (block_size + 2*scan_size + 1) * (sizeof(PosN) + sizeof(int32_t));
+    dim3 gridDim(div_ceil(size_part+1, block_size));
+    size_t smem = (block_size + 2*scan_size + 1) * (sizeof(float3) + sizeof(int32_t));
     
     // Build a bundled argument list for cudaLaunchKernel
     // For pointers we need to create a pointer to the pointer
-    PosN* xnleaf_val = reinterpret_cast<PosN*>(xnleaf.untyped_data());
-    int* nleaves_filled_val = reinterpret_cast<int*>(nleaves_filled.untyped_data());
-    int32_t* split_flags_val = reinterpret_cast<int32_t*>(split_flags->untyped_data());
+    float3* posz_val = reinterpret_cast<float3*>(posz.untyped_data());
+    int* npart_val = reinterpret_cast<int*>(npart.untyped_data());
+    int8_t* split_flags_val = reinterpret_cast<int8_t*>(split_flags->untyped_data());
 
     void* args[] = {
-        &xnleaf_val,
-        &nleaves_filled_val,
+        &posz_val,
+        &npart_val,
         &split_flags_val,
         &max_size,
-        &n_leaves,
+        &size_part,
         &scan_size
     };
-    cudaLaunchKernel((const void*)SummarizeLeaves, gridDim, blockDim, args, smem, stream);
+    cudaLaunchKernel((const void*)FlagLeafBoundaries, gridDim, blockDim, args, smem, stream);
 
     cudaError_t last_error = cudaGetLastError();
     if (last_error != cudaSuccess) {
@@ -163,11 +163,11 @@ ffi::Error SummarizeLeavesFFIHost(
 }
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    SummarizeLeavesFFI, SummarizeLeavesFFIHost,
+    FlagLeafBoundariesFFI, FlagLeafBoundariesFFIHost,
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
-        .Arg<ffi::AnyBuffer>() // xnleaf
-        .Arg<ffi::AnyBuffer>() // nleaves_filled
+        .Arg<ffi::AnyBuffer>() // posz
+        .Arg<ffi::AnyBuffer>() // npart
         .Ret<ffi::AnyBuffer>() // split_flags
         .Attr<int>("max_size")
         .Attr<int>("scan_size")
@@ -377,7 +377,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 NB_MODULE(ffi_tree, m) {
     m.def("PosZorderSort", []() { return EncapsulateFfiCall(&PosZorderSortFFI); });
     m.def("SearchSortedZ", []() { return EncapsulateFfiCall(&SearchSortedZFFI); });
-    m.def("SummarizeLeaves", []() { return EncapsulateFfiCall(&SummarizeLeavesFFI); });
+    m.def("FlagLeafBoundaries", []() { return EncapsulateFfiCall(&FlagLeafBoundariesFFI); });
     m.def("FindNodeBoundaries", []() { return EncapsulateFfiCall(&FindNodeBoundariesFFI); });
     m.def("GetBoundaryExtendPerLevel", []() { return EncapsulateFfiCall(&GetBoundaryExtendPerLevelFFI); });
     m.def("GetNodeGeometry", []() { return EncapsulateFfiCall(&GetNodeGeometryFFI); });
