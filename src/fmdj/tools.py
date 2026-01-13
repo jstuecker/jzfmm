@@ -82,6 +82,14 @@ def inverse_of_splits(ispl, size):
     mask = jnp.zeros(size, dtype=jnp.int32).at[ispl].add(1)
     return jnp.cumsum(mask) - 1
 
+# ------------------------------------------------------------------------------------------------ #
+#                                          Scatter Helpers                                         #
+# ------------------------------------------------------------------------------------------------ #
+
+def masked_scatter(mask, arr, indices, values):
+    indices = jnp.where(mask, indices, len(arr))
+    return arr.at[indices].set(values)
+
 def multi_to_dense(x: jax.Array, spl: jax.Array) -> jax.Array:
     """x[ndev,n], spl[ndev+1] -> x[ndev*n]"""
     ndev = len(x)
@@ -89,7 +97,8 @@ def multi_to_dense(x: jax.Array, spl: jax.Array) -> jax.Array:
     iarange = jnp.arange(x.shape[1])
     idev = jnp.arange(ndev)
     
-    xout = xout.at[spl[idev,None] + iarange[None,:]].set(x)
+    indices = spl[idev,None] + iarange[None,:]
+    xout = masked_scatter(indices < spl[idev+1,None], xout, indices, x)
 
     return xout
 multi_to_dense.jit = jax.jit(multi_to_dense)
