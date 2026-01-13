@@ -482,16 +482,24 @@ def dense_interaction_list(nnodes: jax.Array, size_nodes: int, size_ilist: int,
     idx = jnp.arange(size_ilist)
     if node_range is not None:
         # !!! Put some checks here!
-        nfilled = nnodes*(node_range[1] - node_range[0])
-        ilist = jnp.where(idx < nfilled, idx % nnodes, 0)
+        nint = nnodes*(node_range[1] - node_range[0])
+        ilist = jnp.where(idx < nint, idx % nnodes, 0)
         node_idx = jnp.arange(size_nodes)
         ispl = cumsum_starting_with_zero((node_idx >= node_range[0]) & (node_idx < node_range[1])) * nnodes
     else:
-        nfilled = nnodes*nnodes
-        ilist = jnp.where(idx < nfilled, idx % nnodes, 0)
-        ispl = jnp.minimum(jnp.arange(0, size_nodes+1, dtype=dtype) * nnodes, nfilled)
+        nint = nnodes*nnodes
+        ilist = jnp.where(idx < nint, idx % nnodes, 0)
+        ispl = jnp.minimum(jnp.arange(0, size_nodes+1, dtype=dtype) * nnodes, nint)
+
+    def size_err(nnodes, size_nodes, nint, size_ilist):
+        raise ValueError("Cannot fit {nnodes}/{size_nodes}, {nint}/{size_ilist}")
+
+    ispl = ispl + conditional_callback(
+        (nnodes > size_nodes) | (nint > size_ilist), size_err,
+        nnodes, size_nodes, nint, size_ilist
+    )
     
-    return InteractionList(ispl=ispl, iother=ilist, nfilled=nfilled)
+    return InteractionList(ispl=ispl, iother=ilist, nfilled=nint)
 dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size_ilist', 'size_nodes'])
 
 def grouped_dense_interaction_list(nnodes: jax.Array | int, size_ilist: int,
