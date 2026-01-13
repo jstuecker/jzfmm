@@ -128,6 +128,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 ffi::Error FlagLeafBoundariesFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer posz,
+    ffi::AnyBuffer lvl_bound,
     ffi::AnyBuffer npart,
     ffi::Result<ffi::AnyBuffer> split_flags,
     int max_size,
@@ -142,11 +143,13 @@ ffi::Error FlagLeafBoundariesFFIHost(
     // Build a bundled argument list for cudaLaunchKernel
     // For pointers we need to create a pointer to the pointer
     float3* posz_val = reinterpret_cast<float3*>(posz.untyped_data());
+    int* lvl_bound_val = reinterpret_cast<int*>(lvl_bound.untyped_data());
     int* npart_val = reinterpret_cast<int*>(npart.untyped_data());
     int8_t* split_flags_val = reinterpret_cast<int8_t*>(split_flags->untyped_data());
 
     void* args[] = {
         &posz_val,
+        &lvl_bound_val,
         &npart_val,
         &split_flags_val,
         &max_size,
@@ -167,6 +170,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // posz
+        .Arg<ffi::AnyBuffer>() // lvl_bound
         .Arg<ffi::AnyBuffer>() // npart
         .Ret<ffi::AnyBuffer>() // split_flags
         .Attr<int>("max_size")

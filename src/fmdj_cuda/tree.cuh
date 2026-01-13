@@ -134,6 +134,7 @@ __global__ void SearchSortedZ(
 
 __global__ void FlagLeafBoundaries(
     const float3* posz,
+    const int* lvl_bound,
     const int* npart,
     int8_t* split_flags,
     int max_size,
@@ -187,6 +188,11 @@ __global__ void FlagLeafBoundaries(
     // Each maximum size node that is <= max_size is bounded by nodes that are > max_size
     // Therefore, we can find their splitting points by simply flagging all nodes that are > max_size
     bool is_split = lsize + rsize > max_size;
+
+    // If nodes hit a domain boundary and are larger than the boundary level, we always flag them
+    int max_lvl_left = lvl_bound[0], max_lvl_right = lvl_bound[1];
+    is_split = is_split | ((mylevel > lvl_bound[0]) && (node_idx - lsize <= 0));
+    is_split = is_split | ((mylevel > lvl_bound[1]) && (node_idx + rsize >= nump));
 
     // Additionally we set the beginning and end points to be splits
     is_split &= node_idx <= nump;

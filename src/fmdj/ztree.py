@@ -107,7 +107,10 @@ def search_sorted_z(xz, xz_query, block_size=64, leaf_search=False):
     return inds
 search_sorted_z.jit = jax.jit(search_sorted_z, static_argnames=("block_size", "leaf_search"))
 
-def detect_leaf_boundaries(posz: jax.Array, leaf_size: int = 32, block_size: int = 64, alloc_size: int | None = None) -> jax.Array:
+def detect_leaf_boundaries(
+        posz: jax.Array, leaf_size: int = 32, lvl_bound = (388, 388),
+        block_size: int = 64, alloc_size: int | None = None
+    ) -> jax.Array:
     if alloc_size is None:
         alloc_size = int(div_ceil(len(posz), np.maximum(leaf_size//2, 1))) + 1
 
@@ -116,7 +119,7 @@ def detect_leaf_boundaries(posz: jax.Array, leaf_size: int = 32, block_size: int
     npart = jnp.sum(~jnp.isnan(posz[...,0]))
 
     flag_split = jax.ffi.ffi_call("FlagLeafBoundaries", (out_type,), vmap_method="sequential")(
-        posz, npart, max_size=np.int32(leaf_size),
+        posz, jnp.asarray(lvl_bound), npart, max_size=np.int32(leaf_size),
         block_size=np.uint64(block_size), scan_size=np.int32(leaf_size+1)
     )[0]
 
@@ -261,6 +264,8 @@ distributed_zsort.jit = jax.jit(distributed_zsort, static_argnames="nsamp")
 
 def adjust_domain_for_nodesize(xz: jax.Array | Pos, max_node_size: int, npart: int = None):
     """Shifts particles so that nodes with size <= max_node_size always lie on a single GPU"""
+    rank, ndev, axis_name = get_rank_info()
+
     if npart is None:
         npart = determine_npart(xz)
 
@@ -268,12 +273,14 @@ def adjust_domain_for_nodesize(xz: jax.Array | Pos, max_node_size: int, npart: i
     npart_l = ext_lr - ext_ll
     
     ilvl_max = jnp.argmax(jnp.where(npart_l <= max_node_size, npart_l, 0))
+    lvl_max_l = jnp.where(rank > 0, ilvl_max - 450, 388)
+    lvl_max_r = send_to_left(lvl_max_l, axis_name=axis_name, invalid_int=388)
 
     npshift = ext_lr[ilvl_max]
 
     xz, npart = shift_particles_left(xz, npshift, max_send=max_node_size, npart=npart)
 
-    return xz, npart
+    return xz, npart, (lvl_max_l, lvl_max_r)
 adjust_domain_for_nodesize.jit = jax.jit(adjust_domain_for_nodesize, static_argnames="max_node_size")
 
 # ------------------------------------------------------------------------------------------------ #
@@ -301,8 +308,8 @@ def define_tree_level_node_sizes(npart: int, cfg_tree: TreeConfig):
 
     return node_sizes
 
-def define_split_hierarchy(posz: jax.Array, node_sizes: Tuple[int], alloc_size: int
-                           ) -> Tuple[jax.Array, PackedArray, PackedArray]:
+def define_split_hierarchy(posz: jax.Array, node_sizes: Tuple[int], alloc_size: int,
+                           lvl_bound = (388,388)) -> Tuple[jax.Array, PackedArray, PackedArray]:
     """Finds the splitting point of the tree hierarchy
 
     returns
@@ -312,7 +319,7 @@ def define_split_hierarchy(posz: jax.Array, node_sizes: Tuple[int], alloc_size: 
     """
     nlevels = len(node_sizes)
     
-    ispl =  detect_leaf_boundaries(posz, leaf_size=node_sizes[0], alloc_size=alloc_size)
+    ispl =  detect_leaf_boundaries(posz, leaf_size=node_sizes[0], alloc_size=alloc_size, lvl_bound=lvl_bound)
 
     nleaves = jnp.argmax(ispl)
     lvl, lbound, rbound = determine_znode_boundaries(posz[ispl[:-1]], nleaves=nleaves)
@@ -321,6 +328,9 @@ def define_split_hierarchy(posz: jax.Array, node_sizes: Tuple[int], alloc_size: 
 
     # At each level of the hierarchy, the active nodes are determined by the node sizes
     active_on_level = npart_node[None,:] > jnp.array(node_sizes, dtype=jnp.int32)[:,None]
+    # Additionally we need to activate domain boundary nodes that lie above the boudary level
+    active_on_level = active_on_level | ((lbound <= 0) & (lvl > lvl_bound[0]))
+    active_on_level = active_on_level | ((rbound >= nleaves) & (lvl > lvl_bound[1]))
     # Calculate a prefix accross hierarchy levels to densly stack the nodes later
     offsets = jnp.cumsum(active_on_level.flatten()).reshape(active_on_level.shape)
     level_spl = jnp.pad(offsets[:,-1], (1,0), constant_values=0) # save level start/end points
@@ -373,7 +383,7 @@ def get_tree_mass_centers(part: PosMass, ispl_n2n: PackedArray) -> Tuple[PackedA
     return node_mcent, node_mass
 
 def build_tree_hierarchy(part: PosMass | jax.Array, cfg_tree: TreeConfig,
-                         npart_tot: int | None = None) -> TreeHierarchy:
+                         npart_tot: int | None = None, lvl_bound=(388, 388)) -> TreeHierarchy:
     """Builds a tree hierarchy from z-order positions
 
     The zeroth level of the tree corresponds to leaves, which contain multiple particles.
@@ -410,7 +420,7 @@ def build_tree_hierarchy(part: PosMass | jax.Array, cfg_tree: TreeConfig,
 
     alloc_size = estimate_node_number(npart_loc, cfg_tree.max_leaf_size, cfg_tree.alloc_fac_nodes)
 
-    ispl, ispl_n2l, ispl_n2n = define_split_hierarchy(posz, node_sizes, alloc_size)
+    ispl, ispl_n2l, ispl_n2n = define_split_hierarchy(posz, node_sizes, alloc_size, lvl_bound)
 
     # We can handle all levels at once for node geometry:
     ispl_n2p = ispl[ispl_n2l.data] # node to particle relation

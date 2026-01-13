@@ -41,8 +41,8 @@ def test_mutli_zsort():
 @jax.shard_map(out_specs=P("gpus"), in_specs=P("gpus"), mesh=mesh)
 def fcoarsen(posz: jnp.ndarray):
     # return fmdj.ztree.distributed_define_leaves(posz, leaf_size=256)
-    posz, npart = fmdj.ztree.adjust_domain_for_nodesize(posz, 256)
-    ispl = fmdj.ztree.detect_leaf_boundaries(posz, leaf_size=256)
+    posz, npart, lvl_bound = fmdj.ztree.adjust_domain_for_nodesize(posz, 256)
+    ispl = fmdj.ztree.detect_leaf_boundaries(posz, leaf_size=256, lvl_bound=lvl_bound)
 
     return posz, ispl
 
@@ -141,9 +141,9 @@ def test_tree_properties():
         npart = jnp.sum(~jnp.isnan(partz.pos[...,0]))
 
         top_node_size = fmdj.ztree.define_tree_level_node_sizes(nparttot, cfg.tree)[-1]
-        partz, npart = fmdj.ztree.adjust_domain_for_nodesize(partz, top_node_size, npart=npart)
+        partz, npart, lvl_bound = fmdj.ztree.adjust_domain_for_nodesize(partz, top_node_size, npart=npart)
 
-        th = fmdj.ztree.build_tree_hierarchy(partz, cfg.tree, npart_tot=nparttot)
+        th = fmdj.ztree.build_tree_hierarchy(partz, cfg.tree, npart_tot=nparttot, lvl_bound=lvl_bound)
 
         return reductions(th, axis_name)
     
