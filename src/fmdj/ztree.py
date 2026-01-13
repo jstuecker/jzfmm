@@ -272,7 +272,7 @@ def adjust_domain_for_nodesize(xz: jax.Array | Pos, max_node_size: int, npart: i
     ext_ll, ext_lr, ext_rl, ext_rr = distr_boundary_extend(get_pos(xz), npart=npart)
     npart_l = ext_lr - ext_ll
     
-    ilvl_max = jnp.argmax(jnp.where(npart_l <= max_node_size, npart_l, 0))
+    ilvl_max = jnp.max(jnp.where(npart_l <= max_node_size, jnp.arange(len(npart_l)), -1))
     lvl_max_l = jnp.where(rank > 0, ilvl_max - 450, 388)
     lvl_max_r = send_to_left(lvl_max_l, axis_name=axis_name, invalid_int=388)
 
