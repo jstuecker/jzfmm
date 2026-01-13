@@ -295,6 +295,10 @@ class InteractionList:
 
     nfilled : jax.Array  # Total number of filled interactions
 
+    # Multi-GPU specific: origin ids and device offets
+    ids: jax.Array | None = None
+    dev_spl: jax.Array | None = None
+
     def get_interactions(self, get_valid=False):
         """Returns (i0, i1, valid) indicating two interaction nodes and validity"""
         iint = jnp.arange(self.size(), dtype=self.dtype())

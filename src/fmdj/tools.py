@@ -82,6 +82,18 @@ def inverse_of_splits(ispl, size):
     mask = jnp.zeros(size, dtype=jnp.int32).at[ispl].add(1)
     return jnp.cumsum(mask) - 1
 
+def multi_to_dense(x: jax.Array, spl: jax.Array) -> jax.Array:
+    """x[ndev,n], spl[ndev+1] -> x[ndev*n]"""
+    ndev = len(x)
+    xout = jnp.zeros(((ndev*x.shape[1],) + x.shape[2:]), x.dtype)
+    iarange = jnp.arange(x.shape[1])
+    idev = jnp.arange(ndev)
+    
+    xout = xout.at[spl[idev,None] + iarange[None,:]].set(x)
+
+    return xout
+multi_to_dense.jit = jax.jit(multi_to_dense)
+
 # ------------------------------------------------------------------------------------------------ #
 #                                    Some useful jax constructs                                    #
 # ------------------------------------------------------------------------------------------------ #
