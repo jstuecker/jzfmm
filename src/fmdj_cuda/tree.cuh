@@ -141,35 +141,30 @@ __global__ void FlagLeafBoundaries(
     int size_part,
     int scan_size
 ) {
-    int nump = npart[0];
-
     // Finds splitting points where the group of particles between each splitting point
     // can be summarized into a single leaf node that represents <= max_size particles
+    // The node_idx splitting point represents the boundary between x[node_idx-1] and x[node_idx]
+    int nump = npart[0];
+
+    int lbound_l = lvl_bound[0], lbound_r = lvl_bound[1];
+
     int node_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     // Load data preceding and following our block into shared memory
     int nload = blockDim.x + 2*scan_size + 1;
-    extern __shared__ unsigned char smem[];
-    float3*   x = reinterpret_cast<float3*>(smem);
-    int32_t* level = reinterpret_cast<int32_t*>(x + nload);
+    extern __shared__ int32_t level[];
 
     int ioff = blockIdx.x * blockDim.x - scan_size - 1;
     
-    // Note: we may load some points duplicate at the boundary, but that is ok (they will have 
-    // level 0). Keeping it this way simplifies the indexing logic later
-    for(int i = threadIdx.x; i < nload; i += blockDim.x) {
-        int ifrom = ioff + i;
-        if(ifrom < 0)
-            x[i] = make_float3(-CUDART_INF_F, -CUDART_INF_F, -CUDART_INF_F);
-        else if(ifrom >= nump)
-            x[i] = make_float3(CUDART_INF_F, CUDART_INF_F, CUDART_INF_F);
-        else
-            x[i] = posz[ifrom];
-    }
-
     __syncthreads();
     for(int i = threadIdx.x; i < nload-1; i += blockDim.x) {
-        level[i] = msb_diff_level(x[i], x[i + 1]);
+        int ipart = ioff + i;
+        if(ipart < 0)
+            level[i] = lbound_l;
+        else if(ipart + 1 >= nump)
+            level[i] = lbound_r;
+        else
+            level[i] = msb_diff_level(posz[ipart], posz[ipart + 1]);
     }
     __syncthreads();
 

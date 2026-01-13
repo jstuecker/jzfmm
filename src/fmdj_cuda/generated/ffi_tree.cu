@@ -138,7 +138,7 @@ ffi::Error FlagLeafBoundariesFFIHost(
     int size_part = posz.element_count()/3;
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(size_part+1, block_size));
-    size_t smem = (block_size + 2*scan_size + 1) * (sizeof(float3) + sizeof(int32_t));
+    size_t smem = (block_size + 2*scan_size + 1) * sizeof(int32_t);
     
     // Build a bundled argument list for cudaLaunchKernel
     // For pointers we need to create a pointer to the pointer

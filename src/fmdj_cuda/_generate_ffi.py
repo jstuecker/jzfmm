@@ -103,7 +103,7 @@ functions["PosZorderSort"].par["tmp_bytes"].expression = "tmp_buffer->size_bytes
 
 functions["FlagLeafBoundaries"].par["size_part"].expression = "posz.element_count()/3"
 functions["FlagLeafBoundaries"].grid_size_expression = "div_ceil(size_part+1, block_size)"
-functions["FlagLeafBoundaries"].smem_size_expression = "(block_size + 2*scan_size + 1) * (sizeof(float3) + sizeof(int32_t))"
+functions["FlagLeafBoundaries"].smem_size_expression = "(block_size + 2*scan_size + 1) * sizeof(int32_t)"
 
 functions["FindNodeBoundaries"].par["size_nodes"].expression = "nodes_levels->element_count()"
 functions["FindNodeBoundaries"].grid_size_expression = "div_ceil(size_nodes, block_size)"
