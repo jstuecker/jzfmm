@@ -273,14 +273,23 @@ def adjust_domain_for_nodesize(xz: jax.Array | Pos, max_node_size: int, npart: i
     npart_l = ext_lr - ext_ll
     
     ilvl_max = jnp.max(jnp.where(npart_l <= max_node_size, jnp.arange(len(npart_l)), -1))
-    lvl_max_l = jnp.where(rank > 0, ilvl_max - 450, 388)
-    lvl_max_r = send_to_left(lvl_max_l, axis_name=axis_name, invalid_int=388)
 
     npshift = ext_lr[ilvl_max]
 
     xz, npart = shift_particles_left(xz, npshift, max_send=max_node_size, npart=npart)
 
-    return xz, npart, (lvl_max_l, lvl_max_r)
+    # Find the level of the new boundary
+    posz = get_pos(xz)
+
+    xr = send_to_left(posz[0], axis_name)
+    xl = send_to_right(posz[npart-1], axis_name)
+
+    lvl_bound = get_node_geometry(
+        jnp.array([xl, posz[0], posz[npart-1], xr]), 
+        lbound=jnp.array([0,2]), rbound=jnp.array([2,4]), num=2
+    )[0]
+
+    return xz, npart, lvl_bound
 adjust_domain_for_nodesize.jit = jax.jit(adjust_domain_for_nodesize, static_argnames="max_node_size")
 
 # ------------------------------------------------------------------------------------------------ #
