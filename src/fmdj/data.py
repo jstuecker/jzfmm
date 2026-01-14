@@ -64,7 +64,7 @@ class PackedArray:
         self.data = data
         if ispl is not None:
             self.ispl = ispl
-            levels = len(ispl) - 1
+            levels = ispl.shape[0] - 1
         elif levels is not None:
             self.ispl = jnp.zeros(levels + 1, dtype=jnp.int32)
         if fill_values is None:
@@ -75,7 +75,7 @@ class PackedArray:
         if jnp.isscalar(fill_values):
             self.fill_values = jnp.full(levels, fill_values, dtype=self.data.dtype)
         else:
-            assert len(fill_values) == levels
+            assert fill_values.shape[0] == levels
             self.fill_values = fill_values
     
     def get(self, level, size=None, fill_value=None):
