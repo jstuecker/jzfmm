@@ -5,6 +5,8 @@ import numpy as np
 import pytest
 from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
 
+from fmdj_utils.ics import gaussian_blob
+
 def pow2_upto(n: int) -> list[int]:
     out = []
     p = 1
@@ -54,3 +56,25 @@ def bench_multi_zsort(jax_bench, ndev):
     posz = jb.measure(fn_jit=fzs, pos=pos, tag="random")[1]
     posz1 = jb.measure(fn_jit=fzs, pos=posz, tag="sorted")[1]
     posz2 = jb.measure(fn_jit=fzs, pos=posz + 1e-2*pos, tag="displaced")[1]
+
+@pytest.mark.parametrize("ndev", NDEVS)
+@pytest.mark.skipif(jax.device_count() <= 1, reason="Requires multiple devices")
+@pytest.mark.multi_gpu
+def bench_multi_tree(jax_bench, ndev):
+    Ntot = 1024*1024*128
+
+    pos = jax.jit(mk_pos(Ntot, alloc_fac=1.2, ndev=ndev))()
+
+    def f(pos):
+        @jax.shard_map(out_specs=P("gpus"), in_specs=P("gpus"), mesh=get_mesh(ndev))
+        def get_tree(pos):
+            cfg = fmdj.Config()
+            part = fmdj.data.PosMass(pos, mass=jnp.ones_like(pos[...,0]))
+            partz, th = fmdj.ztree.distr_zsort_and_tree(part, Ntot, cfg.tree)
+            return partz, th
+        return get_tree(pos)
+    f.jit = jax.jit(f)
+
+    jb = jax_bench(jit_rounds=5, jit_warmup=1, eager_rounds=0, eager_warmup=0)
+
+    posz = jb.measure(fn_jit=f.jit, pos=pos, tag="sort_and_tree")[1]

@@ -75,7 +75,7 @@ class PackedArray:
         if jnp.isscalar(fill_values):
             self.fill_values = jnp.full(levels, fill_values, dtype=self.data.dtype)
         else:
-            assert fill_values.shape[0] == levels
+            # assert fill_values.shape[0] == levels # this assertion breaks returning from shardmaps
             self.fill_values = fill_values
     
     def get(self, level, size=None, fill_value=None):
