@@ -35,6 +35,9 @@ class TreeConfig():
     # memory usage:
     alloc_fac_nodes: float = 1.0
 
+    # distributed sort:
+    nsamp: int = 1024
+
     # other:
     mass_centered: bool = True
 

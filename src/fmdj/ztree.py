@@ -203,6 +203,17 @@ def distr_boundary_extend(posz, npart=None, block_size: int = 64):
 
     return ext_ll, ext_lr, ext_rl, ext_rr
 
+def distr_zsort_and_tree(part: Pos, npart_tot: int, cfg_tree: TreeConfig
+                         ) -> Tuple[Pos, TreeHierarchy]:
+    partz = distributed_zsort(part, nsamp=cfg_tree.nsamp)
+
+    top_node_size = define_tree_level_node_sizes(npart_tot, cfg_tree)[-1]
+    partz, npart, lvl_bound = adjust_domain_for_nodesize(partz, top_node_size)
+
+    th = build_tree_hierarchy(partz, cfg_tree, npart_tot=npart_tot, lvl_bound=lvl_bound)
+
+    return partz, th
+
 # ------------------------------------------------------------------------------------------------ #
 #                                       Domain Decomposition                                       #
 # ------------------------------------------------------------------------------------------------ #
