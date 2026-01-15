@@ -46,7 +46,7 @@ def get_mesh(ndev=-1):
 @pytest.mark.skipif(jax.device_count() <= 1, reason="Requires multiple devices")
 @pytest.mark.multi_gpu
 def bench_multi_zsort(jax_bench, ndev):
-    Ntot = 1024*1024*128
+    Ntot = 256**3*ndev
     
     pos = jax.jit(mk_pos(Ntot, alloc_fac=1.2, ndev=ndev))()
     fzs = jax.jit(mksort(ndev=ndev))
@@ -61,20 +61,18 @@ def bench_multi_zsort(jax_bench, ndev):
 @pytest.mark.skipif(jax.device_count() <= 1, reason="Requires multiple devices")
 @pytest.mark.multi_gpu
 def bench_multi_tree(jax_bench, ndev):
-    Ntot = 1024*1024*128
+    Ntot = 256**3*ndev
 
     pos = jax.jit(mk_pos(Ntot, alloc_fac=1.2, ndev=ndev))()
 
-    def f(pos):
-        @jax.shard_map(out_specs=P("gpus"), in_specs=P("gpus"), mesh=get_mesh(ndev))
-        def get_tree(pos):
-            cfg = fmdj.Config()
-            part = fmdj.data.PosMass(pos, mass=jnp.ones_like(pos[...,0]))
-            partz, th = fmdj.ztree.distr_zsort_and_tree(part, Ntot, cfg.tree)
-            return partz, th
-        return get_tree(pos)
-    f.jit = jax.jit(f)
+    @jax.shard_map(out_specs=P("gpus"), in_specs=P("gpus"), mesh=get_mesh(ndev))
+    def get_tree(pos):
+        cfg = fmdj.Config()
+        part = fmdj.data.PosMass(pos, mass=jnp.ones_like(pos[...,0]))
+        partz, th = fmdj.ztree.distr_zsort_and_tree(part, Ntot, cfg.tree)
+        return partz, th
+    get_tree.jit = jax.jit(get_tree)
 
     jb = jax_bench(jit_rounds=5, jit_warmup=1, eager_rounds=0, eager_warmup=0)
 
-    posz = jb.measure(fn_jit=f.jit, pos=pos, tag="sort_and_tree")[1]
+    posz = jb.measure(get_tree, get_tree.jit, pos, tag="sort_and_tree")[1]
