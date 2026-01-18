@@ -57,14 +57,16 @@ class PackedArray:
     data: jax.Array
     ispl: jax.Array
     fill_values: jax.Array | None = None
+    levels_filled: int = 0
 
-    def __init__(self, data, ispl=None, levels=None, fill_values=None):
+    def __init__(self, data, ispl=None, levels=None, fill_values=None, levels_filled=None):
         assert (ispl is not None) or (levels is not None), "Either ispl or num_arr must be provided"
 
         self.data = data
         if ispl is not None:
             self.ispl = ispl
             levels = ispl.shape[0] - 1
+            self.levels_filled = len(ispl) - 1
         elif levels is not None:
             self.ispl = jnp.zeros(levels + 1, dtype=jnp.int32)
         if fill_values is None:
@@ -77,6 +79,8 @@ class PackedArray:
         else:
             # assert fill_values.shape[0] == levels # this assertion breaks returning from shardmaps
             self.fill_values = fill_values
+        if levels_filled is not None:
+            self.levels_filled = levels_filled
     
     def get(self, level, size=None, fill_value=None):
         if size is None:
@@ -97,7 +101,10 @@ class PackedArray:
             new_fill_vals = self.fill_values.at[level].set(fill_value)
         else:
             new_fill_vals = self.fill_values
-        return PackedArray(new_data, ispl=new_spl, fill_values=new_fill_vals)
+        return PackedArray(new_data, ispl=new_spl, fill_values=new_fill_vals, levels_filled=level+1)
+    
+    def append(self, values, num=None, fill_value=None):
+        return self.set(self.levels_filled, values, num, fill_value)
     
     def size(self):
         return len(self.data)
