@@ -365,40 +365,48 @@ def all_to_all_request_children(
 
 def update_range(x, update, i1, i2):
     idx = i1 + jnp.arange(len(update))
-    return x.at[jnp.where(idx < i2, idx, len(update))].set(update)
+    return x.at[jnp.where(idx < i2, idx, len(x))].set(update)
 
-def get_num(x, size, at):
+def gather_num(x, size, at):
     return x[at + jnp.arange(size)]
 
 def permute_offset(offset, num):
     return [(i, (i + offset) % num) for i in range(num)]
 
-def all_to_all_with_permute(x, ispl, buffer_bytes=8*1024**2, axis_name=None):
+def all_to_all_with_permute(x, ispl, buffer_bytes=8*1024**2, axis_name=None, verify=True):
     rank, ndev, axis_name = get_rank_info(axis_name)
 
     x, spec = _pack_pytree(x)
-    bsize = max(x[0].size // buffer_bytes, 1)
+    bsize = max(buffer_bytes // (x[0].size*x.itemsize), 1)
+
     output = jnp.copy(x)
 
     nsend = ispl[1:] - ispl[:-1]
     nrecv = jax.lax.all_to_all(nsend, axis_name, split_axis=0, concat_axis=0, tiled=True)
     ispl_recv = jnp.pad(jnp.cumsum(nrecv), (1,0))
 
+    if verify:
+        def myerr(need, have):
+            raise MemoryError(f"The receiving buffer is too small, need={need}, have={have}")
+        need, have = ispl_recv[-1], len(output)
+        ispl_recv = ispl_recv + conditional_callback(need > have, myerr, need, have)
+
     nsteps = (jnp.roll(nsend, -rank) + bsize - 1) // bsize
     nsteps = jax.lax.pmax(nsteps, axis_name)
 
+    # jax.debug.print("s1 {}, s2 {}, nsteps {}", nsend, bsize, nsteps)
+
     def handle_offset(output, offset, nsteps):
         ito, ifrom = (rank + offset) % ndev, (rank - offset) % ndev
-        i = 0
         def step(i, output):
-            data_send = get_num(x, bsize, at=ispl[ito]+bsize*i)
+            data_send = gather_num(x, bsize, at=ispl[ito]+bsize*i)
             data_recv = jax.lax.ppermute(data_send, axis_name, permute_offset(offset, ndev))
             return update_range(output, data_recv, ispl_recv[ifrom] + bsize*i, ispl_recv[ifrom+1])
         return jax.lax.fori_loop(0, nsteps, step, output)
     
-    output = update_range(output, get_num(x, len(x), at=ispl[rank]), ispl_recv[rank], ispl_recv[rank+1])
+    output = update_range(output, gather_num(x, len(x), at=ispl[rank]), ispl_recv[rank], ispl_recv[rank+1])
 
-    for offsets in range(1, ndev):
-        output = handle_offset(output, 1, nsteps[1])
+    for offset in range(1, ndev):
+        output = handle_offset(output, offset, nsteps[offset])
     
-    return _unpack_pytree(output, spec)
+    return _unpack_pytree(output, spec), ispl_recv
