@@ -519,7 +519,7 @@ def dense_interaction_list(nnodes: jax.Array, size_nodes: int, size_ilist: int,
         nnodes, size_nodes, nint, size_ilist
     )
     
-    return InteractionList(ispl=ispl, iother=ilist, nfilled=nint)
+    return InteractionList(ispl=ispl, iother=ilist)
 dense_interaction_list.jit = jax.jit(dense_interaction_list, static_argnames=['size_ilist', 'size_nodes'])
 
 def grouped_dense_interaction_list(nnodes: jax.Array | int, size_ilist: int,
@@ -566,7 +566,7 @@ def grouped_dense_interaction_list(nnodes: jax.Array | int, size_ilist: int,
     idx = jnp.arange(size_ilist)
     ilist = jnp.where(idx < ninteractions, idx % nsuper_nodes, 0)
 
-    ilist = InteractionList(ispl=ispl, iother=ilist, nfilled=ninteractions)
+    ilist = InteractionList(ispl=ispl, iother=ilist)
 
     return spl_super, ilist, nsuper_nodes
 grouped_dense_interaction_list.jit = jax.jit(
@@ -601,6 +601,6 @@ def simplify_interaction_list(ilist: InteractionList, num_always_keep: jax.Array
 
     # change the label and the offsets of the interaction list
     ispl = jnp.full(ilist.ispl.shape, ilist.ispl[-1], ilist.ispl.dtype).at[prefix].set(ilist.ispl)
-    ilist = InteractionList(ispl, prefix[ilist.iother], ilist.nfilled, reduced_ids, reduced_dev_spl)
+    ilist = InteractionList(ispl, prefix[ilist.iother], reduced_ids, reduced_dev_spl)
     
     return ilist

@@ -85,7 +85,7 @@ def evaluate_plane_interactions(
     )[0]
 
     # Create interaction list from outputs
-    new_ilist = InteractionList(ispl=ispl_child, iother=child_ilist, nfilled=ispl_child[-1])
+    new_ilist = InteractionList(ispl=ispl_child, iother=child_ilist)
 
     # Evaluate L2L part
     if loc_lr is not None:

@@ -65,8 +65,6 @@ class PackedArray:
         self.data = data
         if ispl is not None:
             self.ispl = ispl
-            levels = ispl.shape[0] - 1
-            self.levels_filled = len(ispl) - 1
         elif levels is not None:
             self.ispl = jnp.zeros(levels + 1, dtype=jnp.int32)
         if fill_values is None:
@@ -75,12 +73,14 @@ class PackedArray:
             else:
                 fill_values = 0
         if jnp.isscalar(fill_values):
-            self.fill_values = jnp.full(levels, fill_values, dtype=self.data.dtype)
+            self.fill_values = jnp.full(self.ispl.shape[0] - 1, fill_values, dtype=self.data.dtype)
         else:
             # assert fill_values.shape[0] == levels # this assertion breaks returning from shardmaps
             self.fill_values = fill_values
         if levels_filled is not None:
             self.levels_filled = levels_filled
+        else:
+            self.levels_filled = jnp.reshape(len(self.ispl) - 1, (1,)) # shape for return from shardmap
     
     def get(self, level, size=None, fill_value=None):
         if size is None:
@@ -101,10 +101,10 @@ class PackedArray:
             new_fill_vals = self.fill_values.at[level].set(fill_value)
         else:
             new_fill_vals = self.fill_values
-        return PackedArray(new_data, ispl=new_spl, fill_values=new_fill_vals, levels_filled=level+1)
+        return PackedArray(new_data, ispl=new_spl, fill_values=new_fill_vals, levels_filled=jnp.reshape(level+1, (1,)))
     
     def append(self, values, num=None, fill_value=None):
-        return self.set(self.levels_filled, values, num, fill_value)
+        return self.set(self.levels_filled[0], values, num, fill_value)
     
     def size(self):
         return len(self.data)
@@ -300,8 +300,6 @@ class InteractionList:
     ispl: jax.Array
     iother: jax.Array
 
-    nfilled : jax.Array  # Total number of filled interactions
-
     # Multi-GPU specific: origin ids and device offets
     ids: jax.Array | None = None
     dev_spl: jax.Array | None = None
@@ -312,7 +310,7 @@ class InteractionList:
         i0 = inverse_of_splits(self.ispl, self.size())
         i1 = self.iother#[iint]
         if get_valid:
-            valid = iint < self.nfilled
+            valid = iint < self.ispl[-1]
             return i0, i1, valid
         else:
             return i0, i1
@@ -321,13 +319,16 @@ class InteractionList:
         """Returns a filtered interaction list according to the boolean mask"""
         if size is None:
             size = mask.size
-        ioff, nfilled = offset_sum(mask)
+        ioff = cumsum_starting_with_zero(mask)
         iupdate = jnp.where(mask, ioff, size)
         iother_new = jnp.zeros(size, dtype=self.iother.dtype).at[iupdate].set(self.iother)
         ispl_new = ioff[self.ispl]
 
-        return InteractionList(ispl=ispl_new, iother=iother_new, nfilled=nfilled)
+        return InteractionList(ispl=ispl_new, iother=iother_new)
     
+    def nfilled(self):
+        return self.ispl[-1]
+
     def size(self):
         return self.iother.size
     
