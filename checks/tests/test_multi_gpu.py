@@ -20,6 +20,7 @@ def myzsort():
     posz = fmdj.ztree.distributed_zsort(pos)
     return pos, posz
 
+@pytest.mark.skipif(jax.device_count() <= 1, reason="Requires multiple devices")
 @pytest.mark.multi_gpu
 def test_mutli_zsort():
     pos, posz = jax.jit(myzsort)()
@@ -59,6 +60,7 @@ def splits_to_global(ispl):
 
     return ispl
 
+@pytest.mark.skipif(jax.device_count() <= 1, reason="Requires multiple devices")
 @pytest.mark.multi_gpu
 def test_multi_leaves():
     pos, posz = jax.jit(myzsort)()
@@ -92,7 +94,7 @@ def get_pos():
 
     return pos, npart*ndev
 
-
+@pytest.mark.skipif(jax.device_count() <= 1, reason="Requires multiple devices")
 @pytest.mark.multi_gpu
 def test_tree_properties():
     # Builds a tree hierarchy once on a single device and once accross multiple devices
