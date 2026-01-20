@@ -555,7 +555,7 @@ def grouped_dense_interaction_list(nnodes: jax.Array | int, size_ilist: int,
         valid = (spl_super[:-1] >= node_range[0]) & (spl_super[1:] <= node_range[1])
         valid = valid & (spl_super[1:] > spl_super[:-1]) # may have some 0 nodes due to way we inserted
         ispl = cumsum_starting_with_zero(jnp.where(valid, nsuper_nodes, 0))
-        ninteractions = nsuper_nodes*(ispl[-1] // nsuper_nodes)
+        ninteractions = ispl[-1]
 
     def ilist_size_error(n, size):
         raise MemoryError(f"Cannot fit {n} interactions into ilist with size {size}")

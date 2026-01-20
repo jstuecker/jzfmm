@@ -80,7 +80,10 @@ class PackedArray:
         if levels_filled is not None:
             self.levels_filled = levels_filled
         else:
-            self.levels_filled = jnp.reshape(len(self.ispl) - 1, (1,)) # shape for return from shardmap
+            if ispl is not None:
+                self.levels_filled = jnp.reshape(len(self.ispl) - 1, (1,)) # (1,) for shardmap compat.
+            else:
+                self.levels_filled = jnp.zeros((1,), dtype=jnp.int32) # (1,) for shardmap compat.
     
     def get(self, level, size=None, fill_value=None):
         if size is None:
