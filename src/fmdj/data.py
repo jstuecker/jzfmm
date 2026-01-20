@@ -57,34 +57,37 @@ class PackedArray:
     data: jax.Array
     ispl: jax.Array
     fill_values: jax.Array | None = None
-    levels_filled: int = 0
+    # keep levels_filled as an array with shape (1,) for compatibility with shard map:
+    levels_filled: jax.Array = field(default_factory=lambda: jnp.zeros((1,), dtype=jnp.int32))
 
-    def __init__(self, data, ispl=None, levels=None, fill_values=None, levels_filled=None):
-        assert (ispl is not None) or (levels is not None), "Either ispl or num_arr must be provided"
+    # Alternate constructors
+    @classmethod
+    def create_empty(cls, size, levels: int, dtype=jnp.float32, *, fill_values=None, vma=None):
+        data = jnp.zeros(size, dtype=dtype)
+        ispl = jnp.zeros(levels + 1, dtype=jnp.int32)
+        levels_filled = jnp.zeros((1,), dtype=jnp.int32)
 
-        self.data = data
-        if ispl is not None:
-            self.ispl = ispl
-        elif levels is not None:
-            self.ispl = jnp.zeros(levels + 1, dtype=jnp.int32)
-        if fill_values is None:
-            if data.dtype == jnp.float32 or data.dtype == jnp.float64:
-                fill_values = jnp.nan
-            else:
-                fill_values = 0
+        if vma is not None:
+            data = jax.lax.pcast(data, tuple(vma), to="varying")
+            ispl = jax.lax.pcast(ispl, tuple(vma), to="varying")
+
         if jnp.isscalar(fill_values):
-            self.fill_values = jnp.full(self.ispl.shape[0] - 1, fill_values, dtype=self.data.dtype)
-        else:
-            # assert fill_values.shape[0] == levels # this assertion breaks returning from shardmaps
-            self.fill_values = fill_values
-        if levels_filled is not None:
-            self.levels_filled = levels_filled
-        else:
-            if ispl is not None:
-                self.levels_filled = jnp.reshape(len(self.ispl) - 1, (1,)) # (1,) for shardmap compat.
-            else:
-                self.levels_filled = jnp.zeros((1,), dtype=jnp.int32) # (1,) for shardmap compat.
+            fill_values = jnp.full(levels, fill_values, dtype=dtype)
+
+        return cls(data, ispl, fill_values, levels_filled)
     
+    @classmethod
+    def from_data(cls, data, ispl, fill_values=None, levels_filled=None):
+        if levels_filled is None:
+            levels_filled = jnp.full((1,), len(ispl)-1, dtype=jnp.int32)
+        else:
+            levels_filled = jnp.asarray(levels_filled).reshape(1,)
+
+        if jnp.isscalar(fill_values):
+            fill_values = jnp.full(len(ispl)-1, fill_values, dtype=data.dtype)
+
+        return cls(data, ispl, fill_values, levels_filled)
+
     def get(self, level, size=None, fill_value=None):
         if size is None:
             size = self.size()
@@ -104,7 +107,7 @@ class PackedArray:
             new_fill_vals = self.fill_values.at[level].set(fill_value)
         else:
             new_fill_vals = self.fill_values
-        return PackedArray(new_data, ispl=new_spl, fill_values=new_fill_vals, levels_filled=jnp.reshape(level+1, (1,)))
+        return PackedArray(new_data, new_spl, new_fill_vals, jnp.reshape(level+1, (1,)))
     
     def append(self, values, num=None, fill_value=None):
         return self.set(self.levels_filled[0], values, num, fill_value)
@@ -128,6 +131,7 @@ class PackedArray:
         equal  = jnp.all(eq_nan(self.data, other.data))
         equal &= jnp.all(self.ispl == other.ispl)
         equal &= jnp.all(eq_nan(self.fill_values, other.fill_values))
+        equal &= jnp.all(self.levels_filled == other.levels_filled)
         return equal
 
 @jax.tree_util.register_dataclass

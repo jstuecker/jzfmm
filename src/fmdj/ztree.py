@@ -369,7 +369,7 @@ def define_split_hierarchy(posz: jax.Array, node_sizes: Tuple[int], alloc_size: 
     
     # node-to-leaf relation is given by the leaf that is active at the node location
     ispl_n2l = jnp.zeros(alloc_size, dtype=jnp.int32).at[offsets].set(offsets[0:1,:])
-    ispl_n2l = PackedArray(ispl_n2l, level_spl, fill_values=nnodes_on_level[0])
+    ispl_n2l = PackedArray.from_data(ispl_n2l, level_spl, fill_values=nnodes_on_level[0])
 
     # node-to-node relation is given by the last level node that is active at the node location
     # for the leaf-level we insert the leaf to particle relation here
@@ -378,7 +378,7 @@ def define_split_hierarchy(posz: jax.Array, node_sizes: Tuple[int], alloc_size: 
     ispl_n2n = jnp.zeros(alloc_size, dtype=jnp.int32).at[offsets].set(value)
     # out of bounds access shall give nnodes of next smaller level (or npart for leaves):
     fill_val = jnp.pad(nnodes_on_level[:-1], (1,0), constant_values=ispl[-1])
-    ispl_n2n = PackedArray(ispl_n2n, level_spl, fill_values=fill_val)
+    ispl_n2n = PackedArray.from_data(ispl_n2n, level_spl, fill_values=fill_val)
     
     return ispl, ispl_n2l, ispl_n2n
 
@@ -393,8 +393,8 @@ def get_tree_mass_centers(part: PosMass, ispl_n2n: PackedArray) -> Tuple[PackedA
         return node_mcent, node_mass, posm
     
     posm = center_of_mass(ispl_n2n.get(0), part)
-    npos = PackedArray(posm.pos, ispl=prop_array_spl, fill_values=jnp.nan)
-    node_mass = PackedArray(posm.mass, ispl=prop_array_spl, fill_values=jnp.nan)
+    npos = PackedArray.from_data(posm.pos, ispl=prop_array_spl, fill_values=jnp.nan)
+    node_mass = PackedArray.from_data(posm.mass, ispl=prop_array_spl, fill_values=jnp.nan)
 
     node_mcent, node_mass, _ = jax.lax.fori_loop(
         1, ispl_n2n.nlevels(), handle_mcent_level, (npos, node_mass, posm)
@@ -453,8 +453,8 @@ def build_tree_hierarchy(part: PosMass | jax.Array, cfg_tree: TreeConfig,
 
     # node property arrays are on each level one element smaller than the splitting point arrays
     prop_array_spl = cumsum_starting_with_zero(ispl_n2n.ispl[1:] - ispl_n2n.ispl[:-1] - 1)
-    lvl = PackedArray(lvl, prop_array_spl, fill_values=-1000)
-    geom_cent = PackedArray(geom_cent, prop_array_spl, fill_values=jnp.nan)
+    lvl = PackedArray.from_data(lvl, prop_array_spl, fill_values=-1000)
+    geom_cent = PackedArray.from_data(geom_cent, prop_array_spl, fill_values=jnp.nan)
 
     if cfg_tree.mass_centered:
         assert hasattr(part, "mass"), "To use mass centering, please provide PosMass input"
