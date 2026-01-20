@@ -10,8 +10,7 @@ def test_expand_interactions():
 
     ilist = fmdj.data.InteractionList(
         ispl = jnp.arange(nnodes+1)*2, # [0, 2, 4, 6] each node has 2 interactions
-        iother=jnp.array([0, 1, 2, 1, 1, 2]),
-        nfilled = 8
+        iother=jnp.array([0, 1, 2, 1, 1, 2])
     )
 
     spl = jnp.arange(nnodes)*npart_per_node # [0, 2, 4] each node has 2 particles

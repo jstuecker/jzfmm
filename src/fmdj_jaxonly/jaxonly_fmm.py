@@ -53,7 +53,7 @@ def expand_interactions(
 
     ispln = ispln + conditional_callback(ispln[-1] >= size_new_ilist, size_error, ispln[-1], size_new_ilist)
     
-    return InteractionList(ispl = ispln, iother = iother_new, nfilled = ispln[-1])
+    return InteractionList(ispl = ispln, iother = iother_new)
 expand_interactions.jit = jax.jit(expand_interactions, static_argnames=['size_children', 'size_new_ilist'])
 
 
@@ -215,7 +215,7 @@ def new_eval(
         nstatic = 128
     )[0:2]
 
-    new_ilist = InteractionList(offsets, iother = new_ilist, nfilled = offsets[-1])
+    new_ilist = InteractionList(offsets, iother = new_ilist)
 
     if loc_lr is not None:
         Loc = Loc + shift_local_to_local_jax(loc_lr[iparent], plane.center() - plane_lr.center()[iparent])
