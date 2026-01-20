@@ -6,6 +6,7 @@ from .tools import conditional_callback, cumsum_starting_with_zero, inverse_of_s
 from jax.typing import ArrayLike
 from dataclasses import dataclass
 import numpy as np
+import os
 
 # Currently jax doesn't have a typehint for pytrees. We simply define one ourselves for clarity
 Pytree: TypeAlias = Any
@@ -20,6 +21,46 @@ def get_rank_info(axis_name = None) -> Tuple[int, int, str]:
     ndev = jax.lax.axis_size(axis_name)
 
     return rank, ndev, axis_name
+
+# ------------------------------------------------------------------------------------------------ #
+#                                Distributed Initialization Helpers                                #
+# ------------------------------------------------------------------------------------------------ #
+
+def _env_int(name: str, default: int = 0) -> int:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    try:
+        return int(v)
+    except ValueError:
+        return default
+
+def should_init_jax_distributed() -> bool:
+    # --- Slurm ---
+    # SLURM_NTASKS is total tasks; if >1 we’re distributed.
+    if _env_int("SLURM_NTASKS", 1) > 1:
+        return True
+
+    # --- Open MPI ---
+    if _env_int("OMPI_COMM_WORLD_SIZE", 1) > 1:
+        return True
+
+    # --- MPICH / PMI-based launchers (incl. some Slurm/MPI setups) ---
+    if _env_int("PMI_SIZE", 1) > 1 or _env_int("PMIX_SIZE", 1) > 1:
+        return True
+
+    # --- Generic “world size” used by some launchers ---
+    if _env_int("WORLD_SIZE", 1) > 1:
+        return True
+
+    # --- “Explicit JAX distributed config present” heuristic ---
+    # If you set these yourself in your job wrapper, treat it as distributed.
+    if any(k in os.environ for k in ("JAX_PROCESS_COUNT", "JAX_PROCESS_INDEX", "JAX_COORDINATOR_ADDRESS")):
+        # Only treat it as distributed if it’s actually >1 (when provided).
+        pc = _env_int("JAX_PROCESS_COUNT", 1)
+        return pc > 1
+
+    return False
 
 # ------------------------------------------------------------------------------------------------ #
 #                                       Tiny Helper Functions                                      #
