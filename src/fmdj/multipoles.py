@@ -50,6 +50,9 @@ def center_of_mass(ispl: jax.Array, part: PosMass, kahan_summation: bool = True,
         kahan = kahan_summation,
         block_size=np.uint64(block_size)
     )[0]
+
+    xm = jax.lax.pcast(xm, tuple(jax.typeof(part.pos).vma), to="varying")
+
     return PosMass(pos=xm[...,0:3], mass=xm[...,4])
 center_of_mass.jit = jax.jit(center_of_mass, static_argnames=['kahan_summation', 'block_size'])
 
