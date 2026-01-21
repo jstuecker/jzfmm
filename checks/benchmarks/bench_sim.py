@@ -16,6 +16,7 @@ def stripping_cfg():
 
     return cfg, host
 
+@pytest.mark.shrink_in_quick(keep_index=0)
 @pytest.mark.parametrize("npart", [1024*128, 1024*1024], indirect=True)
 def bench_simulate(jax_bench, particles_nfw: fmdj.data.Particles, stripping_cfg):
     jb = jax_bench(jit_rounds=1, jit_warmup=0, eager_rounds=0, eager_warmup=0)
@@ -26,6 +27,7 @@ def bench_simulate(jax_bench, particles_nfw: fmdj.data.Particles, stripping_cfg)
         p=particles_nfw, tend=host.tcirc(150.)*1., nsteps=200, cfg=cfg
     )
 
+@pytest.mark.skip_in_quick
 @pytest.mark.parametrize("npart", [1024*8], indirect=True)
 def bench_sim_direct_sum(jax_bench, particles_nfw, stripping_cfg):
     jb = jax_bench(jit_rounds=1, jit_warmup=0, eager_rounds=0, eager_warmup=0)

@@ -6,6 +6,71 @@ import os
 import sys
 from fmdj.comm import should_init_jax_distributed
 
+# ------------------------------------------------------------------------------------------------ #
+#                                         Configure pytest                                         #
+# ------------------------------------------------------------------------------------------------ #
+
+def pytest_addoption(parser):
+    parser.addoption( "--quick", action="store_true", default=False,
+        help="Quick mode: deselect slow tests and reduce parametrized tests to first case.",
+    )
+
+def pytest_runtest_setup(item):
+    if item.config.getoption("--quick"):
+        if item.get_closest_marker("skip_in_quick") or item.get_closest_marker("slow"):
+            pytest.skip("Skipped in --quick mode")
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "slow: skip the whole test in --quick mode")
+    config.addinivalue_line("markers", "skip_in_quick: skip the whole test in --quick mode")
+    config.addinivalue_line( "markers",
+        "shrink_in_quick(keep_index=0): in --quick mode, keep only the parametrized at index",
+    )
+    # Your existing setup:
+    if should_init_jax_distributed():
+        jax.distributed.initialize()
+    else:
+        print("Using single-GPU mode")
+
+    if jax.process_index() != 0:
+        _silence_process_output()
+
+def _keep_index_from_marker(item) -> int | None:
+    """
+    Returns the per-test keep index from @pytest.mark.shrink_in_quick(index=...)
+    (or @pytest.mark.shrink_in_quick(<int>)), or None if marker not present.
+    """
+    m = item.get_closest_marker("shrink_in_quick")
+    if m is None:
+        return None
+
+    if "keep_index" in m.kwargs:
+        return int(m.kwargs["keep_index"])
+    if m.args:
+        return int(m.args[0])
+    return 0
+
+def pytest_runtest_setup(item):
+    if not item.config.getoption("--quick"):
+        return
+
+    # Skip whole tests marked slow
+    if item.get_closest_marker("slow") or item.get_closest_marker("skip_in_quick"):
+        pytest.skip("Skipped in --quick mode (slow / skip_in_quick)")
+
+    # Shrink parametrized tests that opt in
+    keep = _keep_index_from_marker(item)
+    if keep is None:
+        return
+
+    callspec = getattr(item, "callspec", None)
+    if callspec is None:
+        return  # not parametrized
+
+    indices = getattr(callspec, "indices", {}) or {}
+    if indices and any(i != keep for i in indices.values()):
+        pytest.skip(f"Skipped in --quick mode (keep={keep})")
+
 def _silence_process_output() -> None:
     """
     Redirect stdout/stderr to /dev/null at the OS FD level.
@@ -28,14 +93,10 @@ def _silence_process_output() -> None:
     sys.stdout = open(os.devnull, "w")
     sys.stderr = open(os.devnull, "w")
 
-def pytest_configure(config):
-    if should_init_jax_distributed():
-        jax.distributed.initialize()
-    else:
-        print(f"Using single-GPU mode")
 
-    if jax.process_index() != 0:
-        _silence_process_output()
+# ------------------------------------------------------------------------------------------------ #
+#                                             Fixtures                                             #
+# ------------------------------------------------------------------------------------------------ #
 
 def get_particles(N = 1024*1024):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (N, 3), dtype=jnp.float32) * 0.3
@@ -43,10 +104,6 @@ def get_particles(N = 1024*1024):
     mass = jnp.ones(N, dtype=jnp.float32)
     
     return jax.block_until_ready((pos0, mass))
-
-# ------------------------------------------------------------------------------------------------ #
-#                                             Fixtures                                             #
-# ------------------------------------------------------------------------------------------------ #
 
 @pytest.fixture
 def cfg():

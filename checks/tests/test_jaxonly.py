@@ -3,7 +3,9 @@ import numpy as np
 import jax.numpy as jnp
 import fmdj
 import fmdj_jaxonly.jaxonly_multipoles as jmp
+import pytest
 
+@pytest.mark.skip_in_quick
 def test_expand_interactions():
     nnodes = 3
     npart_per_node = 2
@@ -23,6 +25,7 @@ def test_expand_interactions():
                                              2,  3,  2,  3, 
                                              14, 14]))
 
+@pytest.mark.skip_in_quick
 def test_shift_mp_to_mp_circuit():
     mp0 = np.random.uniform(-0.1, 0.1, (20))
 

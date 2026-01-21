@@ -7,6 +7,7 @@ import fmdj.fmm
 from fmdj.config import Config, FMMConfig
 from dataclasses import replace
 
+@pytest.mark.shrink_in_quick(keep_index=2)
 @pytest.mark.parametrize("coarsen_fac", [2,4,6,8])
 def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
     cfg = replace(cfg, tree=replace(cfg.tree, coarse_fac=coarsen_fac))
@@ -23,6 +24,7 @@ def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
         th=tps, mph=mph, cfg=cfg
     )
 
+@pytest.mark.shrink_in_quick(keep_index=2)
 @pytest.mark.parametrize("max_leaf_size", [16,24,32,48])
 def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
     cfg = replace(cfg, tree=replace(cfg.tree, max_leaf_size=max_leaf_size))
@@ -42,6 +44,7 @@ def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
         tag="leaf2leaf"
     )
 
+@pytest.mark.shrink_in_quick(keep_index=1)
 @pytest.mark.parametrize("npart", [1024*128, 1024*1024, 1024*1024*4, 8*1024*1024])
 def bench_fmm_npart(jax_bench, pos_mass_z, cfg):
     jb = jax_bench(jit_rounds=20, jit_warmup=2)
@@ -49,6 +52,7 @@ def bench_fmm_npart(jax_bench, pos_mass_z, cfg):
     jb.measure(fn_jit=fmdj.fmm.fast_multipole_method.jit,
                part=pos_mass_z, cfg=cfg)
 
+@pytest.mark.shrink_in_quick(keep_index=2)
 @pytest.mark.parametrize("p", [1,2,3,4,5])
 def bench_fmm_p(jax_bench, p, pos_mass_z):
     cfg = Config(fmm=FMMConfig(p=p))
@@ -57,7 +61,7 @@ def bench_fmm_p(jax_bench, p, pos_mass_z):
     jb.measure(fn_jit=fmdj.fmm.fast_multipole_method.jit,
                part=pos_mass_z, cfg=cfg)
 
-
+@pytest.mark.shrink_in_quick(keep_index=0)
 @pytest.mark.parametrize("p", [3,4,5])
 def bench_fmm_steps(jax_bench, p, pos_mass):
     cfg = Config(fmm=FMMConfig(p=p))
@@ -81,6 +85,7 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
     fphi = jb.measure(fn_jit=fmdj.fmm.grouped_force_and_pot.jit,
                       particles=pos_mass_z, ispl=tps[0].ispl, ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]
 
+@pytest.mark.shrink_in_quick(keep_index=0)
 @pytest.mark.parametrize("p", [3,4,5])
 def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_planes):
     th = tree_planes

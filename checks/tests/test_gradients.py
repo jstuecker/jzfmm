@@ -22,6 +22,7 @@ def my_check_gradient(f, x, epsrel=1e-4, rtol=5e-3, atol=0.):
 
     assert df2 == pytest.approx(df1, rel=rtol, abs=atol)
 
+@pytest.mark.skip_in_quick
 def test_m2m_gradients(pos_mass_z, tree_planes, cfg):
     th = tree_planes
     # mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg)
@@ -33,6 +34,7 @@ def test_m2m_gradients(pos_mass_z, tree_planes, cfg):
     check_grads(lambda x: m2m(x, pos_mass_z.mass), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-3)
     check_grads(m2m, (pos_mass_z.pos, pos_mass_z.mass), order=1, modes=("rev",), eps=1e-3)
 
+@pytest.mark.skip_in_quick
 def test_l2l_gradients(pos_mass_z, tree_planes, cfg):
     th = tree_planes
     cfg = replace(cfg, softening=1e-1)
@@ -47,6 +49,7 @@ def test_l2l_gradients(pos_mass_z, tree_planes, cfg):
     # For multipole gradients we need to use smarter finit difference steps than jax's default:
     my_check_gradient(lambda l: l2l(pos_mass_z.pos, l).sum(), loc, epsrel=5e-2)
 
+@pytest.mark.skip_in_quick
 def test_fmm_node_gradients(pos_mass_z, tree_planes, cfg):
     cfg_fmm = replace(cfg.fmm, p=4)
     cfg = replace(cfg, softening=1e-1, fmm=cfg_fmm)
