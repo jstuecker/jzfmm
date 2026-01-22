@@ -64,7 +64,7 @@ def pos_zorder_sort(x: jax.Array | Pos):
     """
     @jax.custom_vjp
     def eval(x):
-        if isinstance(x, (jax.typing.ArrayLike)):
+        if isinstance(x, jax.Array):
             return _pos_zorder_sort_impl(x)
         else: # assuming x is a pytree with x.pos attribute
             posz, idz = _pos_zorder_sort_impl(x.pos)
@@ -219,7 +219,7 @@ def distr_zsort_and_tree(part: Pos, npart_tot: int, cfg_tree: TreeConfig
 # ------------------------------------------------------------------------------------------------ #
 
 def get_pos(x):
-    if isinstance(x, jax.typing.ArrayLike):
+    if isinstance(x, jax.Array):
         return x
     else: # assume x is a pytree with .pos attribute
         return x.pos
