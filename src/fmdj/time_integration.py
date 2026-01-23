@@ -3,10 +3,11 @@ from typing import Generator
 import time
 import jax.numpy as jnp
 import jax
+
+from jztree.tools import log
+from .data import Particles, LocalExpansion
 from .config import Config
 from .fmm import force_and_potential
-from jztree.tools import log
-from fmdj.data import Particles, LocalExpansion
 
 def kick(vel, acc, dt, mask=None):
     if mask is not None:

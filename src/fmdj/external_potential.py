@@ -1,6 +1,7 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
+
 from .config import Config, PotentialField
 
 @dataclass(unsafe_hash=True)

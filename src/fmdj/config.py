@@ -1,6 +1,7 @@
+from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
-from dataclasses import dataclass
+
 from jztree.config import TreeConfig, LoggingConfig
 
 @dataclass(unsafe_hash=True)

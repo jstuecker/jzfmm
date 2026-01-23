@@ -1,9 +1,13 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
-import fmdj_cuda.ffi_multipoles as ffi_multipoles
-from jztree.data import TreePlane, PosMass
+from jztree.data import TreePlane
 from .config import Config
+
+import fmdj_cuda.ffi_multipoles as ffi_multipoles
+jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLocalToLocal(), platform="CUDA")
+jax.ffi.register_ffi_target("SummarizeMultipoles", ffi_multipoles.SummarizeMultipoles(), platform="CUDA")
+jax.ffi.register_ffi_target("TranslateLocalToLocal_XVJP", ffi_multipoles.TranslateLocalToLocal_XVJP(), platform="CUDA")
 
 # ------------------------------------------------------------------------------------------------ #
 #                                        Some Combinatorics                                        #
@@ -31,11 +35,6 @@ def get_index_map(p):
 # ------------------------------------------------------------------------------------------------ #
 #                                             FFI Calls                                            #
 # ------------------------------------------------------------------------------------------------ #
-
-jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLocalToLocal(), platform="CUDA")
-jax.ffi.register_ffi_target("SummarizeMultipoles", ffi_multipoles.SummarizeMultipoles(), platform="CUDA")
-jax.ffi.register_ffi_target("TranslateLocalToLocal_XVJP", ffi_multipoles.TranslateLocalToLocal_XVJP(), platform="CUDA")
-
 
 def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg, block_size=32):
     """Summarizes multipoles from child nodes to parent nodes"""

@@ -1,9 +1,9 @@
+from dataclasses import dataclass, field
+from typing import List
 import jax
 import jax.numpy as jnp
-from dataclasses import dataclass, field
-from typing import List, Iterator
-from jztree.tools import cumsum_starting_with_zero, inverse_of_splits, offset_sum, masked_prefix_sum
-from jztree.comm import pcast_like, pcast_vma
+
+from jztree.tools import cumsum_starting_with_zero, inverse_of_splits
 from jztree.data import PosMass, Pos, InteractionList
 
 def static_field(*args, **kwargs):
