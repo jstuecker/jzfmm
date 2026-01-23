@@ -1,7 +1,7 @@
 import pytest
 from dataclasses import replace
 from fmdj.config import Config, TreeConfig
-from jztree.ztree import build_tree_hierarchy, pos_zorder_sort
+from jztree.tree import build_tree_hierarchy, pos_zorder_sort
 
 @pytest.mark.shrink_in_quick(keep_index=1)
 @pytest.mark.parametrize("npart", [1024*128,1024*1024, 1024*1024*8], indirect=True)

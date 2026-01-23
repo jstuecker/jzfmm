@@ -5,7 +5,7 @@ from fmdj.config import Config
 from jztree.data import TreePlane, InteractionList, PosMass
 from fmdj.data import SegmentedNDArray
 from fmdj import log
-from jztree.ztree import dense_interaction_list
+from jztree.tree import dense_interaction_list
 from jztree.tools import conditional_callback, cumsum_starting_with_zero, fori_dynamic_over_static, inverse_of_splits
 from .jaxonly_multipoles import ilist_node_to_node, shift_local_to_local_jax
 

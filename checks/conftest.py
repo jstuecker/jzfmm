@@ -6,7 +6,7 @@ import sys
 from jztree.comm import should_init_jax_distributed
 from fmdj import Config
 from fmdj.data import Particles, PosMass, LocalExpansion
-from jztree.ztree import pos_zorder_sort, build_tree_hierarchy
+from jztree.tree import pos_zorder_sort, build_tree_hierarchy
 
 # ------------------------------------------------------------------------------------------------ #
 #                                         Configure pytest                                         #

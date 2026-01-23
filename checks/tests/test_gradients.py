@@ -7,7 +7,7 @@ import pytest
 from dataclasses import replace
 from jax.test_util import check_grads
 
-from jztree.ztree import dense_interaction_list
+from jztree.tree import dense_interaction_list
 
 from fmdj.config import Config, FMMConfig
 from fmdj.data import PosMass

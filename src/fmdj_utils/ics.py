@@ -18,7 +18,7 @@ def pad_pytree(x, num, float_val=jnp.nan, int_val=0):
 def gaussian_blob(N, scale=1.0, mass=1., seed=0, zsort=False, npad=0):
     pos = jax.random.normal(jax.random.PRNGKey(seed), (N,3), dtype=jnp.float32) * scale
     if zsort:
-        pos, isort = jztree.ztree.pos_zorder_sort(pos)
+        pos, isort = jztree.tree.pos_zorder_sort(pos)
     mass0 = jnp.ones(len(pos), dtype=pos.dtype) * (mass/N)
     posmass = PosMass(pos, mass0)
 
@@ -38,7 +38,7 @@ def discodj_sim(res, zsort=False):
     from discodj_examples.simulations import disco_sim
     pos = disco_sim(res=res, res_pm=res)[1].reshape(-1,3)
     if zsort:
-        pos = jztree.ztree.pos_zorder_sort(pos)[0]
+        pos = jztree.tree.pos_zorder_sort(pos)[0]
 
     mass = jnp.ones(len(pos), dtype=pos.dtype) / res**3
     return PosMass(pos, mass)

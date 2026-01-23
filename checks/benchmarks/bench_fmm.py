@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from fmdj.config import Config, FMMConfig
 from dataclasses import replace
 from fmdj.data import PosMass
-from jztree.ztree import build_tree_hierarchy, pos_zorder_sort
+from jztree.tree import build_tree_hierarchy, pos_zorder_sort
 from fmdj.multipoles import build_multipole_hierarchy
 from fmdj.fmm import evaluate_interaction_hierarchy, grouped_force_and_pot, fast_multipole_method
 from fmdj.multipoles import shift_local_to_children, summarize_multipoles, center_of_mass
