@@ -77,7 +77,7 @@ for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToL
 for kname in ("TranslateLocalToLocal",):
     kernels[kname].init_outputs_zero = True
 
-for kname in ("TranslateLocalToLocal", "CenterOfMass", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
+for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
     kernels[kname].grid_size_expression = "div_ceil(isplit.element_count() - 1, block_size)"
     kernels[kname].par["nnodes"].expression = "isplit.element_count() - 1"
 

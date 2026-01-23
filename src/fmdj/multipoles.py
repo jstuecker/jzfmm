@@ -33,28 +33,9 @@ def get_index_map(p):
 # ------------------------------------------------------------------------------------------------ #
 
 jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLocalToLocal(), platform="CUDA")
-jax.ffi.register_ffi_target("CenterOfMass", ffi_multipoles.CenterOfMass(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeMultipoles", ffi_multipoles.SummarizeMultipoles(), platform="CUDA")
 jax.ffi.register_ffi_target("TranslateLocalToLocal_XVJP", ffi_multipoles.TranslateLocalToLocal_XVJP(), platform="CUDA")
 
-def center_of_mass(ispl: jax.Array, part: PosMass, kahan_summation: bool = True, block_size=32
-                   ) -> PosMass:
-    """Computes the center of mass of the nodes in the tree plane"""
-    assert part.pos.dtype == jnp.float32
-    assert ispl.dtype == jnp.int32
-
-    out_xcent = jax.ShapeDtypeStruct((ispl.size-1, 4), part.pos.dtype)
-
-    xm = jax.ffi.ffi_call("CenterOfMass", (out_xcent,))(
-        ispl, part.pos, part.mass,
-        kahan = kahan_summation,
-        block_size=np.uint64(block_size)
-    )[0]
-
-    xm = jax.lax.pcast(xm, tuple(jax.typeof(part.pos).vma), to="varying")
-
-    return PosMass(pos=xm[...,0:3], mass=xm[...,4])
-center_of_mass.jit = jax.jit(center_of_mass, static_argnames=['kahan_summation', 'block_size'])
 
 def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg, block_size=32):
     """Summarizes multipoles from child nodes to parent nodes"""

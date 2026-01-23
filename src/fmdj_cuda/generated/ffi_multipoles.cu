@@ -22,61 +22,6 @@ namespace nb = nanobind;
 namespace ffi = xla::ffi;
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                             FFI call to CUDA kernel: CenterOfMass                              */
-/* ---------------------------------------------------------------------------------------------- */
-
-ffi::Error CenterOfMassFFIHost(
-    cudaStream_t stream,
-    ffi::AnyBuffer isplit,
-    ffi::AnyBuffer pos,
-    ffi::AnyBuffer mass,
-    ffi::Result<ffi::AnyBuffer> com_out,
-    bool kahan,
-    size_t block_size
-) {
-    int nnodes = isplit.element_count() - 1;
-    dim3 blockDim(block_size);
-    dim3 gridDim(div_ceil(isplit.element_count() - 1, block_size));
-    size_t smem = 0;
-    
-    // Build a bundled argument list for cudaLaunchKernel
-    // For pointers we need to create a pointer to the pointer
-    int* isplit_val = reinterpret_cast<int*>(isplit.untyped_data());
-    float3* pos_val = reinterpret_cast<float3*>(pos.untyped_data());
-    float* mass_val = reinterpret_cast<float*>(mass.untyped_data());
-    PosMass* com_out_val = reinterpret_cast<PosMass*>(com_out->untyped_data());
-
-    void* args[] = {
-        &isplit_val,
-        &pos_val,
-        &mass_val,
-        &com_out_val,
-        &nnodes,
-        &kahan
-    };
-    cudaLaunchKernel((const void*)CenterOfMass, gridDim, blockDim, args, smem, stream);
-
-    cudaError_t last_error = cudaGetLastError();
-    if (last_error != cudaSuccess) {
-        return ffi::Error::Internal(std::string("CUDA error: ") + cudaGetErrorString(last_error));
-    }
-    return ffi::Error::Success();
-}
-
-XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    CenterOfMassFFI, CenterOfMassFFIHost,
-    ffi::Ffi::Bind()
-        .Ctx<ffi::PlatformStream<cudaStream_t>>()
-        .Arg<ffi::AnyBuffer>() // isplit
-        .Arg<ffi::AnyBuffer>() // pos
-        .Arg<ffi::AnyBuffer>() // mass
-        .Ret<ffi::AnyBuffer>() // com_out
-        .Attr<bool>("kahan")
-        .Attr<size_t>("block_size"),
-    {xla::ffi::Traits::kCmdBufferCompatible}
-);
-
-/* ---------------------------------------------------------------------------------------------- */
 /*                             FFI call to CUDA kernel: SummarizeMultipoles                       */
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -349,7 +294,6 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 /* ---------------------------------------------------------------------------------------------- */
 
 NB_MODULE(ffi_multipoles, m) {
-    m.def("CenterOfMass", []() { return EncapsulateFfiCall(&CenterOfMassFFI); });
     m.def("SummarizeMultipoles", []() { return EncapsulateFfiCall(&SummarizeMultipolesFFI); });
     m.def("TranslateLocalToLocal", []() { return EncapsulateFfiCall(&TranslateLocalToLocalFFI); });
     m.def("TranslateLocalToLocal_XVJP", []() { return EncapsulateFfiCall(&TranslateLocalToLocal_XVJPFFI); });
