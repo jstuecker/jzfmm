@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 from dataclasses import dataclass
+from jztree.config import TreeConfig, LoggingConfig
 
 @dataclass(unsafe_hash=True)
 class PotentialField:
@@ -25,21 +26,6 @@ class FMMConfig():
     # Other
     kahan_summation : bool = False
 
-@dataclass(unsafe_hash=True)
-class TreeConfig():
-    # structure:
-    max_leaf_size: int = 32
-    coarse_fac: float = 6.0
-    stop_coarsen: int = 1024
-
-    # memory usage:
-    alloc_fac_nodes: float = 1.0
-
-    # distributed sort:
-    nsamp: int = 1024
-
-    # other:
-    mass_centered: bool = True
 
 class OldConfig():
     interact_unroll: int | bool = False
@@ -47,11 +33,6 @@ class OldConfig():
     # Memory parameters
     ilist_chunk_fac : float = 4.0  # For ilist evaluation. Will improve this parameter later
     ilist_max_mb : int = 1024      # Maximum memory for ilist evaluation in MB
-
-@dataclass(unsafe_hash=True)
-class LoggingConfig():
-    level : int = 1
-    show_loc : bool = True
 
 @dataclass(unsafe_hash=True)
 class Config():

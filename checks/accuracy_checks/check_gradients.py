@@ -1,28 +1,30 @@
 import jax
 import jax.numpy as jnp
-import fmdj
 import numpy as np
 import matplotlib.pyplot as plt
 import time
 from dataclasses import replace
 from fmdj_utils.ics import gaussian_blob
+from fmdj.data import PosMass, LocalExpansion
+from fmdj.fmm import direct_force_and_potential, fast_multipole_method
+from fmdj.config import Config
 
 part = gaussian_blob(N=int(512*1024), scale=1.0, mass=1.)
 
-cfg = fmdj.Config(softening=1e-2)
+cfg = Config(softening=1e-2)
 cfg.fmm.kahan_summation = True
 cfg.tree.mass_centered = True
 
-def rerr_pos(a: fmdj.data.PosMass, b: fmdj.data.PosMass):
+def rerr_pos(a: PosMass, b: PosMass):
     return jnp.linalg.norm(a.pos - b.pos, axis=-1)/jnp.linalg.norm(b.pos, axis=-1)
-def rerr_mass(a: fmdj.data.PosMass, b: fmdj.data.PosMass):
+def rerr_mass(a: PosMass, b: PosMass):
     return jnp.abs((a.mass - b.mass)/b.mass)
 
 def direct(part):
-    loc = fmdj.fmm.direct_force_and_potential(part, softening=cfg.softening, kahan=True) * cfg.G()
-    return fmdj.data.LocalExpansion(loc)
+    loc = direct_force_and_potential(part, softening=cfg.softening, kahan=True) * cfg.G()
+    return LocalExpansion(loc)
 def fmm(part, p):
-    return fmdj.fmm.fast_multipole_method(part, cfg=replace(cfg, fmm=replace(cfg.fmm, p=p)))
+    return fast_multipole_method(part, cfg=replace(cfg, fmm=replace(cfg.fmm, p=p)))
 
 t0 = time.time()
 

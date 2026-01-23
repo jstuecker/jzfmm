@@ -4,8 +4,9 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 from .config import Config
-from .data import TreePlane, PosMass, InteractionList, LocalExpansion
-from .ztree import pos_zorder_sort, build_tree_hierarchy, grouped_dense_interaction_list
+from jztree.data import TreePlane, PosMass, InteractionList
+from .data import LocalExpansion
+from jztree.ztree import pos_zorder_sort, build_tree_hierarchy, grouped_dense_interaction_list
 from .multipoles import shift_local_to_children, build_multipole_hierarchy, local_readout_pos_vjp, p_of_num_multi, shift_local_to_children_vjp_x
 
 import fmdj_cuda.ffi_fmm as ffi_fmm

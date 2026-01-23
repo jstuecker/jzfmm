@@ -1,11 +1,12 @@
 from typing import Tuple
 import jax
 import jax.numpy as jnp
-import fmdj
 from fmdj.config import Config
-from fmdj.data import TreePlane, InteractionList, SegmentedNDArray, PosMass
-from fmdj.ztree import dense_interaction_list
-from fmdj.tools import conditional_callback, cumsum_starting_with_zero, fori_dynamic_over_static, inverse_of_splits
+from jztree.data import TreePlane, InteractionList, PosMass
+from fmdj.data import SegmentedNDArray
+from fmdj import log
+from jztree.ztree import dense_interaction_list
+from jztree.tools import conditional_callback, cumsum_starting_with_zero, fori_dynamic_over_static, inverse_of_splits
 from .jaxonly_multipoles import ilist_node_to_node, shift_local_to_local_jax
 
 # ------------------------------------------------------------------------------------------------ #
@@ -113,9 +114,9 @@ def jaxonly_evaluate_plane_interactions(plane: TreePlane,
 
     # Some logging
     open_frac = ilist_open.nfilled / ilist.nfilled
-    fmdj.log("Interactions opened {}/{} ({:.1%}) sizefac: {:.1f} ({:.1%} of allocation)", 
-             ilist_open.nfilled, ilist.nfilled, open_frac, ilist.nfilled / plane.size(), 
-             ilist.nfilled / ilist.size(), level=2, cfg=cfg)
+    log("Interactions opened {}/{} ({:.1%}) sizefac: {:.1f} ({:.1%} of allocation)", 
+        ilist_open.nfilled, ilist.nfilled, open_frac, ilist.nfilled / plane.size(), 
+        ilist.nfilled / ilist.size(), level=2, cfg_log=cfg.logging)
     
     return loc, ilist_open
 jaxonly_evaluate_plane_interactions.jit = jax.jit(jaxonly_evaluate_plane_interactions, static_argnames=['cfg'])
@@ -222,9 +223,9 @@ def new_eval(
 
     # Some logging
     nfilled, ntot = offsets[-1], jnp.sum(nint*node_size[iparent])
-    fmdj.log("Interactions opened {}/{} ({:.1%}) sizefac: {:.1f} ({:.1%} of allocation)", 
-             nfilled, ntot, nfilled/ntot, new_ilist.nfilled/plane.size(), 
-             nfilled/new_ilist.size(), level=2, cfg=cfg)
+    log("Interactions opened {}/{} ({:.1%}) sizefac: {:.1f} ({:.1%} of allocation)", 
+        nfilled, ntot, nfilled/ntot, new_ilist.nfilled/plane.size(),
+        nfilled/new_ilist.size(), level=2, cfg_log=cfg.logging)
 
     return Loc, new_ilist
 new_eval.jit = jax.jit(new_eval, static_argnames="cfg")

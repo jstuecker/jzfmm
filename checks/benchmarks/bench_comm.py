@@ -1,10 +1,9 @@
-import fmdj
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
-from fmdj.comm import all_to_all_with_irank, all_to_all_with_permute, arange_for_comm
+from jztree.comm import all_to_all_with_irank, all_to_all_with_permute, arange_for_comm
 
 from fmdj_utils.ics import gaussian_blob
 

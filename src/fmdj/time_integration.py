@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import jax
 from .config import Config
 from .fmm import force_and_potential
-from .tools import log
+from jztree.tools import log
 from fmdj.data import Particles, LocalExpansion
 
 def kick(vel, acc, dt, mask=None):
@@ -96,13 +96,13 @@ simulate.vjp = jax.custom_vjp(simulate, nondiff_argnames=("tend", "nsteps", "cfg
 def simulate_fwd(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float = 0.) -> Particles:
     pcom = jnp.mean(p.apos(), axis=0)
     log("Starting forward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
-             pcom[0], pcom[1], pcom[2], level=1, cfg=cfg)
+             pcom[0], pcom[1], pcom[2], level=1, cfg_log=cfg.logging)
 
     p = simulate(p, tend, nsteps, cfg, tstart)
 
     pcom = jnp.mean(p.apos(), axis=0)
     log("Finished forward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
-             pcom[0], pcom[1], pcom[2], level=1, cfg=cfg)
+             pcom[0], pcom[1], pcom[2], level=1, cfg_log=cfg.logging)
 
     return p, p
 
@@ -121,7 +121,7 @@ def simulate_bwd(tend: float, nsteps: int, cfg: Config, tstart: float, p: Partic
 
     pcom = jnp.mean(p_prev.apos(), axis=0)
     log("Finished backward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
-        pcom[0], pcom[1], pcom[2], level=1, cfg=cfg)
+        pcom[0], pcom[1], pcom[2], level=1, cfg_log=cfg.logging)
     
     return (gp_prev,)
 
@@ -151,9 +151,9 @@ def simulate_with_outputs(
     p = clean_particles(p) # This helps avoiding double jit-compilations
 
     tp0 = time.perf_counter()
-    log("Compiling jitted simulation...", level=1, cfg=cfg)
+    log("Compiling jitted simulation...", level=1, cfg_log=cfg.logging)
     simulate.jit.lower(p, tend=jnp.float32(0.1), nsteps=steps_per_output, cfg=cfg, tstart=jnp.float32(0.1)).compile()
-    log("Compilation done after {:.2f}s", time.perf_counter()-tp0, level=1, cfg=cfg)
+    log("Compilation done after {:.2f}s", time.perf_counter()-tp0, level=1, cfg_log=cfg.logging)
 
     yield tstart, p
 
@@ -163,8 +163,8 @@ def simulate_with_outputs(
         tpa = time.perf_counter()
         p = simulate.jit(p, tend=t1, nsteps=steps_per_output, cfg=cfg, tstart=t0)
         log("Reached output {} ({:.2f}s for {} steps)",
-            isnap+1, time.perf_counter()-tpa, steps_per_output, level=1, cfg=cfg)
+            isnap+1, time.perf_counter()-tpa, steps_per_output, level=1, cfg_log=cfg.logging)
         yield t1, p
     
     log("Total simulation time: {:.2f}s for {} steps",
-        time.perf_counter()-tp0, nout*steps_per_output, level=1, cfg=cfg)
+        time.perf_counter()-tp0, nout*steps_per_output, level=1, cfg_log=cfg.logging)

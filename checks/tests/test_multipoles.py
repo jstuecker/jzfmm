@@ -1,7 +1,6 @@
 import jax.numpy as jnp
-import fmdj
-from fmdj_jaxonly.jaxonly_multipoles import multipoles_from_particles_jax, coarsen_multipoles_jax
-from fmdj.data import PosMass, TreePlane
+# from fmdj_jaxonly.jaxonly_multipoles import multipoles_from_particles_jax, coarsen_multipoles_jax
+# from fmdj.data import PosMass, TreePlane
 import pytest
 
 # def test_multipoles(pos_mass_z: PosMass, tree_hierarchy: list[TreePlane], cfg: fmdj.Config):

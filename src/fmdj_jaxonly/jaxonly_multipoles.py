@@ -2,11 +2,10 @@ from typing import Tuple
 import numpy as np
 import jax
 import jax.numpy as jnp
-import fmdj
 from fmdj.config import Config
-from fmdj.data import TreePlane, PosMass
+from jztree.data import TreePlane, PosMass
 from fmdj.multipoles import num_multi, p_of_num_multi, iter_multi, get_index_map
-from fmdj.tools import inverse_of_splits
+from jztree.tools import inverse_of_splits
 
 # ------------------------------------------------------------------------------------------------ #
 #                                        Some Combinatorics                                        #

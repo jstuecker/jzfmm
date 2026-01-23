@@ -1,7 +1,7 @@
 import fmdj_jaxonly.jaxonly_fmm
 import numpy as np
 import jax.numpy as jnp
-import fmdj
+from jztree.data import InteractionList
 import fmdj_jaxonly.jaxonly_multipoles as jmp
 import pytest
 
@@ -10,7 +10,7 @@ def test_expand_interactions():
     nnodes = 3
     npart_per_node = 2
 
-    ilist = fmdj.data.InteractionList(
+    ilist = InteractionList(
         ispl = jnp.arange(nnodes+1)*2, # [0, 2, 4, 6] each node has 2 interactions
         iother=jnp.array([0, 1, 2, 1, 1, 2])
     )

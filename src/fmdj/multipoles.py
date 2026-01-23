@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import fmdj_cuda.ffi_multipoles as ffi_multipoles
-from .data import TreePlane, PosMass
+from jztree.data import TreePlane, PosMass
 from .config import Config
 
 # ------------------------------------------------------------------------------------------------ #
