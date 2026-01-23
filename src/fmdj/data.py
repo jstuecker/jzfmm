@@ -3,6 +3,7 @@ import jax.numpy as jnp
 from dataclasses import dataclass, field
 from typing import List, Iterator
 from .tools import cumsum_starting_with_zero, inverse_of_splits, offset_sum, masked_prefix_sum
+from .comm import pcast_like, pcast_vma
 
 def static_field(*args, **kwargs):
     return field(*args, metadata=dict(static=True), **kwargs)
@@ -51,6 +52,7 @@ class Particles(PosMass):
     def avel(self):
         return self.vel if self.cvel is None else self.vel + self.cvel
 
+
 @jax.tree_util.register_dataclass
 @dataclass
 class PackedArray:
@@ -68,8 +70,8 @@ class PackedArray:
         levels_filled = jnp.zeros((1,), dtype=jnp.int32)
 
         if vma is not None:
-            data = jax.lax.pcast(data, tuple(vma), to="varying")
-            ispl = jax.lax.pcast(ispl, tuple(vma), to="varying")
+            data = pcast_vma(data, vma)
+            ispl = pcast_vma(ispl, vma)
 
         if jnp.isscalar(fill_values):
             fill_values = jnp.full(levels, fill_values, dtype=dtype)

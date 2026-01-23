@@ -12,6 +12,22 @@ import os
 Pytree: TypeAlias = Any
 
 # ------------------------------------------------------------------------------------------------ #
+#                                           Type helpers                                           #
+# ------------------------------------------------------------------------------------------------ #
+
+def pcast_vma(x, vma):
+    if hasattr(jax.lax, "pcast"):
+        return jax.lax.pcast(x, tuple(vma), to="varying")
+    else:
+        return jax.lax.pvary(x, tuple(vma))
+
+def pcast_like(x, like):
+    if hasattr(jax.lax, "pcast"):
+        return jax.lax.pcast(x, tuple(jax.typeof(like).vma), to="varying")
+    else:
+        return jax.lax.pvary(x, tuple(jax.typeof(like).vma))
+
+# ------------------------------------------------------------------------------------------------ #
 #                                        General Device Info                                       #
 # ------------------------------------------------------------------------------------------------ #
 
