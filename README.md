@@ -12,6 +12,9 @@ Fast Multipoles Done with Jax
 * Other softening
 
 # Installation
+## Dependencies:
+Requires installing the `jz-tree` repository first
+
 ## Prequesites:
 It is easy to mess this up. So I recommend using a virtual python environment or a conda environment for installation.
 
