@@ -4,7 +4,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from jztree.data import TreePlane, PosMass, InteractionList
+from jztree.data import TreePlane, PosMass, InteractionList, get_pos_mass
 from jztree.tree import pos_zorder_sort, build_tree_hierarchy, grouped_dense_interaction_list
 
 from .config import Config
@@ -120,7 +120,7 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
     @jax.custom_vjp
     def eval(particles, ispl, ilist):
         loc = jax.ffi.ffi_call("GroupedForceAndPot", (out_type,))(
-            node_range, ispl, ilist.ispl, ilist.iother, particles.posm(),
+            node_range, ispl, ilist.ispl, ilist.iother, get_pos_mass(particles),
             softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
@@ -133,11 +133,11 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
     def eval_bwd(res, gloc):
         particles, ispl, ilist = res
         gposm = jax.ffi.ffi_call("BwdGroupedForceAndPot", (out_type,))(
-            node_range, ispl, ilist.ispl, ilist.iother, particles.posm(), gloc,
+            node_range, ispl, ilist.ispl, ilist.iother, get_pos_mass(particles), gloc,
             softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
-        return PosMass(gposm[:,0:3], gposm[:,3]), None, None
+        return PosMass(pos=gposm[:,0:3], mass=gposm[:,3]), None, None
     
     eval.defvjp(eval_fwd, eval_bwd)
 
@@ -149,10 +149,11 @@ grouped_force_and_pot.jit = jax.jit(grouped_force_and_pot, static_argnames=['cfg
 #                                      Direct Summation Forces                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def direct_force_and_potential(posm: PosMass, softening: float = 1e-2, kahan: bool = False
+def direct_force_and_potential(part: PosMass, softening: float = 1e-2, kahan: bool = False
                                ) -> jax.Array:
     block_size = 64
-    out_type = jax.ShapeDtypeStruct(posm.posm().shape, posm.posm().dtype)
+    posm = get_pos_mass(part)
+    out_type = jax.ShapeDtypeStruct(posm.shape, posm.dtype)
     
     @jax.custom_vjp
     def eval(xm):
@@ -169,7 +170,7 @@ def direct_force_and_potential(posm: PosMass, softening: float = 1e-2, kahan: bo
     
     eval.defvjp(eval_fwd, eval_bwd)
 
-    return eval(posm.posm())
+    return eval(posm)
 direct_force_and_potential.jit = jax.jit(direct_force_and_potential, static_argnames=['softening', 'kahan'])
 
 def direct_potential_jax(x, m=1., softening=1e-2):

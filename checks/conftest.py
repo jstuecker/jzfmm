@@ -118,13 +118,13 @@ def npart(request):
 @pytest.fixture
 def pos_mass(npart):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
-    return PosMass(pos0, mass=jnp.ones(pos0.shape[0]))
+    return PosMass(pos=pos0, mass=jnp.ones(pos0.shape[0]))
 
 @pytest.fixture
 def pos_mass_z(npart):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
     posz, isort = pos_zorder_sort(pos0)
-    return PosMass(posz, jnp.ones(posz.shape[0]))
+    return PosMass(pos=posz, mass=jnp.ones(posz.shape[0]))
 
 @pytest.fixture
 def tree_hierarchy(pos_mass_z, cfg):
@@ -143,7 +143,7 @@ def particles_blob(npart):
 
     loc = LocalExpansion(jnp.zeros((npart,4), dtype=jnp.float32))
 
-    return Particles(x, m, vel, cpos=jnp.array([0.,0.,0.]), cvel=jnp.array([0.,0.,0.0]), loc=loc)
+    return Particles(pos=x, mass=m, vel=vel, cpos=jnp.array([0.,0.,0.]), cvel=jnp.array([0.,0.,0.0]), loc=loc)
 
 @pytest.fixture
 def particles_nfw(npart):
@@ -151,7 +151,7 @@ def particles_nfw(npart):
     prof = aegis.profiles.NFWProfile(conc=10., r200c=10.)
     pos0, vel0, m = prof.sample_particles(npart, result="pos_vel_m", rpmin=1e-3, ramax=10.)
 
-    part = Particles(jnp.array(pos0), jnp.array(m), jnp.array(vel0))
+    part = Particles(pos=jnp.array(pos0), mass=jnp.array(m), vel=jnp.array(vel0))
     part.cpos = jnp.array((150.,0.,0.))
     part.cvel = jnp.array((0.,prof.vcirc(150.),0.))
     part.loc = LocalExpansion(jnp.zeros((npart,4), dtype=jnp.float32))

@@ -63,12 +63,12 @@ def test_fmm_node_gradients(pos_mass_z, tree_planes, cfg):
     cfg = replace(cfg, softening=1e-1, fmm=cfg_fmm)
 
     def f(pos):
-        pm = PosMass(pos, pos_mass_z.mass)
+        pm = PosMass(pos=pos, mass=pos_mass_z.mass)
         return evaluate_node_node_fmm(pm, tree_planes, cfg=cfg)[0]
     check_grads(f, (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-2)
 
     def f(mass):
-        pm = PosMass(pos_mass_z.pos, mass)
+        pm = PosMass(pos=pos_mass_z.pos, mass=mass)
         return evaluate_node_node_fmm(pm, tree_planes, cfg=cfg)[0]
     check_grads(f, (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-1)
 
