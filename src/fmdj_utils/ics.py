@@ -5,17 +5,18 @@ import aegis
 from fmdj.data import PosMass, Particles
 from jztree.comm import get_rank_info
 from jztree.tree import pos_zorder_sort
+from jztree.tools import tree_map_by_len
 
-def pad_pytree(x, num, float_val=jnp.nan, int_val=0):
+def pad_pytree(x, num, num_pad, float_val=jnp.nan, int_val=0):
     def pad(xi):
         if xi.dtype.kind == "f":
             val = float_val
         else:
             val = int_val
         
-        return jnp.pad(xi, [(0, num)] + [(0,0)]*(xi.ndim - 1), constant_values=val)
+        return jnp.pad(xi, [(0, num_pad)] + [(0,0)]*(xi.ndim - 1), constant_values=val)
 
-    return jax.tree.map(pad, x)
+    return tree_map_by_len(pad, x, num)
 
 def gaussian_blob(N, scale=1.0, mass=1., seed=0, zsort=False, npad=0):
     rank, ndev, axis_name = get_rank_info()
@@ -24,10 +25,10 @@ def gaussian_blob(N, scale=1.0, mass=1., seed=0, zsort=False, npad=0):
     if zsort:
         pos, isort = pos_zorder_sort(pos)
     mass0 = jnp.ones(len(pos), dtype=pos.dtype) * (mass/N)
-    posmass = PosMass(pos=pos, mass=mass0, num_total=ndev*N)
+    posmass = PosMass(pos=pos, mass=mass0, num=jnp.array((N,)), num_total=ndev*N)
 
     if npad > 0:
-        return pad_pytree(posmass, npad)
+        return pad_pytree(posmass, N, npad)
     else:
         return posmass
 
