@@ -25,7 +25,7 @@ def gaussian_blob(N, scale=1.0, mass=1., seed=0, zsort=False, npad=0):
     if zsort:
         pos, isort = pos_zorder_sort(pos)
     mass0 = jnp.ones(len(pos), dtype=pos.dtype) * (mass/N)
-    posmass = PosMass(pos=pos, mass=mass0, num=jnp.array((N,)), num_total=ndev*N)
+    posmass = PosMass(pos=pos, mass=mass0, num=N, num_total=ndev*N)
 
     if npad > 0:
         return pad_pytree(posmass, N, npad)
