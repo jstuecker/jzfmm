@@ -5,7 +5,7 @@ import aegis
 from fmdj.data import PosMass, Particles
 from jztree.comm import get_rank_info
 from jztree.tree import pos_zorder_sort
-from jztree.tools import tree_map_by_len
+from jztree.jax_ext import tree_map_by_len
 
 def pad_pytree(x, num, num_pad, float_val=jnp.nan, int_val=0):
     def pad(xi):
