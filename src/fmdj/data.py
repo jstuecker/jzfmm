@@ -26,13 +26,19 @@ class LocalExpansion:
         return -self.values[:, 4:10]
 
 @jax.tree_util.register_dataclass
-@dataclass
-class Particles(PosMass):
+@dataclass(slots=True)
+class Particles():
+    pos: jax.Array
+    mass: jax.Array
     vel : jax.Array
+
     loc : LocalExpansion | None = None
 
     cpos : jax.Array | None = None
     cvel : jax.Array | None = None
+
+    num: jax.Array | None = None
+    num_total: int | None = static_field(default=None)
 
     def apos(self):
         return self.pos if self.cpos is None else self.pos + self.cpos
