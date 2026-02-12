@@ -26,7 +26,7 @@ class LocalExpansion:
         return -self.values[:, 4:10]
 
 @jax.tree_util.register_dataclass
-@dataclass(slots=True)
+@dataclass(slots=True, kw_only=True)
 class Particles():
     pos: jax.Array
     mass: jax.Array

@@ -4,6 +4,7 @@ checks/old_benchmarks/logs/
 checks/benchmarks/.results
 checks/benchmarks/benchmarks/.results
 checks/accuracy_checks/logs/
+checks/fun/output
 notebooks
 .vscode/*-workspace
 
