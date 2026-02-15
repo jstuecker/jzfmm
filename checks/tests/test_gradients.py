@@ -48,7 +48,7 @@ def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
     tps = list(tree_hierarchy.planes())
     cfg = replace(cfg, softening=1e-1)
     mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
-    loc, ilist = evaluate_interaction_hierarchy.jit(tps, mph, cfg)
+    loc, ilist = evaluate_interaction_hierarchy.jit(tps, th, mph, cfg)
 
     def l2l(x,loc):
         return shift_local_to_children(tps[0].ispl, loc, tps[0].center(), x, cfg=cfg, pout=1)

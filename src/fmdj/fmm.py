@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, List
 from functools import partial
 import numpy as np
 import jax
@@ -25,11 +25,11 @@ jax.ffi.register_ffi_target("BwdForceAndPotential", ffi_forces.BwdForceAndPotent
 # ------------------------------------------------------------------------------------------------ #
 
 def evaluate_plane_interactions(
+        node_range: jax.Array,
+        spl_nodes: jax.Array,
         plane: TreePlane,
         mp: jax.Array,
-        plane_lr: TreePlane | None = None,
         ilist_lr: InteractionList | None = None,
-        loc_lr: jax.Array | None = None,
         cfg: Config = None
     ) -> Tuple[jax.Array, InteractionList]:
     """
@@ -49,13 +49,6 @@ def evaluate_plane_interactions(
     ilist_alloc_size = cfg.fmm.ilist_alloc_fac * plane.size()
 
     assert ilist_alloc_size < 2**31, "So far only int32 supported {ilist_alloc_size/2**31}"
-
-    if plane_lr is None or ilist_lr is None: # Root level
-        spl_nodes, ilist_lr, nnodes = grouped_dense_interaction_list(plane.nnodes, ilist_alloc_size, ngroup=8)
-        node_range = jnp.array([0, nnodes], dtype=jnp.int32)
-    else:
-        spl_nodes = plane_lr.ispl
-        node_range = jnp.array([0, plane_lr.nnodes], dtype=jnp.int32)
 
     children = jnp.concatenate((plane.center(), plane.lvl.view(jnp.float32)[...,None]), axis=-1)
     
@@ -90,20 +83,36 @@ def evaluate_plane_interactions(
     new_ilist = InteractionList(ispl=ispl_child, iother=child_ilist)
 
     # Evaluate L2L part
-    if loc_lr is not None:
-        loc = loc + shift_local_to_children(
-            plane_lr.ispl, loc_lr, plane_lr.center(), plane.center(), cfg=cfg
-        )
+    # if loc_lr is not None:
+    #     loc = loc + shift_local_to_children(
+    #         plane_lr.ispl, loc_lr, plane_lr.center(), plane.center(), cfg=cfg
+    #     )
     
     return loc, new_ilist
 evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
 
-def evaluate_interaction_hierarchy(th, mph, cfg):
+def evaluate_interaction_hierarchy(tps: List[TreePlane], th: TreeHierarchy, mph, cfg):
     ilist, loc, last_plane = None, None, None
-    for i in reversed(range(0, len(th))):
-        mp = mph.get(i, size=th[i].size())
-        loc, ilist = evaluate_plane_interactions(th[i], mp, last_plane, ilist, loc, cfg=cfg)
-        last_plane = th[i]
+
+    # define root level:
+    ilist_alloc_size = tps[-1].size() * cfg.fmm.ilist_alloc_fac
+    spl_nodes, ilist, nnodes_sup = grouped_dense_interaction_list(tps[-1].nnodes, ilist_alloc_size, ngroup=8)
+
+    for i in reversed(range(0, len(tps))):
+        node_range = jnp.array([0, nnodes_sup], dtype=jnp.int32)
+        mp = mph.get(i, size=tps[i].size())
+        loc_ch, ilist = evaluate_plane_interactions(node_range, spl_nodes, tps[i], mp, ilist, cfg=cfg)
+
+        if loc is not None:
+            loc_ch = loc_ch + shift_local_to_children(
+                spl_nodes, loc, last_plane.center(), tps[i].center(), cfg=cfg
+            )
+
+        last_plane = tps[i]
+        nnodes_sup = tps[i].nnodes
+        spl_nodes = tps[i].ispl
+        loc = loc_ch
+
     return loc, ilist
 evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, static_argnames=['cfg'])
 
@@ -227,7 +236,7 @@ def evaluate_node_node_fmm(partz: PosMass, tps: list[TreePlane], th: TreeHierarc
     
     def eval_fwd(pos, mp, pout=1):
         mph = build_multipole_hierarchy(th, pos, mp, cfg=cfg)
-        loc_node, ilist = evaluate_interaction_hierarchy(tps, mph, cfg=cfg)
+        loc_node, ilist = evaluate_interaction_hierarchy(tps, th, mph, cfg=cfg)
         loc_part = shift_local_to_children(tps[0].ispl, loc_node, tps[0].center(), pos, pout=pout, cfg=cfg)
         return (loc_part, ilist), (pos, mp, tps, loc_node)
     

@@ -24,7 +24,7 @@ def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
     jb = jax_bench(jit_rounds=100, jit_warmup=50)
 
     jb.measure(fn_jit=evaluate_interaction_hierarchy.jit,
-        th=tps, mph=mph, cfg=cfg
+        tps=tps, th=th, mph=mph, cfg=cfg
     )
 
 @pytest.mark.shrink_in_quick(keep_index=2)
@@ -39,7 +39,7 @@ def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
     mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
 
     res, (loc, ilist) = jb.measure(fn_jit=evaluate_interaction_hierarchy.jit,
-        th=tps, mph=mph, cfg=cfg, tag="node2node"
+        tps=tps, th=th, mph=mph, cfg=cfg, tag="node2node"
     )
 
     jb.measure(fn_jit=grouped_force_and_pot.jit,
@@ -81,7 +81,7 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
                      th=th, pos=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg, tag="multipoles")[1]
 
     loc, ilist = jb.measure(fn_jit=evaluate_interaction_hierarchy.jit, 
-                            th=tps, mph=mph, cfg=cfg, tag="node2node")[1]
+                            tps=tps, th=th, mph=mph, cfg=cfg, tag="node2node")[1]
     phif = jb.measure(fn_jit=shift_local_to_children.jit, 
                       ispl=tps[0].ispl, loc=loc, xnode=tps[0].center(), xchild=pos_mass_z.pos,
                       cfg=cfg, pout=1,tag="loc2loc")[1]
