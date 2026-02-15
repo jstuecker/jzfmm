@@ -72,7 +72,7 @@ def timestep(p : Particles, dt, cfg : Config, t=0., mask=None):
     if p.cpos is not None:
         p.cpos = p.cpos + p.cvel * dt
 
-    p.loc = force_and_potential.jit(p, cfg=cfg)
+    p.loc = force_and_potential(p, cfg=cfg)
     p.vel = kick(vh, p.loc.force() + ext_acc(p, t + dt, cfg), 0.5*dt, mask=mask)
 
     if cfg.centered:
@@ -87,7 +87,7 @@ def simulate(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float 
     dt = (tend - tstart) / nsteps
     def step(i, carry):
         p, t = carry
-        return timestep.jit(p, dt=dt, cfg=cfg, t=t), t + dt
+        return timestep(p, dt=dt, cfg=cfg, t=t), t + dt
 
     p, t = jax.lax.fori_loop(0, nsteps, step, (p, tstart))
     return p
@@ -113,8 +113,8 @@ def simulate_bwd(tend: float, nsteps: int, cfg: Config, tstart: float, p: Partic
     def step(i, carry):
         p, t, gp = carry
 
-        p = timestep.jit(p, dt=-dt, cfg=cfg, t=t)
-        _, vjp_fun = jax.vjp(lambda p: timestep.jit(p, dt=dt, cfg=cfg, t=t), p)
+        p = timestep(p, dt=-dt, cfg=cfg, t=t)
+        _, vjp_fun = jax.vjp(lambda p: timestep(p, dt=dt, cfg=cfg, t=t), p)
         gxp, = vjp_fun(gp)
         return p, t + dt, gxp
 

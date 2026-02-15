@@ -72,8 +72,9 @@ def test_fmm_node_gradients(pos_mass_z, tree_planes, cfg):
         return evaluate_node_node_fmm(pm, tree_planes, cfg=cfg)[0]
     check_grads(f, (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-1)
 
+@pytest.mark.parametrize("mode", ["fmm", "direct"])
 @pytest.mark.parametrize("npart", [1024], indirect=True)
-def test_sim_com(particles_blob):
+def test_sim_com(particles_blob, mode):
     """Tests that gradients with respect to the center of mass work correctly"""
     p = replace(particles_blob, cvel=jnp.array([0.,0.,0.1]))
 
@@ -81,37 +82,10 @@ def test_sim_com(particles_blob):
 
     cfg = Config(fmm=None, softening=0.3)
     cfg.external_potential = UniformAcceleration(acc=acc)
-
-    def loss(p):
-        pfin = simulate.vjp(p, tend=1e2, nsteps=100, cfg=cfg)
-        return jnp.sum(jnp.mean(pfin.apos(), axis=0)**2) + jnp.sum(jnp.mean(pfin.avel(), axis=0)**2), pfin
-    
-    loss_grad = jax.jit(jax.value_and_grad(loss, has_aux=True))
-    (lossval, pfin), pgrad = loss_grad(p)
-
-    def loss_cent(xcom, vcom, t=1e2):
-        xfin = xcom + vcom * t + 0.5 * jnp.array(acc) * t**2
-        vfin = vcom + jnp.array(acc) * t
-        return jnp.sum(xfin**2) + jnp.sum(vfin**2)
-
-    xcom, vcom = jnp.mean(p.apos(), axis=0), jnp.mean(p.avel(), axis=0)
-    xcom_grad, vcom_grad = jax.jit(jax.grad(loss_cent, argnums=(0,1)))(xcom, vcom)
-
-    assert pgrad.cpos == pytest.approx(xcom_grad, rel=1e-5)
-    assert pgrad.cvel == pytest.approx(vcom_grad, rel=1e-5)
-
-    assert jnp.sum(pgrad.pos, axis=0) == pytest.approx(xcom_grad, rel=1e-5)
-    assert jnp.sum(pgrad.vel, axis=0) == pytest.approx(vcom_grad, rel=1e-5)
-
-@pytest.mark.parametrize("npart", [1024], indirect=True)
-def test_sim_com_fmm(particles_blob):
-    """Tests that gradients with respect to the center of mass work correctly"""
-    p = replace(particles_blob, cvel=jnp.array([0.,0.,0.1]))
-
-    acc = (0.,0.,0.05)
-
-    cfg = Config(softening=0.3)
-    cfg.external_potential = UniformAcceleration(acc=acc)
+    if mode == "direct":
+        cfg.fmm = None
+    else:
+        cfg.tree.alloc_fac_nodes = 2.0
 
     def loss(p):
         pfin = simulate.vjp(p, tend=1e2, nsteps=100, cfg=cfg)
