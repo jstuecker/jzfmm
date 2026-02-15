@@ -81,7 +81,7 @@ def timestep(p : Particles, dt, cfg : Config, t=0., mask=None):
     return p
 timestep.jit = jax.jit(timestep, static_argnames=("cfg",))
 
-def simulate(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float = 0.) -> Particles:
+def _simulate(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float = 0.) -> Particles:
     # Make an initial dt=0 step to get the correct initial acceleration
     p = timestep(p, dt=0., cfg=cfg, t=tstart)
     dt = (tend - tstart) / nsteps
@@ -91,42 +91,32 @@ def simulate(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float 
 
     p, t = jax.lax.fori_loop(0, nsteps, step, (p, tstart))
     return p
-simulate.jit = jax.jit(simulate, static_argnames=("cfg",))
-simulate.vjp = jax.custom_vjp(simulate, nondiff_argnames=("tend", "nsteps", "cfg", "tstart"))
 
-def simulate_fwd(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float = 0.) -> Particles:
-    pcom = jnp.mean(p.apos(), axis=0)
-    log("Starting forward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
-             pcom[0], pcom[1], pcom[2], level=1, cfg_log=cfg.logging)
+def simulate(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float = 0.) -> Particles:
+    @jax.custom_vjp
+    def eval(p):
+        return _simulate(p, tend, nsteps, cfg, tstart)
+    def eval_fwd(p):
+        pfin = _simulate(p, tend, nsteps, cfg, tstart)
+        return pfin, pfin
+    def eval_bwd(p: Particles, gp: jax.Array):
+        dt = (tend - tstart) / nsteps
 
-    p = simulate(p, tend, nsteps, cfg, tstart)
+        def step(i, carry):
+            p, t, gp = carry
 
-    pcom = jnp.mean(p.apos(), axis=0)
-    log("Finished forward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
-             pcom[0], pcom[1], pcom[2], level=1, cfg_log=cfg.logging)
+            p = timestep(p, dt=-dt, cfg=cfg, t=t)
+            _, vjp_fun = jax.vjp(lambda p: timestep(p, dt=dt, cfg=cfg, t=t), p)
+            gxp, = vjp_fun(gp)
+            return p, t + dt, gxp
 
-    return p, p
-
-def simulate_bwd(tend: float, nsteps: int, cfg: Config, tstart: float, p: Particles, gp: jax.Array):
-    dt = (tend - tstart) / nsteps
-
-    def step(i, carry):
-        p, t, gp = carry
-
-        p = timestep(p, dt=-dt, cfg=cfg, t=t)
-        _, vjp_fun = jax.vjp(lambda p: timestep(p, dt=dt, cfg=cfg, t=t), p)
-        gxp, = vjp_fun(gp)
-        return p, t + dt, gxp
-
-    p_prev, t_prev, gp_prev = jax.lax.fori_loop(0, nsteps, step, (p, tend, gp))
-
-    pcom = jnp.mean(p_prev.apos(), axis=0)
-    log("Finished backward pass, <pos> = ({:.2f},{:.2f},{:.2f})",
-        pcom[0], pcom[1], pcom[2], level=1, cfg_log=cfg.logging)
+        p_prev, t_prev, gp_prev = jax.lax.fori_loop(0, nsteps, step, (p, tend, gp))
+        
+        return (gp_prev,)
+    eval.defvjp(eval_fwd, eval_bwd)
     
-    return (gp_prev,)
-
-simulate.vjp.defvjp(simulate_fwd, simulate_bwd)
+    return eval(p)
+simulate.jit = jax.jit(simulate, static_argnames=("cfg",))
 
 def clean_particles(p: Particles) -> Particles:
     p = replace(p)  # Make a copy to avoid modifying the input

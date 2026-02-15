@@ -88,7 +88,7 @@ def test_sim_com(particles_blob, mode):
         cfg.tree.alloc_fac_nodes = 2.0
 
     def loss(p):
-        pfin = simulate.vjp(p, tend=1e2, nsteps=100, cfg=cfg)
+        pfin = simulate(p, tend=1e2, nsteps=100, cfg=cfg)
         return jnp.sum(jnp.mean(pfin.apos(), axis=0)**2) + jnp.sum(jnp.mean(pfin.avel(), axis=0)**2), pfin
     
     loss_grad = jax.jit(jax.value_and_grad(loss, has_aux=True))

@@ -44,7 +44,7 @@ def bench_sim_direct_sum(jax_bench, particles_nfw, stripping_cfg):
     )
 
     def loss(p):
-        pfin = simulate.vjp(p, tend=host.tcirc(150.)*1., nsteps=1000, cfg=cfg)
+        pfin = simulate(p, tend=host.tcirc(150.)*1., nsteps=1000, cfg=cfg)
         return jnp.sum(jnp.mean(pfin.apos(), axis=0)**2) + jnp.sum(jnp.mean(pfin.avel(), axis=0)**2)
     
     @jax.jit
