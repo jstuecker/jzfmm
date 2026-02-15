@@ -47,7 +47,7 @@ def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
         tag="leaf2leaf"
     )
 
-@pytest.mark.shrink_in_quick(keep_index=1)
+# @pytest.mark.shrink_in_quick(keep_index=1)
 @pytest.mark.parametrize("npart", [1024*128, 1024*1024, 1024*1024*4, 8*1024*1024])
 def bench_fmm_npart(jax_bench, pos_mass_z, cfg):
     jb = jax_bench(jit_rounds=20, jit_warmup=2)

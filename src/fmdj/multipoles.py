@@ -89,22 +89,28 @@ def summarize_multipoles(
 summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', ])
 
 def build_multipole_hierarchy(th: TreeHierarchy, pos: jax.Array, mp: jax.Array, *, cfg: Config
-                              ) -> list[jax.Array]:
+                              ) -> PackedArray:
     if len(mp.shape) == 1:
         mp = mp.reshape(-1,1)
 
     size = th.ispl_n2n.size()-1
     mp0 = summarize_multipoles(th.ispl_n2n.get(0, size), mp, th.center().get(0, size), pos, cfg=cfg)
 
-    mpar = PackedArray.create_empty((size, num_multi(cfg.fmm.p)), levels=th.num_planes(), dtype=jnp.float32, fill_values=0.)  # !!! put nan later
-    mpar = mpar.set(0, mp0, th.num(0))
-    for i in range(1, th.num_planes()):
-        mpar_coarse = summarize_multipoles(
-            th.ispl_n2n.get(i, size), mpar.get(i-1), th.center().get(i, size), th.center().get(i-1, size), cfg=cfg
-        )
-        mpar = mpar.set(i, mpar_coarse, th.num(i))
+    mph = PackedArray.create_empty(
+        (size, num_multi(cfg.fmm.p)), levels=th.num_planes(), dtype=jnp.float32, fill_values=jnp.nan
+    )
+    mph = mph.set(0, mp0, th.num(0))
 
-    mph = [mpar.get(i, size=th.plane_sizes[i]) for i in range(th.num_planes())]
+    def handle_level(i, mph):
+        mp_coarse = summarize_multipoles(
+            ispl=th.ispl_n2n.get(i, size),
+            mp=mph.get(i-1, size),
+            xnode=th.center().get(i, size),
+            xchild=th.center().get(i-1, size),
+            cfg=cfg
+        )
+        return mph.set(i, mp_coarse, th.num(i))
+    mph = jax.lax.fori_loop(1, th.num_planes(), handle_level, mph)
     
     return mph
 build_multipole_hierarchy.jit = jax.jit(build_multipole_hierarchy, static_argnames=['cfg'])

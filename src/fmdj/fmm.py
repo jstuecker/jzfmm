@@ -101,7 +101,8 @@ evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_ar
 def evaluate_interaction_hierarchy(th, mph, cfg):
     ilist, loc, last_plane = None, None, None
     for i in reversed(range(0, len(th))):
-        loc, ilist = evaluate_plane_interactions(th[i], mph[i], last_plane, ilist, loc, cfg=cfg)
+        mp = mph.get(i, size=th[i].size())
+        loc, ilist = evaluate_plane_interactions(th[i], mp, last_plane, ilist, loc, cfg=cfg)
         last_plane = th[i]
     return loc, ilist
 evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, static_argnames=['cfg'])
