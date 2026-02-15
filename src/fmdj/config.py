@@ -22,7 +22,7 @@ class FMMConfig():
     opening_angle : float = 0.85
 
     # Memory
-    ilist_alloc_fac : int = 512
+    ilist_alloc_fac : int = 256
 
     # Other
     kahan_summation : bool = False

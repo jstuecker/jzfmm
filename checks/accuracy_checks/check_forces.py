@@ -35,7 +35,7 @@ fig, axs = plt.subplots(1,2, figsize=(12,5))
 def hist(ax, rerr, p):
     ax.hist(np.log10(rerr), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5, color="C%d"%(p-1), edgecolor='black')
 
-for p in (1,2,3,4,5):
+for p in (1,2,3,4,5): # 
     loc = fast_multipole_method.jit(part, cfg=replace(cfg, fmm=replace(cfg.fmm, p=p)))
 
     hist(axs[0], rerr_force(loc, loc_ref), p)

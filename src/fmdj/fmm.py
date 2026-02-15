@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from dataclasses import dataclass, field
 
 
-from jztree.data import TreePlane, PosMass, InteractionList, get_pos_mass, TreeHierarchy, PosLvl
+from jztree.data import TreePlane, PosMass, InteractionList, get_pos_mass, TreeHierarchy, PosLvl, PackedArray
 from jztree.tree import pos_zorder_sort, build_tree_hierarchy, grouped_dense_interaction_list
 
 from .config import Config
@@ -87,30 +87,31 @@ def evaluate_plane_interactions(
     return loc, new_ilist
 evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
 
-def evaluate_interaction_hierarchy(tps: List[TreePlane], th: TreeHierarchy, mph, cfg):
+def evaluate_interaction_hierarchy(tps: List[TreePlane], th: TreeHierarchy, mph: PackedArray, cfg: Config):
     ilist, loc, last_plane = None, None, None
 
     # define root level:
-    ilist_alloc_size = tps[-1].size() * cfg.fmm.ilist_alloc_fac
-    spl_nodes, ilist, nnodes_sup = grouped_dense_interaction_list(tps[-1].nnodes, ilist_alloc_size, ngroup=8)
+    size = th.base_size()
+    spl_nodes, ilist, nnodes_sup = grouped_dense_interaction_list(
+        th.num(th.num_planes()-1), size_ilist=int(size*cfg.fmm.ilist_alloc_fac), ngroup=32, size_super=size
+    )
 
-    for i in reversed(range(0, len(tps))):
+    for i in reversed(range(0, th.num_planes())):
         node_range = jnp.array([0, nnodes_sup], dtype=jnp.int32)
         child_data = FMMChildData(
-            poslvl=PosLvl(pos=tps[i].center(), lvl=tps[i].lvl),
-            mp=mph.get(i, size=tps[i].size())
+            poslvl=PosLvl(pos=th.center().get(i, size), lvl=th.lvl.get(i, size)),
+            mp=mph.get(i, size=size)
         )
 
         loc_ch, ilist = evaluate_plane_interactions(node_range, ilist, spl_nodes, child_data, cfg=cfg)
 
         if loc is not None:
             loc_ch = loc_ch + shift_local_to_children(
-                spl_nodes, loc, last_plane.center(), tps[i].center(), cfg=cfg
+                spl_nodes, loc, th.center().get(i+1, size), th.center().get(i, size), cfg=cfg
             )
 
-        last_plane = tps[i]
-        nnodes_sup = tps[i].nnodes
-        spl_nodes = tps[i].ispl
+        nnodes_sup = th.num(i)
+        spl_nodes = th.ispl_n2n.get(i, size)
         loc = loc_ch
 
     return loc, ilist
@@ -237,21 +238,23 @@ def evaluate_node_node_fmm(partz: PosMass, tps: list[TreePlane], th: TreeHierarc
     def eval_fwd(pos, mp, pout=1):
         mph = build_multipole_hierarchy(th, pos, mp, cfg=cfg)
         loc_node, ilist = evaluate_interaction_hierarchy(tps, th, mph, cfg=cfg)
-        loc_part = shift_local_to_children(tps[0].ispl, loc_node, tps[0].center(), pos, pout=pout, cfg=cfg)
-        return (loc_part, ilist), (pos, mp, tps, loc_node)
+        ispl = th.ispl_n2n.get(0, th.base_size())
+        xnode = th.center().get(0, th.base_size())
+        loc_part = shift_local_to_children(ispl, loc_node, xnode, pos, pout=pout, cfg=cfg)
+        return (loc_part, ilist), (pos, mp, ispl, xnode, loc_node)
     
     def eval_bwd(pout, res, grads):
-        pos, mp, th, loc_node = res
+        pos, mp, ispl, xnode, loc_node = res
         gloc = grads[0]
 
         # Backwards pass = FMM with gloc as multipole weights
         # plus the position derivatives of the shifting operators
 
-        gx1 = shift_local_to_children_vjp_x(th[0].ispl, loc_node, th[0].center(), pos, gloc)
+        gx1 = shift_local_to_children_vjp_x(ispl, loc_node, xnode, pos, gloc)
         
-        (gmp, _), (_, _, _, gmp_node) = eval_fwd(pos, gloc, pout=p_of_num_multi(mp.shape[-1]))
+        (gmp, _), (_, _, _, _, gmp_node) = eval_fwd(pos, gloc, pout=p_of_num_multi(mp.shape[-1]))
 
-        gx2 = shift_local_to_children_vjp_x(th[0].ispl, gmp_node, th[0].center(), pos, mp)
+        gx2 = shift_local_to_children_vjp_x(ispl, gmp_node, xnode, pos, mp)
         
         return gx1 + gx2, gmp
     
@@ -274,8 +277,9 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jax.Array | None = None, cfg
     tps = list(th.planes())
 
     loc_node_node, ilist = evaluate_node_node_fmm(partz, tps, th, cfg=cfg)
+    ispl = th.ispl_n2n.get(0, len(ilist.ispl) - 1)
 
-    loc_leaf_leaf = grouped_force_and_pot(partz, tps[0].ispl, jax.lax.stop_gradient(ilist), cfg=cfg)
+    loc_leaf_leaf = grouped_force_and_pot(partz, ispl, jax.lax.stop_gradient(ilist), cfg=cfg)
     loc = loc_leaf_leaf + loc_node_node
 
     return LocalExpansion(loc * cfg.G())

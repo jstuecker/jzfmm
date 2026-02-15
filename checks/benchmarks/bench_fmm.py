@@ -43,7 +43,7 @@ def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
     )
 
     jb.measure(fn_jit=grouped_force_and_pot.jit,
-        particles=pos_mass_z, ispl=tps[0].ispl, ilist=ilist, cfg=cfg,
+        particles=pos_mass_z, ispl=th.ispl_n2n.get(0, th.base_size()), ilist=ilist, cfg=cfg,
         tag="leaf2leaf"
     )
 
@@ -83,10 +83,10 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
     loc, ilist = jb.measure(fn_jit=evaluate_interaction_hierarchy.jit, 
                             tps=tps, th=th, mph=mph, cfg=cfg, tag="node2node")[1]
     phif = jb.measure(fn_jit=shift_local_to_children.jit, 
-                      ispl=tps[0].ispl, loc=loc, xnode=tps[0].center(), xchild=pos_mass_z.pos,
+                      ispl=th.ispl_n2n.get(0, th.base_size()), loc=loc, xnode=th.center().get(0, th.base_size()), xchild=pos_mass_z.pos,
                       cfg=cfg, pout=1,tag="loc2loc")[1]
     fphi = jb.measure(fn_jit=grouped_force_and_pot.jit,
-                      particles=pos_mass_z, ispl=tps[0].ispl, ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]
+                      particles=pos_mass_z, ispl=th.ispl_n2n.get(0, th.base_size()), ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]
 
 @pytest.mark.shrink_in_quick(keep_index=0)
 @pytest.mark.parametrize("p", [3,4,5])

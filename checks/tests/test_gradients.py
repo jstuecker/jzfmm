@@ -50,8 +50,10 @@ def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
     mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
     loc, ilist = evaluate_interaction_hierarchy.jit(tps, th, mph, cfg)
 
+    ispl = th.ispl_n2n.get(0, th.base_size())
+    cent =  th.center().get(0, th.base_size())
     def l2l(x,loc):
-        return shift_local_to_children(tps[0].ispl, loc, tps[0].center(), x, cfg=cfg, pout=1)
+        return shift_local_to_children(ispl, loc, cent, x, cfg=cfg, pout=1)
 
     loc = loc.at[:,1:4].set(0.)
     check_grads(lambda x: l2l(x, loc), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-2)
@@ -81,7 +83,7 @@ def test_sim_com(particles_blob, mode):
 
     acc = (0.,0.,0.05)
 
-    cfg = Config(fmm=None, softening=0.3)
+    cfg = Config(softening=0.3)
     cfg.external_potential = UniformAcceleration(acc=acc)
     if mode == "direct":
         cfg.fmm = None
