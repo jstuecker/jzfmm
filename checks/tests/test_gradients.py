@@ -43,14 +43,15 @@ def test_m2m_gradients(pos_mass_z, tree_planes, cfg):
     check_grads(m2m, (pos_mass_z.pos, pos_mass_z.mass), order=1, modes=("rev",), eps=1e-3)
 
 @pytest.mark.skip_in_quick
-def test_l2l_gradients(pos_mass_z, tree_planes, cfg):
-    th = tree_planes
+def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
+    th = tree_hierarchy
+    tps = list(tree_hierarchy.planes())
     cfg = replace(cfg, softening=1e-1)
     mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
-    loc, ilist = evaluate_interaction_hierarchy.jit(th, mph, cfg)
+    loc, ilist = evaluate_interaction_hierarchy.jit(tps, mph, cfg)
 
     def l2l(x,loc):
-        return shift_local_to_children(th[0].ispl, loc, th[0].center(), x, cfg=cfg, pout=1)
+        return shift_local_to_children(tps[0].ispl, loc, tps[0].center(), x, cfg=cfg, pout=1)
 
     loc = loc.at[:,1:4].set(0.)
     check_grads(lambda x: l2l(x, loc), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-2)

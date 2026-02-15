@@ -4,7 +4,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from jztree.data import TreePlane, PosMass, InteractionList, get_pos_mass
+from jztree.data import TreePlane, PosMass, InteractionList, get_pos_mass, TreeHierarchy
 from jztree.tree import pos_zorder_sort, build_tree_hierarchy, grouped_dense_interaction_list
 
 from .config import Config
@@ -222,13 +222,13 @@ direct_potential_scan_jax.jit = jax.jit(direct_potential_scan_jax, static_argnam
 # ------------------------------------------------------------------------------------------------ #
 
 
-def evaluate_node_node_fmm(partz: PosMass, th: list[TreePlane], *, cfg: Config) -> Tuple[jax.Array, InteractionList]:
+def evaluate_node_node_fmm(partz: PosMass, tps: list[TreePlane], th: TreeHierarchy, *, cfg: Config) -> Tuple[jax.Array, InteractionList]:
     
     def eval_fwd(pos, mp, pout=1):
         mph = build_multipole_hierarchy(th, pos, mp, cfg=cfg)
-        loc_node, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
-        loc_part = shift_local_to_children(th[0].ispl, loc_node, th[0].center(), pos, pout=pout, cfg=cfg)
-        return (loc_part, ilist), (pos, mp, th, loc_node)
+        loc_node, ilist = evaluate_interaction_hierarchy(tps, mph, cfg=cfg)
+        loc_part = shift_local_to_children(tps[0].ispl, loc_node, tps[0].center(), pos, pout=pout, cfg=cfg)
+        return (loc_part, ilist), (pos, mp, tps, loc_node)
     
     def eval_bwd(pout, res, grads):
         pos, mp, th, loc_node = res
@@ -263,7 +263,7 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jax.Array | None = None, cfg
     th = build_tree_hierarchy(jax.lax.stop_gradient(partz), cfg.tree)
     tps = list(th.planes())
 
-    loc_node_node, ilist = evaluate_node_node_fmm(partz, tps, cfg=cfg)
+    loc_node_node, ilist = evaluate_node_node_fmm(partz, tps, th, cfg=cfg)
 
     loc_leaf_leaf = grouped_force_and_pot(partz, tps[0].ispl, jax.lax.stop_gradient(ilist), cfg=cfg)
     loc = loc_leaf_leaf + loc_node_node

@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jztree.data import TreePlane
+from jztree.data import TreePlane, PackedArray, TreeHierarchy
 from .config import Config
 
 import fmdj_cuda.ffi_multipoles as ffi_multipoles
@@ -88,18 +88,24 @@ def summarize_multipoles(
     return eval(xchild, mp)
 summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', ])
 
-def build_multipole_hierarchy(th: list[TreePlane], pos: jax.Array, mp: jax.Array, *, cfg: Config
+def build_multipole_hierarchy(th: TreeHierarchy, pos: jax.Array, mp: jax.Array, *, cfg: Config
                               ) -> list[jax.Array]:
     if len(mp.shape) == 1:
         mp = mp.reshape(-1,1)
 
-    mp0 = summarize_multipoles(th[0].ispl, mp, th[0].center(), pos, cfg=cfg)
-    mph = [mp0]
-    for i in range(1, len(th)):
-        mp_coarse = summarize_multipoles(
-            th[i].ispl, mph[-1], th[i].center(), th[i-1].center(), cfg=cfg
+    size = th.ispl_n2n.size()-1
+    mp0 = summarize_multipoles(th.ispl_n2n.get(0, size), mp, th.center().get(0, size), pos, cfg=cfg)
+
+    mpar = PackedArray.create_empty((size, num_multi(cfg.fmm.p)), levels=th.num_planes(), dtype=jnp.float32, fill_values=0.)  # !!! put nan later
+    mpar = mpar.set(0, mp0, th.num(0))
+    for i in range(1, th.num_planes()):
+        mpar_coarse = summarize_multipoles(
+            th.ispl_n2n.get(i, size), mpar.get(i-1), th.center().get(i, size), th.center().get(i-1, size), cfg=cfg
         )
-        mph.append(mp_coarse)
+        mpar = mpar.set(i, mpar_coarse, th.num(i))
+
+    mph = [mpar.get(i, size=th.plane_sizes[i]) for i in range(th.num_planes())]
+    
     return mph
 build_multipole_hierarchy.jit = jax.jit(build_multipole_hierarchy, static_argnames=['cfg'])
 

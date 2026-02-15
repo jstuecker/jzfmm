@@ -19,7 +19,7 @@ def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
     
     th = build_tree_hierarchy.jit(pos_mass_z, cfg.tree)
     tps = list(th.planes())
-    mph = build_multipole_hierarchy.jit(tps, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
+    mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
     
     jb = jax_bench(jit_rounds=100, jit_warmup=50)
 
@@ -36,7 +36,7 @@ def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
 
     th = build_tree_hierarchy.jit(pos_mass_z, cfg.tree)
     tps = list(th.planes())
-    mph = build_multipole_hierarchy.jit(tps, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
+    mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
 
     res, (loc, ilist) = jb.measure(fn_jit=evaluate_interaction_hierarchy.jit,
         th=tps, mph=mph, cfg=cfg, tag="node2node"
@@ -78,7 +78,7 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
     tps = list(th.planes())
 
     mph = jb.measure(fn_jit=build_multipole_hierarchy.jit, 
-                     th=tps, pos=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg, tag="multipoles")[1]
+                     th=th, pos=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg, tag="multipoles")[1]
 
     loc, ilist = jb.measure(fn_jit=evaluate_interaction_hierarchy.jit, 
                             th=tps, mph=mph, cfg=cfg, tag="node2node")[1]
