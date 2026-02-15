@@ -132,10 +132,6 @@ def tree_hierarchy(pos_mass_z, cfg):
     return th
 
 @pytest.fixture
-def tree_planes(tree_hierarchy):
-    return list(tree_hierarchy.planes())
-
-@pytest.fixture
 def particles_blob(npart):
     x = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
     m = jnp.ones_like(x[:,0]) * 1.

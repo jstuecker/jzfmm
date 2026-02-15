@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jztree.data import TreePlane, PackedArray, TreeHierarchy
+from jztree.data import PackedArray, TreeHierarchy
 from .config import Config
 
 import fmdj_cuda.ffi_multipoles as ffi_multipoles

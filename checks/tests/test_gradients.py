@@ -31,12 +31,12 @@ def my_check_gradient(f, x, epsrel=1e-4, rtol=5e-3, atol=0.):
     assert df2 == pytest.approx(df1, rel=rtol, abs=atol)
 
 @pytest.mark.skip_in_quick
-def test_m2m_gradients(pos_mass_z, tree_planes, cfg):
-    th = tree_planes
-    # mph = fmdj.multipoles.build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg)
+def test_m2m_gradients(pos_mass_z, tree_hierarchy, cfg):
+    spl = tree_hierarchy.ispl_n2n.get(0, tree_hierarchy.base_size())
+    xnode = tree_hierarchy.center().get(0, tree_hierarchy.base_size())
 
     def m2m(x,m):
-        return summarize_multipoles(th[0].ispl, m, th[0].center(), x, cfg=cfg)
+        return summarize_multipoles(spl, m, xnode, x, cfg=cfg)
 
     check_grads(lambda m: m2m(pos_mass_z.pos, m), (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-3)
     check_grads(lambda x: m2m(x, pos_mass_z.mass), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-3)
@@ -45,12 +45,11 @@ def test_m2m_gradients(pos_mass_z, tree_planes, cfg):
 @pytest.mark.skip_in_quick
 def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
     th = tree_hierarchy
-    tps = list(tree_hierarchy.planes())
     cfg = replace(cfg, softening=1e-1)
     mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
-    loc, ilist = evaluate_interaction_hierarchy.jit(tps, th, mph, cfg)
+    loc, ilist = evaluate_interaction_hierarchy.jit(th, mph, cfg)
 
-    ispl = th.ispl_n2n.get(0, th.base_size())
+    ispl = th.ispl_n2n.get(0, th.base_size()+1)
     cent =  th.center().get(0, th.base_size())
     def l2l(x,loc):
         return shift_local_to_children(ispl, loc, cent, x, cfg=cfg, pout=1)
@@ -61,18 +60,18 @@ def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
     my_check_gradient(lambda l: l2l(pos_mass_z.pos, l).sum(), loc, epsrel=5e-2)
 
 @pytest.mark.skip_in_quick
-def test_fmm_node_gradients(pos_mass_z, tree_planes, cfg):
+def test_fmm_node_gradients(pos_mass_z, tree_hierarchy, cfg):
     cfg_fmm = replace(cfg.fmm, p=4)
     cfg = replace(cfg, softening=1e-1, fmm=cfg_fmm)
 
     def f(pos):
         pm = PosMass(pos=pos, mass=pos_mass_z.mass)
-        return evaluate_node_node_fmm(pm, tree_planes, cfg=cfg)[0]
+        return evaluate_node_node_fmm(pm, tree_hierarchy, cfg=cfg)[0]
     check_grads(f, (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-2)
 
     def f(mass):
         pm = PosMass(pos=pos_mass_z.pos, mass=mass)
-        return evaluate_node_node_fmm(pm, tree_planes, cfg=cfg)[0]
+        return evaluate_node_node_fmm(pm, tree_hierarchy, cfg=cfg)[0]
     check_grads(f, (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-1)
 
 @pytest.mark.parametrize("mode", ["fmm", "direct"])

@@ -18,13 +18,12 @@ def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
         cfg = replace(cfg, tree=replace(cfg.tree, alloc_fac_nodes=1.5))
     
     th = build_tree_hierarchy.jit(pos_mass_z, cfg.tree)
-    tps = list(th.planes())
     mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
     
     jb = jax_bench(jit_rounds=100, jit_warmup=50)
 
     jb.measure(fn_jit=evaluate_interaction_hierarchy.jit,
-        tps=tps, th=th, mph=mph, cfg=cfg
+        th=th, mph=mph, cfg=cfg
     )
 
 @pytest.mark.shrink_in_quick(keep_index=2)
@@ -35,11 +34,10 @@ def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
     jb = jax_bench(jit_rounds=40, jit_warmup=20)
 
     th = build_tree_hierarchy.jit(pos_mass_z, cfg.tree)
-    tps = list(th.planes())
     mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
 
     res, (loc, ilist) = jb.measure(fn_jit=evaluate_interaction_hierarchy.jit,
-        tps=tps, th=th, mph=mph, cfg=cfg, tag="node2node"
+        th=th, mph=mph, cfg=cfg, tag="node2node"
     )
 
     jb.measure(fn_jit=grouped_force_and_pot.jit,
@@ -75,13 +73,12 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
     pos_mass_z = PosMass(pos=posz, mass=pos_mass.mass[isortz])
 
     th = jb.measure(fn_jit=build_tree_hierarchy.jit, part=pos_mass_z, cfg_tree=cfg.tree, tag="build_new")[1]
-    tps = list(th.planes())
 
     mph = jb.measure(fn_jit=build_multipole_hierarchy.jit, 
                      th=th, pos=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg, tag="multipoles")[1]
 
     loc, ilist = jb.measure(fn_jit=evaluate_interaction_hierarchy.jit, 
-                            tps=tps, th=th, mph=mph, cfg=cfg, tag="node2node")[1]
+                            th=th, mph=mph, cfg=cfg, tag="node2node")[1]
     phif = jb.measure(fn_jit=shift_local_to_children.jit, 
                       ispl=th.ispl_n2n.get(0, th.base_size()), loc=loc, xnode=th.center().get(0, th.base_size()), xchild=pos_mass_z.pos,
                       cfg=cfg, pout=1,tag="loc2loc")[1]
@@ -90,8 +87,10 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
 
 @pytest.mark.shrink_in_quick(keep_index=0)
 @pytest.mark.parametrize("p", [3,4,5])
-def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_planes):
-    th = tree_planes
+def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_hierarchy):
+    th = tree_hierarchy
+    ispl = th.ispl_n2n.get(0, th.base_size()+1)
+    cent =  th.center().get(0, th.base_size())
 
     jb = jax_bench(jit_rounds=200, jit_warmup=20)
 
@@ -99,11 +98,11 @@ def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_planes):
 
     jb.measure(
         fn_jit = summarize_multipoles.jit,
-        ispl=th[0].ispl, mp=pos_mass_z.mass, xnode=th[0].center(), xchild=pos_mass_z.pos, cfg=cfg,
+        ispl=ispl, mp=pos_mass_z.mass, xnode=cent, xchild=pos_mass_z.pos, cfg=cfg,
         tag="part2mp"
     )
     
     jb.measure(fn_jit = center_of_mass.jit,
-               ispl=th[0].ispl, part=pos_mass_z,
+               ispl=ispl, part=pos_mass_z,
                tag="com"
     )
