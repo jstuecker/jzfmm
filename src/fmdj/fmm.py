@@ -32,6 +32,13 @@ class FMMChildData:
     poslvl: PosLvl
     mp: jax.Array
 
+@jax.tree_util.register_dataclass
+@dataclass(slots=True)
+class FMMNodeData:
+    cent: jax.Array
+    loc: jax.Array
+    num: jax.Array
+
 def evaluate_plane_interactions(
         node_range: jax.Array,
         node_ilist: InteractionList,
@@ -88,33 +95,45 @@ def evaluate_plane_interactions(
 evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
 
 def evaluate_interaction_hierarchy(th: TreeHierarchy, mph: PackedArray, cfg: Config):
-    ilist, loc, last_plane = None, None, None
-
     # define root level:
     size = th.base_size()
     spl_nodes, ilist, nnodes_sup = grouped_dense_interaction_list(
         th.num(th.num_planes()-1), size_ilist=int(size*cfg.fmm.ilist_alloc_fac), ngroup=32, size_super=size
     )
+    node_data = FMMNodeData(
+        cent=jnp.zeros((size, 3), dtype=jnp.float32),
+        loc=jnp.zeros((size, mph.data.shape[-1]), dtype=jnp.float32),
+        num=nnodes_sup
+    )
 
-    for i in reversed(range(0, th.num_planes())):
-        node_range = jnp.array([0, nnodes_sup], dtype=jnp.int32)
+    def handle_level(i, carry):
+        ilevel = th.num_planes() - 1 - i
+
+        node_data, ilist, spl_nodes = carry
+
+        node_range = jnp.array([0, node_data.num], dtype=jnp.int32)
         child_data = FMMChildData(
-            poslvl=PosLvl(pos=th.center().get(i, size), lvl=th.lvl.get(i, size)),
-            mp=mph.get(i, size=size)
+            poslvl=PosLvl(pos=th.center().get(ilevel, size), lvl=th.lvl.get(ilevel, size)),
+            mp=mph.get(ilevel, size=size)
         )
 
         loc_ch, ilist = evaluate_plane_interactions(node_range, ilist, spl_nodes, child_data, cfg=cfg)
 
-        if loc is not None:
-            loc_ch = loc_ch + shift_local_to_children(
-                spl_nodes, loc, th.center().get(i+1, size), th.center().get(i, size), cfg=cfg
-            )
+        loc_ch = loc_ch + shift_local_to_children(
+            spl_nodes, node_data.loc, node_data.cent, th.center().get(ilevel, size), cfg=cfg
+        )
 
-        nnodes_sup = th.num(i)
-        spl_nodes = th.ispl_n2n.get(i, size)
-        loc = loc_ch
+        spl_nodes = th.ispl_n2n.get(ilevel, size+1)
+        node_data = FMMNodeData(th.center().get(ilevel, size), loc_ch, th.num(ilevel))
 
-    return loc, ilist
+        return node_data, ilist, spl_nodes
+
+    # unrolling the loop turns out better, since number of iterations tends to be very small
+    node_data, ilist, spl_nodes = jax.lax.fori_loop(
+        0, th.num_planes(), handle_level, (node_data, ilist, spl_nodes), unroll=True
+    )
+
+    return node_data.loc, ilist
 evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, static_argnames=['cfg'])
 
 # ------------------------------------------------------------------------------------------------ #
