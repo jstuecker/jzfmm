@@ -283,7 +283,7 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg: Config) ->
     
     eval.defvjp(eval_fwd, eval_bwd)
 
-    return eval(partz.pos, partz.mass.reshape(-1,1))
+    return eval(partz.pos, jnp.reshape(partz.mass, jnp.shape(partz.mass) + (1,)))
 evaluate_node_node_fmm.jit = jax.jit(evaluate_node_node_fmm, static_argnames=['cfg', ])
 
 def fast_multipole_method_z(partz: PosMass, *, mpz: jax.Array | None = None, cfg: Config, pout: int = 1) -> LocalExpansion:
@@ -306,8 +306,7 @@ fast_multipole_method_z.jit = jax.jit(fast_multipole_method_z, static_argnames=(
 def fast_multipole_method(part: PosMass, *, cfg: Config, pout: int = 1) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
 
-    posz, isortz = pos_zorder_sort(part.pos)
-    partz = PosMass(pos=posz, mass=part.mass[isortz])
+    partz, isortz = pos_zorder_sort(PosMass(pos=part.pos, mass=part.mass))
 
     locz = fast_multipole_method_z(partz, cfg=cfg, pout=pout)
 

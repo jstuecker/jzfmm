@@ -90,8 +90,13 @@ summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg',
 
 def build_multipole_hierarchy(th: TreeHierarchy, pos: jax.Array, mp: jax.Array, *, cfg: Config
                               ) -> PackedArray:
-    if len(mp.shape) == 1:
-        mp = mp.reshape(-1,1)
+    if jnp.ndim(mp) == 0:
+        mp = jnp.broadcast_to(mp, pos.shape[:-1] + (1,))
+    elif jnp.ndim(mp) == 1:
+        if len(mp) == len(pos): # Have shape (N,) for monopole masses
+            mp = jnp.reshape(mp, mp.shape + (1,))
+        else: # Have shape (p,) and need to broadcast to (N,p)
+            mp = jnp.broadcast_to(mp, jnp.broadcast_shapes(pos.shape[:-1] + (1,), jnp.shape(mp)))
 
     size = th.ispl_n2n.size()-1
     mp0 = summarize_multipoles(th.ispl_n2n.get(0, size), mp, th.center().get(0, size), pos, cfg=cfg)
