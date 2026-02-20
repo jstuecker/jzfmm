@@ -57,6 +57,7 @@ def evaluate_plane_interactions(
     ilist_alloc_size = cfg.fmm.ilist_alloc_fac * size
 
     assert ilist_alloc_size < 2**31, "So far only int32 supported {ilist_alloc_size/2**31}"
+    assert len(spl) == len(node_ilist.ispl)
 
     # children = jnp.concatenate((plane.center(), plane.lvl.view(jnp.float32)[...,None]), axis=-1)
     children = child_data.poslvl.pos_lvl()
@@ -144,6 +145,8 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
                           cfg: Config = None) -> jax.Array:
     block_size = 128
     assert cfg.tree.max_leaf_size <= block_size
+    assert len(ispl) == len(ilist.ispl)
+
     node_range = jnp.array([0, ispl.size-1], dtype=jnp.int32)
     out_type = jax.ShapeDtypeStruct((particles.pos.shape[0], 4), jnp.float32)
 
@@ -257,7 +260,7 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg: Config) ->
     def eval_fwd(pos, mp, pout=1):
         mph = build_multipole_hierarchy(th, pos, mp, cfg=cfg)
         loc_node, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
-        ispl = th.ispl_n2n.get(0, th.base_size())
+        ispl = th.ispl_n2n.get(0, th.base_size()+1)
         xnode = th.center().get(0, th.base_size())
         loc_part = shift_local_to_children(ispl, loc_node, xnode, pos, pout=pout, cfg=cfg)
         return (loc_part, ilist), (pos, mp, ispl, xnode, loc_node)
@@ -295,7 +298,7 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jax.Array | None = None, cfg
     th = build_tree_hierarchy(jax.lax.stop_gradient(partz), cfg.tree)
 
     loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg=cfg)
-    ispl = th.ispl_n2n.get(0, len(ilist.ispl) - 1)
+    ispl = th.ispl_n2n.get(0, len(ilist.ispl))
 
     loc_leaf_leaf = grouped_force_and_pot(partz, ispl, jax.lax.stop_gradient(ilist), cfg=cfg)
     loc = loc_leaf_leaf + loc_node_node

@@ -80,7 +80,7 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
     loc, ilist = jb.measure(fn_jit=evaluate_interaction_hierarchy.jit, 
                             th=th, mph=mph, cfg=cfg, tag="node2node")[1]
     phif = jb.measure(fn_jit=shift_local_to_children.jit, 
-                      ispl=th.ispl_n2n.get(0, th.base_size()), loc=loc, xnode=th.center().get(0, th.base_size()), xchild=pos_mass_z.pos,
+                      ispl=th.ispl_n2n.get(0, th.base_size()+1), loc=loc, xnode=th.center().get(0, th.base_size()), xchild=pos_mass_z.pos,
                       cfg=cfg, pout=1,tag="loc2loc")[1]
     fphi = jb.measure(fn_jit=grouped_force_and_pot.jit,
                       particles=pos_mass_z, ispl=th.ispl_n2n.get(0, th.base_size()), ilist=ilist, cfg=cfg, tag="leaf2leaf")[1]

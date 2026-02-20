@@ -163,6 +163,7 @@ def shift_local_to_children_vjp_x(
     p = p_of_num_multi(loc.shape[1])
 
     assert p >= pout
+    assert len(ispl) == len(loc) + 1 == len(xnode) + 1
 
     out_loc = jax.ShapeDtypeStruct(xchild.shape, dtype)
 
@@ -180,6 +181,7 @@ def shift_local_to_children(
         cfg: Config,
         pout: int = None
     ) -> jax.Array:
+    assert len(ispl) == len(loc) + 1 == len(xnode) + 1
 
     if loc.ndim == 1:
         loc = loc.reshape(-1,1)

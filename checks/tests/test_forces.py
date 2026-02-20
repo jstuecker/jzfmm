@@ -33,12 +33,12 @@ def test_fmm_uniform(p):
 
 #     part = ics.uniform_particles(int(1e5))
 
-#     fref = LocalExpansion(direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True) * cfg.G()).force()
-#     ffmm = fast_multipole_method.jit(part, cfg=cfg).force()
+#     # fref = LocalExpansion(direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True) * cfg.G()).force()
+#     ffmm = fast_multipole_method(part, cfg=cfg).force()
 
-#     ferr = jnp.linalg.norm(fref - ffmm, axis=-1)
-#     ferr_rel = ferr / jnp.linalg.norm(0.5*(fref + ffmm), axis=-1)
+#     # ferr = jnp.linalg.norm(fref - ffmm, axis=-1)
+#     # ferr_rel = ferr / jnp.linalg.norm(0.5*(fref + ffmm), axis=-1)
 
-#     print(p, jnp.median(ferr_rel) / 10**(-p-1), jnp.max(ferr_rel) / 10**(1-p))
-#     assert jnp.median(ferr_rel) <= 10**-(p+1)
-#     assert jnp.max(ferr_rel) <= 10**-(p-1)
+#     # print(p, jnp.median(ferr_rel) / 10**(-p-1), jnp.max(ferr_rel) / 10**(1-p))
+#     # assert jnp.median(ferr_rel) <= 10**-(p+1)
+#     # assert jnp.max(ferr_rel) <= 10**-(p-1)
