@@ -25,20 +25,3 @@ def test_fmm_uniform(p):
     # print(p, jnp.median(ferr_rel) / 10**(-p-1), jnp.max(ferr_rel) / 10**(1-p))
     assert jnp.median(ferr_rel) <= 10**-(p+1)
     assert jnp.max(ferr_rel) <= 10**-(p-1)
-
-# @pytest.mark.parametrize("p", [2,3,4])
-# def test_mem_err(p):
-#     """Currently creates some memory access error, need to figure this one out!"""
-#     cfg = Config(softening=0.05, fmm=FMMConfig(p=p, opening_angle=0.4, kahan_summation=True))
-
-#     part = ics.uniform_particles(int(1e5))
-
-#     # fref = LocalExpansion(direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True) * cfg.G()).force()
-#     ffmm = fast_multipole_method(part, cfg=cfg).force()
-
-#     # ferr = jnp.linalg.norm(fref - ffmm, axis=-1)
-#     # ferr_rel = ferr / jnp.linalg.norm(0.5*(fref + ffmm), axis=-1)
-
-#     # print(p, jnp.median(ferr_rel) / 10**(-p-1), jnp.max(ferr_rel) / 10**(1-p))
-#     # assert jnp.median(ferr_rel) <= 10**-(p+1)
-#     # assert jnp.max(ferr_rel) <= 10**-(p-1)

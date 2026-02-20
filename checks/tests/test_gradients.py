@@ -32,7 +32,7 @@ def my_check_gradient(f, x, epsrel=1e-4, rtol=5e-3, atol=0.):
 
 @pytest.mark.skip_in_quick
 def test_m2m_gradients(pos_mass_z, tree_hierarchy, cfg):
-    spl = tree_hierarchy.ispl_n2n.get(0, tree_hierarchy.base_size())
+    spl = tree_hierarchy.ispl_n2n.get(0, tree_hierarchy.base_size()+1)
     xnode = tree_hierarchy.center().get(0, tree_hierarchy.base_size())
 
     def m2m(x,m):

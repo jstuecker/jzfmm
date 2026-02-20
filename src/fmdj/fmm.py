@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 from jztree.data import PosMass, InteractionList, get_pos_mass, TreeHierarchy, PosLvl, PackedArray
 from jztree.tree import pos_zorder_sort, build_tree_hierarchy, grouped_dense_interaction_list
+from jztree.jax_ext import raise_if
 
 from .config import Config
 from .data import LocalExpansion
@@ -91,6 +92,12 @@ def evaluate_plane_interactions(
 
     # Create interaction list from outputs
     new_ilist = InteractionList(ispl=ispl_child, iother=child_ilist)
+
+    new_ilist.ispl = new_ilist.ispl + raise_if(
+        new_ilist.nfilled() > new_ilist.size(), 
+        "Interaction list allocation too small ({nfil}/{size})\nHint: Increase alloc_fac_ilist", 
+        nfil=new_ilist.nfilled(), size=new_ilist.size()
+    )
     
     return loc, new_ilist
 evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
