@@ -32,8 +32,8 @@ def my_check_gradient(f, x, epsrel=1e-4, rtol=5e-3, atol=0.):
 
 @pytest.mark.skip_in_quick
 def test_m2m_gradients(pos_mass_z, tree_hierarchy, cfg):
-    spl = tree_hierarchy.ispl_n2n.get(0, tree_hierarchy.base_size()+1)
-    xnode = tree_hierarchy.center().get(0, tree_hierarchy.base_size())
+    spl = tree_hierarchy.ispl_n2n.get(0, tree_hierarchy.size()+1)
+    xnode = tree_hierarchy.center().get(0, tree_hierarchy.size())
 
     def m2m(x,m):
         return summarize_multipoles(spl, m, xnode, x, cfg=cfg)
@@ -49,8 +49,8 @@ def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
     mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
     loc, ilist = evaluate_interaction_hierarchy.jit(th, mph, cfg)
 
-    ispl = th.ispl_n2n.get(0, th.base_size()+1)
-    cent =  th.center().get(0, th.base_size())
+    ispl = th.ispl_n2n.get(0, th.size()+1)
+    cent =  th.center().get(0, th.size())
     def l2l(x,loc):
         return shift_local_to_children(ispl, loc, cent, x, cfg=cfg, pout=1)
 

@@ -104,7 +104,7 @@ evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_ar
 
 def evaluate_interaction_hierarchy(th: TreeHierarchy, mph: PackedArray, cfg: Config):
     # define root level:
-    size = th.base_size()
+    size = th.size()
     spl_nodes, ilist, nnodes_sup = grouped_dense_interaction_list(
         th.num(th.num_planes()-1), size_ilist=int(size*cfg.fmm.ilist_alloc_fac), ngroup=32, size_super=size
     )
@@ -267,8 +267,8 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg: Config) ->
     def eval_fwd(pos, mp, pout=1):
         mph = build_multipole_hierarchy(th, pos, mp, cfg=cfg)
         loc_node, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
-        ispl = th.ispl_n2n.get(0, th.base_size()+1)
-        xnode = th.center().get(0, th.base_size())
+        ispl = th.ispl_n2n.get(0, th.size()+1)
+        xnode = th.center().get(0, th.size())
         loc_part = shift_local_to_children(ispl, loc_node, xnode, pos, pout=pout, cfg=cfg)
         return (loc_part, ilist), (pos, mp, ispl, xnode, loc_node)
     
