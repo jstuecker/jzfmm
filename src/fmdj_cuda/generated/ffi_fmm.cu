@@ -21,6 +21,8 @@ nanobind::capsule EncapsulateFfiCall(T *fn) {
 namespace nb = nanobind;
 namespace ffi = xla::ffi;
 
+using DT = ffi::DataType;
+
 /* ---------------------------------------------------------------------------------------------- */
 /*                             FFI call to CUDA kernel: CountInteractionsAndM2L                   */
 /* ---------------------------------------------------------------------------------------------- */
@@ -70,23 +72,21 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         &opening_angle
     };
     
+
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<int>;
+    using TFunc = const void*;
 
-    using TFunctionType =
-        const void*
-    ;
-
-    static const std::map<TTuple, TFunctionType> instance_map = {
-        { {1}, reinterpret_cast<const void*>(&CountInteractionsAndM2L<1>) },
-        { {2}, reinterpret_cast<const void*>(&CountInteractionsAndM2L<2>) },
-        { {3}, reinterpret_cast<const void*>(&CountInteractionsAndM2L<3>) },
-        { {4}, reinterpret_cast<const void*>(&CountInteractionsAndM2L<4>) },
-        { {5}, reinterpret_cast<const void*>(&CountInteractionsAndM2L<5>) }
+    static const std::map<TTuple, TFunc> instance_map = {
+        { {1}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1>) },
+        { {2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<2>) },
+        { {3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<3>) },
+        { {4}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<4>) },
+        { {5}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<5>) }
     };
 
-    const TTuple key = TTuple{p};
+    const TTuple key = TTuple(p);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {

@@ -21,6 +21,8 @@ nanobind::capsule EncapsulateFfiCall(T *fn) {
 namespace nb = nanobind;
 namespace ffi = xla::ffi;
 
+using DT = ffi::DataType;
+
 /* ---------------------------------------------------------------------------------------------- */
 /*                             FFI call to CUDA kernel: ForceAndPotential                         */
 /* ---------------------------------------------------------------------------------------------- */
@@ -49,20 +51,18 @@ ffi::Error ForceAndPotentialFFIHost(
         &epsilon
     };
     
+
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<bool>;
+    using TFunc = const void*;
 
-    using TFunctionType =
-        const void*
-    ;
-
-    static const std::map<TTuple, TFunctionType> instance_map = {
-        { {true}, reinterpret_cast<const void*>(&ForceAndPotential<true>) },
-        { {false}, reinterpret_cast<const void*>(&ForceAndPotential<false>) }
+    static const std::map<TTuple, TFunc> instance_map = {
+        { {true}, reinterpret_cast<TFunc>(&ForceAndPotential<true>) },
+        { {false}, reinterpret_cast<TFunc>(&ForceAndPotential<false>) }
     };
 
-    const TTuple key = TTuple{kahan};
+    const TTuple key = TTuple(kahan);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
@@ -133,20 +133,18 @@ ffi::Error BwdForceAndPotentialFFIHost(
         &epsilon
     };
     
+
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<bool>;
+    using TFunc = const void*;
 
-    using TFunctionType =
-        const void*
-    ;
-
-    static const std::map<TTuple, TFunctionType> instance_map = {
-        { {true}, reinterpret_cast<const void*>(&BwdForceAndPotential<true>) },
-        { {false}, reinterpret_cast<const void*>(&BwdForceAndPotential<false>) }
+    static const std::map<TTuple, TFunc> instance_map = {
+        { {true}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true>) },
+        { {false}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false>) }
     };
 
-    const TTuple key = TTuple{kahan};
+    const TTuple key = TTuple(kahan);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
@@ -225,20 +223,18 @@ ffi::Error GroupedForceAndPotFFIHost(
         &softening
     };
     
+
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<bool>;
+    using TFunc = const void*;
 
-    using TFunctionType =
-        const void*
-    ;
-
-    static const std::map<TTuple, TFunctionType> instance_map = {
-        { {true}, reinterpret_cast<const void*>(&GroupedForceAndPot<true>) },
-        { {false}, reinterpret_cast<const void*>(&GroupedForceAndPot<false>) }
+    static const std::map<TTuple, TFunc> instance_map = {
+        { {true}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true>) },
+        { {false}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false>) }
     };
 
-    const TTuple key = TTuple{kahan};
+    const TTuple key = TTuple(kahan);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
@@ -323,20 +319,18 @@ ffi::Error BwdGroupedForceAndPotFFIHost(
         &softening
     };
     
+
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<bool>;
+    using TFunc = const void*;
 
-    using TFunctionType =
-        const void*
-    ;
-
-    static const std::map<TTuple, TFunctionType> instance_map = {
-        { {true}, reinterpret_cast<const void*>(&BwdGroupedForceAndPot<true>) },
-        { {false}, reinterpret_cast<const void*>(&BwdGroupedForceAndPot<false>) }
+    static const std::map<TTuple, TFunc> instance_map = {
+        { {true}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true>) },
+        { {false}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false>) }
     };
 
-    const TTuple key = TTuple{kahan};
+    const TTuple key = TTuple(kahan);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
