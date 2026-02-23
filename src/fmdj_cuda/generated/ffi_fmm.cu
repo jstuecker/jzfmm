@@ -25,6 +25,7 @@ namespace ffi = xla::ffi;
 /*                             FFI call to CUDA kernel: CountInteractionsAndM2L                   */
 /* ---------------------------------------------------------------------------------------------- */
 
+
 ffi::Error CountInteractionsAndM2LFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer node_range,
@@ -48,54 +49,63 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     cudaMemsetAsync(ilist_child_count_out->untyped_data(), 0, ilist_child_count_out->size_bytes(), stream);
     
     // Build a bundled argument list for cudaLaunchKernel
-    // For pointers we need to create a pointer to the pointer
-    int2* node_range_val = reinterpret_cast<int2*>(node_range.untyped_data());
-    int* spl_nodes_val = reinterpret_cast<int*>(spl_nodes.untyped_data());
-    int* spl_ilist_val = reinterpret_cast<int*>(spl_ilist.untyped_data());
-    int* ilist_nodes_val = reinterpret_cast<int*>(ilist_nodes.untyped_data());
-    Node* children_val = reinterpret_cast<Node*>(children.untyped_data());
-    float* mp_values_val = reinterpret_cast<float*>(mp_values.untyped_data());
-    float* loc_out_val = reinterpret_cast<float*>(loc_out->untyped_data());
-    int* ilist_child_count_out_val = reinterpret_cast<int*>(ilist_child_count_out->untyped_data());
-
+    void* node_range_arg = node_range.untyped_data();
+    void* spl_nodes_arg = spl_nodes.untyped_data();
+    void* spl_ilist_arg = spl_ilist.untyped_data();
+    void* ilist_nodes_arg = ilist_nodes.untyped_data();
+    void* children_arg = children.untyped_data();
+    void* mp_values_arg = mp_values.untyped_data();
+    void* loc_out_arg = loc_out->untyped_data();
+    void* ilist_child_count_out_arg = ilist_child_count_out->untyped_data();
     void* args[] = {
-        &node_range_val,
-        &spl_nodes_val,
-        &spl_ilist_val,
-        &ilist_nodes_val,
-        &children_val,
-        &mp_values_val,
-        &loc_out_val,
-        &ilist_child_count_out_val,
+        &node_range_arg,
+        &spl_nodes_arg,
+        &spl_ilist_arg,
+        &ilist_nodes_arg,
+        &children_arg,
+        &mp_values_arg,
+        &loc_out_arg,
+        &ilist_child_count_out_arg,
         &softening,
         &opening_angle
     };
     
-    // We have template parameters, so we need to instantiate all valid templates
-    // For this we select a function pointer through a map
+    // We have template parameters, so we need to instantiate all valid templates.
+    // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<int>;
-    using TFunctionType = decltype(CountInteractionsAndM2L<1>);
 
-    std::map<TTuple, TFunctionType*> instance_map;
-    instance_map[{1}] = CountInteractionsAndM2L<1>;
-    instance_map[{2}] = CountInteractionsAndM2L<2>;
-    instance_map[{3}] = CountInteractionsAndM2L<3>;
-    instance_map[{4}] = CountInteractionsAndM2L<4>;
-    instance_map[{5}] = CountInteractionsAndM2L<5>;
+    using TFunctionType =
+        const void*
+    ;
 
-    auto it = instance_map.find({p});
+    static const std::map<TTuple, TFunctionType> instance_map = {
+        { {1}, reinterpret_cast<const void*>(&CountInteractionsAndM2L<1>) },
+        { {2}, reinterpret_cast<const void*>(&CountInteractionsAndM2L<2>) },
+        { {3}, reinterpret_cast<const void*>(&CountInteractionsAndM2L<3>) },
+        { {4}, reinterpret_cast<const void*>(&CountInteractionsAndM2L<4>) },
+        { {5}, reinterpret_cast<const void*>(&CountInteractionsAndM2L<5>) }
+    };
 
-    if(it == instance_map.end()) {
+    const TTuple key = TTuple{p};
+
+    const auto it = instance_map.find(key);
+    if (it == instance_map.end()) {
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p)"\
             " in CountInteractionsAndM2LFFIHost -- Only supporting:\n"\
             "(1), (2), (3), (4), (5)"
         );
     }
+    const void* instance = it->second;
 
-    TFunctionType* instance = it->second;
-    
-    cudaLaunchKernel((const void*)instance, gridDim, blockDim, args, smem, stream);
+    cudaLaunchKernel(
+        instance,
+        gridDim,
+        blockDim,
+        args,
+        smem,
+        stream
+    );
 
     cudaError_t last_error = cudaGetLastError();
     if (last_error != cudaSuccess) {
@@ -126,6 +136,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 /*                             FFI call to CUDA kernel: InsertInteractions                        */
 /* ---------------------------------------------------------------------------------------------- */
 
+
 ffi::Error InsertInteractionsFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer node_range,
@@ -142,26 +153,33 @@ ffi::Error InsertInteractionsFFIHost(
     size_t smem = 0;
     
     // Build a bundled argument list for cudaLaunchKernel
-    // For pointers we need to create a pointer to the pointer
-    int2* node_range_val = reinterpret_cast<int2*>(node_range.untyped_data());
-    int* spl_nodes_val = reinterpret_cast<int*>(spl_nodes.untyped_data());
-    int* spl_ilist_val = reinterpret_cast<int*>(spl_ilist.untyped_data());
-    int* ilist_nodes_val = reinterpret_cast<int*>(ilist_nodes.untyped_data());
-    Node* children_val = reinterpret_cast<Node*>(children.untyped_data());
-    int* spl_ilist_child_val = reinterpret_cast<int*>(spl_ilist_child.untyped_data());
-    int* child_ilist_out_val = reinterpret_cast<int*>(child_ilist_out->untyped_data());
-
+    void* node_range_arg = node_range.untyped_data();
+    void* spl_nodes_arg = spl_nodes.untyped_data();
+    void* spl_ilist_arg = spl_ilist.untyped_data();
+    void* ilist_nodes_arg = ilist_nodes.untyped_data();
+    void* children_arg = children.untyped_data();
+    void* spl_ilist_child_arg = spl_ilist_child.untyped_data();
+    void* child_ilist_out_arg = child_ilist_out->untyped_data();
     void* args[] = {
-        &node_range_val,
-        &spl_nodes_val,
-        &spl_ilist_val,
-        &ilist_nodes_val,
-        &children_val,
-        &spl_ilist_child_val,
-        &child_ilist_out_val,
+        &node_range_arg,
+        &spl_nodes_arg,
+        &spl_ilist_arg,
+        &ilist_nodes_arg,
+        &children_arg,
+        &spl_ilist_child_arg,
+        &child_ilist_out_arg,
         &opening_angle
     };
-    cudaLaunchKernel((const void*)InsertInteractions, gridDim, blockDim, args, smem, stream);
+    const void* instance = (const void*)InsertInteractions;
+
+    cudaLaunchKernel(
+        instance,
+        gridDim,
+        blockDim,
+        args,
+        smem,
+        stream
+    );
 
     cudaError_t last_error = cudaGetLastError();
     if (last_error != cudaSuccess) {

@@ -25,6 +25,7 @@ namespace ffi = xla::ffi;
 /*                             FFI call to CUDA kernel: SummarizeMultipoles                       */
 /* ---------------------------------------------------------------------------------------------- */
 
+
 ffi::Error SummarizeMultipolesFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer isplit,
@@ -43,49 +44,58 @@ ffi::Error SummarizeMultipolesFFIHost(
     size_t smem = 0;
     
     // Build a bundled argument list for cudaLaunchKernel
-    // For pointers we need to create a pointer to the pointer
-    int* isplit_val = reinterpret_cast<int*>(isplit.untyped_data());
-    float* mp_in_val = reinterpret_cast<float*>(mp_in.untyped_data());
-    float3* xnode_val = reinterpret_cast<float3*>(xnode.untyped_data());
-    float3* xchild_val = reinterpret_cast<float3*>(xchild.untyped_data());
-    float* mp_out_val = reinterpret_cast<float*>(mp_out->untyped_data());
-
+    void* isplit_arg = isplit.untyped_data();
+    void* mp_in_arg = mp_in.untyped_data();
+    void* xnode_arg = xnode.untyped_data();
+    void* xchild_arg = xchild.untyped_data();
+    void* mp_out_arg = mp_out->untyped_data();
     void* args[] = {
-        &isplit_val,
-        &mp_in_val,
-        &xnode_val,
-        &xchild_val,
-        &mp_out_val,
+        &isplit_arg,
+        &mp_in_arg,
+        &xnode_arg,
+        &xchild_arg,
+        &mp_out_arg,
         &nnodes,
         &p_in,
         &kahan
     };
     
-    // We have template parameters, so we need to instantiate all valid templates
-    // For this we select a function pointer through a map
+    // We have template parameters, so we need to instantiate all valid templates.
+    // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<int>;
-    using TFunctionType = decltype(SummarizeMultipoles<1>);
 
-    std::map<TTuple, TFunctionType*> instance_map;
-    instance_map[{1}] = SummarizeMultipoles<1>;
-    instance_map[{2}] = SummarizeMultipoles<2>;
-    instance_map[{3}] = SummarizeMultipoles<3>;
-    instance_map[{4}] = SummarizeMultipoles<4>;
-    instance_map[{5}] = SummarizeMultipoles<5>;
+    using TFunctionType =
+        const void*
+    ;
 
-    auto it = instance_map.find({p});
+    static const std::map<TTuple, TFunctionType> instance_map = {
+        { {1}, reinterpret_cast<const void*>(&SummarizeMultipoles<1>) },
+        { {2}, reinterpret_cast<const void*>(&SummarizeMultipoles<2>) },
+        { {3}, reinterpret_cast<const void*>(&SummarizeMultipoles<3>) },
+        { {4}, reinterpret_cast<const void*>(&SummarizeMultipoles<4>) },
+        { {5}, reinterpret_cast<const void*>(&SummarizeMultipoles<5>) }
+    };
 
-    if(it == instance_map.end()) {
+    const TTuple key = TTuple{p};
+
+    const auto it = instance_map.find(key);
+    if (it == instance_map.end()) {
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p)"\
             " in SummarizeMultipolesFFIHost -- Only supporting:\n"\
             "(1), (2), (3), (4), (5)"
         );
     }
+    const void* instance = it->second;
 
-    TFunctionType* instance = it->second;
-    
-    cudaLaunchKernel((const void*)instance, gridDim, blockDim, args, smem, stream);
+    cudaLaunchKernel(
+        instance,
+        gridDim,
+        blockDim,
+        args,
+        smem,
+        stream
+    );
 
     cudaError_t last_error = cudaGetLastError();
     if (last_error != cudaSuccess) {
@@ -114,6 +124,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 /*                             FFI call to CUDA kernel: TranslateLocalToLocal                     */
 /* ---------------------------------------------------------------------------------------------- */
 
+
 ffi::Error TranslateLocalToLocalFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer isplit,
@@ -134,48 +145,57 @@ ffi::Error TranslateLocalToLocalFFIHost(
     cudaMemsetAsync(loc_child->untyped_data(), 0, loc_child->size_bytes(), stream);
     
     // Build a bundled argument list for cudaLaunchKernel
-    // For pointers we need to create a pointer to the pointer
-    int* isplit_val = reinterpret_cast<int*>(isplit.untyped_data());
-    float* loc_node_val = reinterpret_cast<float*>(loc_node.untyped_data());
-    float3* xnode_val = reinterpret_cast<float3*>(xnode.untyped_data());
-    float3* xchild_val = reinterpret_cast<float3*>(xchild.untyped_data());
-    float* loc_child_val = reinterpret_cast<float*>(loc_child->untyped_data());
-
+    void* isplit_arg = isplit.untyped_data();
+    void* loc_node_arg = loc_node.untyped_data();
+    void* xnode_arg = xnode.untyped_data();
+    void* xchild_arg = xchild.untyped_data();
+    void* loc_child_arg = loc_child->untyped_data();
     void* args[] = {
-        &isplit_val,
-        &loc_node_val,
-        &xnode_val,
-        &xchild_val,
-        &loc_child_val,
+        &isplit_arg,
+        &loc_node_arg,
+        &xnode_arg,
+        &xchild_arg,
+        &loc_child_arg,
         &nnodes,
         &pout
     };
     
-    // We have template parameters, so we need to instantiate all valid templates
-    // For this we select a function pointer through a map
+    // We have template parameters, so we need to instantiate all valid templates.
+    // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<int>;
-    using TFunctionType = decltype(TranslateLocalToLocal<1>);
 
-    std::map<TTuple, TFunctionType*> instance_map;
-    instance_map[{1}] = TranslateLocalToLocal<1>;
-    instance_map[{2}] = TranslateLocalToLocal<2>;
-    instance_map[{3}] = TranslateLocalToLocal<3>;
-    instance_map[{4}] = TranslateLocalToLocal<4>;
-    instance_map[{5}] = TranslateLocalToLocal<5>;
+    using TFunctionType =
+        const void*
+    ;
 
-    auto it = instance_map.find({p});
+    static const std::map<TTuple, TFunctionType> instance_map = {
+        { {1}, reinterpret_cast<const void*>(&TranslateLocalToLocal<1>) },
+        { {2}, reinterpret_cast<const void*>(&TranslateLocalToLocal<2>) },
+        { {3}, reinterpret_cast<const void*>(&TranslateLocalToLocal<3>) },
+        { {4}, reinterpret_cast<const void*>(&TranslateLocalToLocal<4>) },
+        { {5}, reinterpret_cast<const void*>(&TranslateLocalToLocal<5>) }
+    };
 
-    if(it == instance_map.end()) {
+    const TTuple key = TTuple{p};
+
+    const auto it = instance_map.find(key);
+    if (it == instance_map.end()) {
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p)"\
             " in TranslateLocalToLocalFFIHost -- Only supporting:\n"\
             "(1), (2), (3), (4), (5)"
         );
     }
+    const void* instance = it->second;
 
-    TFunctionType* instance = it->second;
-    
-    cudaLaunchKernel((const void*)instance, gridDim, blockDim, args, smem, stream);
+    cudaLaunchKernel(
+        instance,
+        gridDim,
+        blockDim,
+        args,
+        smem,
+        stream
+    );
 
     cudaError_t last_error = cudaGetLastError();
     if (last_error != cudaSuccess) {
@@ -203,6 +223,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 /*                             FFI call to CUDA kernel: TranslateLocalToLocal_XVJP                */
 /* ---------------------------------------------------------------------------------------------- */
 
+
 ffi::Error TranslateLocalToLocal_XVJPFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer isplit,
@@ -221,50 +242,59 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
     size_t smem = 0;
     
     // Build a bundled argument list for cudaLaunchKernel
-    // For pointers we need to create a pointer to the pointer
-    int* isplit_val = reinterpret_cast<int*>(isplit.untyped_data());
-    float* loc_node_val = reinterpret_cast<float*>(loc_node.untyped_data());
-    float3* xnode_val = reinterpret_cast<float3*>(xnode.untyped_data());
-    float3* xchild_val = reinterpret_cast<float3*>(xchild.untyped_data());
-    float* g_loc_child_val = reinterpret_cast<float*>(g_loc_child.untyped_data());
-    float3* g_xchild_val = reinterpret_cast<float3*>(g_xchild->untyped_data());
-
+    void* isplit_arg = isplit.untyped_data();
+    void* loc_node_arg = loc_node.untyped_data();
+    void* xnode_arg = xnode.untyped_data();
+    void* xchild_arg = xchild.untyped_data();
+    void* g_loc_child_arg = g_loc_child.untyped_data();
+    void* g_xchild_arg = g_xchild->untyped_data();
     void* args[] = {
-        &isplit_val,
-        &loc_node_val,
-        &xnode_val,
-        &xchild_val,
-        &g_loc_child_val,
-        &g_xchild_val,
+        &isplit_arg,
+        &loc_node_arg,
+        &xnode_arg,
+        &xchild_arg,
+        &g_loc_child_arg,
+        &g_xchild_arg,
         &nnodes,
         &pout
     };
     
-    // We have template parameters, so we need to instantiate all valid templates
-    // For this we select a function pointer through a map
+    // We have template parameters, so we need to instantiate all valid templates.
+    // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<int>;
-    using TFunctionType = decltype(TranslateLocalToLocal_XVJP<1>);
 
-    std::map<TTuple, TFunctionType*> instance_map;
-    instance_map[{1}] = TranslateLocalToLocal_XVJP<1>;
-    instance_map[{2}] = TranslateLocalToLocal_XVJP<2>;
-    instance_map[{3}] = TranslateLocalToLocal_XVJP<3>;
-    instance_map[{4}] = TranslateLocalToLocal_XVJP<4>;
-    instance_map[{5}] = TranslateLocalToLocal_XVJP<5>;
+    using TFunctionType =
+        const void*
+    ;
 
-    auto it = instance_map.find({p});
+    static const std::map<TTuple, TFunctionType> instance_map = {
+        { {1}, reinterpret_cast<const void*>(&TranslateLocalToLocal_XVJP<1>) },
+        { {2}, reinterpret_cast<const void*>(&TranslateLocalToLocal_XVJP<2>) },
+        { {3}, reinterpret_cast<const void*>(&TranslateLocalToLocal_XVJP<3>) },
+        { {4}, reinterpret_cast<const void*>(&TranslateLocalToLocal_XVJP<4>) },
+        { {5}, reinterpret_cast<const void*>(&TranslateLocalToLocal_XVJP<5>) }
+    };
 
-    if(it == instance_map.end()) {
+    const TTuple key = TTuple{p};
+
+    const auto it = instance_map.find(key);
+    if (it == instance_map.end()) {
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p)"\
             " in TranslateLocalToLocal_XVJPFFIHost -- Only supporting:\n"\
             "(1), (2), (3), (4), (5)"
         );
     }
+    const void* instance = it->second;
 
-    TFunctionType* instance = it->second;
-    
-    cudaLaunchKernel((const void*)instance, gridDim, blockDim, args, smem, stream);
+    cudaLaunchKernel(
+        instance,
+        gridDim,
+        blockDim,
+        args,
+        smem,
+        stream
+    );
 
     cudaError_t last_error = cudaGetLastError();
     if (last_error != cudaSuccess) {

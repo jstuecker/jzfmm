@@ -25,6 +25,7 @@ namespace ffi = xla::ffi;
 /*                             FFI call to CUDA kernel: ForceAndPotential                         */
 /* ---------------------------------------------------------------------------------------------- */
 
+
 ffi::Error ForceAndPotentialFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer xm,
@@ -39,39 +40,48 @@ ffi::Error ForceAndPotentialFFIHost(
     size_t smem = blockDim.x * sizeof(float4);
     
     // Build a bundled argument list for cudaLaunchKernel
-    // For pointers we need to create a pointer to the pointer
-    PosMass* xm_val = reinterpret_cast<PosMass*>(xm.untyped_data());
-    LocalExp* loc_out_val = reinterpret_cast<LocalExp*>(loc_out->untyped_data());
-
+    void* xm_arg = xm.untyped_data();
+    void* loc_out_arg = loc_out->untyped_data();
     void* args[] = {
-        &xm_val,
-        &loc_out_val,
+        &xm_arg,
+        &loc_out_arg,
         &n,
         &epsilon
     };
     
-    // We have template parameters, so we need to instantiate all valid templates
-    // For this we select a function pointer through a map
+    // We have template parameters, so we need to instantiate all valid templates.
+    // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<bool>;
-    using TFunctionType = decltype(ForceAndPotential<true>);
 
-    std::map<TTuple, TFunctionType*> instance_map;
-    instance_map[{true}] = ForceAndPotential<true>;
-    instance_map[{false}] = ForceAndPotential<false>;
+    using TFunctionType =
+        const void*
+    ;
 
-    auto it = instance_map.find({kahan});
+    static const std::map<TTuple, TFunctionType> instance_map = {
+        { {true}, reinterpret_cast<const void*>(&ForceAndPotential<true>) },
+        { {false}, reinterpret_cast<const void*>(&ForceAndPotential<false>) }
+    };
 
-    if(it == instance_map.end()) {
+    const TTuple key = TTuple{kahan};
+
+    const auto it = instance_map.find(key);
+    if (it == instance_map.end()) {
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan)"\
             " in ForceAndPotentialFFIHost -- Only supporting:\n"\
             "(true), (false)"
         );
     }
+    const void* instance = it->second;
 
-    TFunctionType* instance = it->second;
-    
-    cudaLaunchKernel((const void*)instance, gridDim, blockDim, args, smem, stream);
+    cudaLaunchKernel(
+        instance,
+        gridDim,
+        blockDim,
+        args,
+        smem,
+        stream
+    );
 
     cudaError_t last_error = cudaGetLastError();
     if (last_error != cudaSuccess) {
@@ -96,6 +106,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 /*                             FFI call to CUDA kernel: BwdForceAndPotential                      */
 /* ---------------------------------------------------------------------------------------------- */
 
+
 ffi::Error BwdForceAndPotentialFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer gloc,
@@ -111,41 +122,50 @@ ffi::Error BwdForceAndPotentialFFIHost(
     size_t smem = 2 * blockDim.x * sizeof(float4);
     
     // Build a bundled argument list for cudaLaunchKernel
-    // For pointers we need to create a pointer to the pointer
-    LocalExp* gloc_val = reinterpret_cast<LocalExp*>(gloc.untyped_data());
-    PosMass* xm_val = reinterpret_cast<PosMass*>(xm.untyped_data());
-    PosMass* gxm_val = reinterpret_cast<PosMass*>(gxm->untyped_data());
-
+    void* gloc_arg = gloc.untyped_data();
+    void* xm_arg = xm.untyped_data();
+    void* gxm_arg = gxm->untyped_data();
     void* args[] = {
-        &gloc_val,
-        &xm_val,
-        &gxm_val,
+        &gloc_arg,
+        &xm_arg,
+        &gxm_arg,
         &n,
         &epsilon
     };
     
-    // We have template parameters, so we need to instantiate all valid templates
-    // For this we select a function pointer through a map
+    // We have template parameters, so we need to instantiate all valid templates.
+    // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<bool>;
-    using TFunctionType = decltype(BwdForceAndPotential<true>);
 
-    std::map<TTuple, TFunctionType*> instance_map;
-    instance_map[{true}] = BwdForceAndPotential<true>;
-    instance_map[{false}] = BwdForceAndPotential<false>;
+    using TFunctionType =
+        const void*
+    ;
 
-    auto it = instance_map.find({kahan});
+    static const std::map<TTuple, TFunctionType> instance_map = {
+        { {true}, reinterpret_cast<const void*>(&BwdForceAndPotential<true>) },
+        { {false}, reinterpret_cast<const void*>(&BwdForceAndPotential<false>) }
+    };
 
-    if(it == instance_map.end()) {
+    const TTuple key = TTuple{kahan};
+
+    const auto it = instance_map.find(key);
+    if (it == instance_map.end()) {
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan)"\
             " in BwdForceAndPotentialFFIHost -- Only supporting:\n"\
             "(true), (false)"
         );
     }
+    const void* instance = it->second;
 
-    TFunctionType* instance = it->second;
-    
-    cudaLaunchKernel((const void*)instance, gridDim, blockDim, args, smem, stream);
+    cudaLaunchKernel(
+        instance,
+        gridDim,
+        blockDim,
+        args,
+        smem,
+        stream
+    );
 
     cudaError_t last_error = cudaGetLastError();
     if (last_error != cudaSuccess) {
@@ -171,6 +191,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 /*                             FFI call to CUDA kernel: GroupedForceAndPot                        */
 /* ---------------------------------------------------------------------------------------------- */
 
+
 ffi::Error GroupedForceAndPotFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer node_range,
@@ -188,46 +209,55 @@ ffi::Error GroupedForceAndPotFFIHost(
     size_t smem = blockDim.x * sizeof(float4);
     
     // Build a bundled argument list for cudaLaunchKernel
-    // For pointers we need to create a pointer to the pointer
-    int2* node_range_val = reinterpret_cast<int2*>(node_range.untyped_data());
-    int* spl_nodes_val = reinterpret_cast<int*>(spl_nodes.untyped_data());
-    int* spl_ilist_val = reinterpret_cast<int*>(spl_ilist.untyped_data());
-    int* ilist_nodes_val = reinterpret_cast<int*>(ilist_nodes.untyped_data());
-    PosMass* posm_val = reinterpret_cast<PosMass*>(posm.untyped_data());
-    LocalExp* loc_out_val = reinterpret_cast<LocalExp*>(loc_out->untyped_data());
-
+    void* node_range_arg = node_range.untyped_data();
+    void* spl_nodes_arg = spl_nodes.untyped_data();
+    void* spl_ilist_arg = spl_ilist.untyped_data();
+    void* ilist_nodes_arg = ilist_nodes.untyped_data();
+    void* posm_arg = posm.untyped_data();
+    void* loc_out_arg = loc_out->untyped_data();
     void* args[] = {
-        &node_range_val,
-        &spl_nodes_val,
-        &spl_ilist_val,
-        &ilist_nodes_val,
-        &posm_val,
-        &loc_out_val,
+        &node_range_arg,
+        &spl_nodes_arg,
+        &spl_ilist_arg,
+        &ilist_nodes_arg,
+        &posm_arg,
+        &loc_out_arg,
         &softening
     };
     
-    // We have template parameters, so we need to instantiate all valid templates
-    // For this we select a function pointer through a map
+    // We have template parameters, so we need to instantiate all valid templates.
+    // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<bool>;
-    using TFunctionType = decltype(GroupedForceAndPot<true>);
 
-    std::map<TTuple, TFunctionType*> instance_map;
-    instance_map[{true}] = GroupedForceAndPot<true>;
-    instance_map[{false}] = GroupedForceAndPot<false>;
+    using TFunctionType =
+        const void*
+    ;
 
-    auto it = instance_map.find({kahan});
+    static const std::map<TTuple, TFunctionType> instance_map = {
+        { {true}, reinterpret_cast<const void*>(&GroupedForceAndPot<true>) },
+        { {false}, reinterpret_cast<const void*>(&GroupedForceAndPot<false>) }
+    };
 
-    if(it == instance_map.end()) {
+    const TTuple key = TTuple{kahan};
+
+    const auto it = instance_map.find(key);
+    if (it == instance_map.end()) {
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan)"\
             " in GroupedForceAndPotFFIHost -- Only supporting:\n"\
             "(true), (false)"
         );
     }
+    const void* instance = it->second;
 
-    TFunctionType* instance = it->second;
-    
-    cudaLaunchKernel((const void*)instance, gridDim, blockDim, args, smem, stream);
+    cudaLaunchKernel(
+        instance,
+        gridDim,
+        blockDim,
+        args,
+        smem,
+        stream
+    );
 
     cudaError_t last_error = cudaGetLastError();
     if (last_error != cudaSuccess) {
@@ -256,6 +286,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 /*                             FFI call to CUDA kernel: BwdGroupedForceAndPot                     */
 /* ---------------------------------------------------------------------------------------------- */
 
+
 ffi::Error BwdGroupedForceAndPotFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer node_range,
@@ -274,48 +305,57 @@ ffi::Error BwdGroupedForceAndPotFFIHost(
     size_t smem = 2 * blockDim.x * sizeof(float4);
     
     // Build a bundled argument list for cudaLaunchKernel
-    // For pointers we need to create a pointer to the pointer
-    int2* node_range_val = reinterpret_cast<int2*>(node_range.untyped_data());
-    int* spl_nodes_val = reinterpret_cast<int*>(spl_nodes.untyped_data());
-    int* spl_ilist_val = reinterpret_cast<int*>(spl_ilist.untyped_data());
-    int* ilist_nodes_val = reinterpret_cast<int*>(ilist_nodes.untyped_data());
-    PosMass* posm_val = reinterpret_cast<PosMass*>(posm.untyped_data());
-    LocalExp* gloc_val = reinterpret_cast<LocalExp*>(gloc.untyped_data());
-    PosMass* gposm_out_val = reinterpret_cast<PosMass*>(gposm_out->untyped_data());
-
+    void* node_range_arg = node_range.untyped_data();
+    void* spl_nodes_arg = spl_nodes.untyped_data();
+    void* spl_ilist_arg = spl_ilist.untyped_data();
+    void* ilist_nodes_arg = ilist_nodes.untyped_data();
+    void* posm_arg = posm.untyped_data();
+    void* gloc_arg = gloc.untyped_data();
+    void* gposm_out_arg = gposm_out->untyped_data();
     void* args[] = {
-        &node_range_val,
-        &spl_nodes_val,
-        &spl_ilist_val,
-        &ilist_nodes_val,
-        &posm_val,
-        &gloc_val,
-        &gposm_out_val,
+        &node_range_arg,
+        &spl_nodes_arg,
+        &spl_ilist_arg,
+        &ilist_nodes_arg,
+        &posm_arg,
+        &gloc_arg,
+        &gposm_out_arg,
         &softening
     };
     
-    // We have template parameters, so we need to instantiate all valid templates
-    // For this we select a function pointer through a map
+    // We have template parameters, so we need to instantiate all valid templates.
+    // We select a function pointer through a map with a stable, type-erased signature.
     using TTuple = std::tuple<bool>;
-    using TFunctionType = decltype(BwdGroupedForceAndPot<true>);
 
-    std::map<TTuple, TFunctionType*> instance_map;
-    instance_map[{true}] = BwdGroupedForceAndPot<true>;
-    instance_map[{false}] = BwdGroupedForceAndPot<false>;
+    using TFunctionType =
+        const void*
+    ;
 
-    auto it = instance_map.find({kahan});
+    static const std::map<TTuple, TFunctionType> instance_map = {
+        { {true}, reinterpret_cast<const void*>(&BwdGroupedForceAndPot<true>) },
+        { {false}, reinterpret_cast<const void*>(&BwdGroupedForceAndPot<false>) }
+    };
 
-    if(it == instance_map.end()) {
+    const TTuple key = TTuple{kahan};
+
+    const auto it = instance_map.find(key);
+    if (it == instance_map.end()) {
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan)"\
             " in BwdGroupedForceAndPotFFIHost -- Only supporting:\n"\
             "(true), (false)"
         );
     }
+    const void* instance = it->second;
 
-    TFunctionType* instance = it->second;
-    
-    cudaLaunchKernel((const void*)instance, gridDim, blockDim, args, smem, stream);
+    cudaLaunchKernel(
+        instance,
+        gridDim,
+        blockDim,
+        args,
+        smem,
+        stream
+    );
 
     cudaError_t last_error = cudaGetLastError();
     if (last_error != cudaSuccess) {
