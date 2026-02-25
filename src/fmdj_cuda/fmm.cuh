@@ -20,7 +20,7 @@ __device__ __forceinline__ bool OpeningCriterion(
     float Lmax = fmaxf(fmaxf(Ltot.x, Ltot.y), Ltot.z);
     float L2 = Lmax * Lmax;
 
-    bool need_open = L2 > opening_angle * opening_angle * r2;
+    bool need_open = L2 >= opening_angle * opening_angle * r2;
     // also open if L2 had an overflow (and r2 is valid)
     need_open = need_open || ((isnan(L2) || isinf(L2)) && !isnan(r2));
     return need_open;
