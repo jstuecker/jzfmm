@@ -99,7 +99,7 @@ def build_multipole_hierarchy(th: TreeHierarchy, pos: jax.Array, mp: jax.Array, 
             mp = jnp.broadcast_to(mp, jnp.broadcast_shapes(pos.shape[:-1] + (1,), jnp.shape(mp)))
 
     size = th.ispl_n2n.size()-1
-    mp0 = summarize_multipoles(th.ispl_n2n.get(0, size), mp, th.center().get(0, size), pos, cfg=cfg)
+    mp0 = summarize_multipoles(th.splits_leaf_to_part(size=size+1), mp, th.center().get(0, size), pos, cfg=cfg)
 
     mph = PackedArray.create_empty(
         (size, num_multi(cfg.fmm.p)), levels=th.num_planes(), dtype=jnp.float32, fill_values=jnp.nan

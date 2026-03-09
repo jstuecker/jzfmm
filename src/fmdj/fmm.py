@@ -267,7 +267,7 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg: Config) ->
     def eval_fwd(pos, mp, pout=1):
         mph = build_multipole_hierarchy(th, pos, mp, cfg=cfg)
         loc_node, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
-        ispl = th.ispl_n2n.get(0, th.size()+1)
+        ispl = th.splits_leaf_to_part()
         xnode = th.center().get(0, th.size())
         loc_part = shift_local_to_children(ispl, loc_node, xnode, pos, pout=pout, cfg=cfg)
         return (loc_part, ilist), (pos, mp, ispl, xnode, loc_node)
@@ -305,9 +305,9 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jax.Array | None = None, cfg
     th = build_tree_hierarchy(jax.lax.stop_gradient(partz), cfg.tree)
 
     loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg=cfg)
-    ispl = th.ispl_n2n.get(0, len(ilist.ispl))
+    spl = th.splits_leaf_to_part()
 
-    loc_leaf_leaf = grouped_force_and_pot(partz, ispl, jax.lax.stop_gradient(ilist), cfg=cfg)
+    loc_leaf_leaf = grouped_force_and_pot(partz, spl, jax.lax.stop_gradient(ilist), cfg=cfg)
     loc = loc_leaf_leaf + loc_node_node
 
     return LocalExpansion(loc * cfg.G())
