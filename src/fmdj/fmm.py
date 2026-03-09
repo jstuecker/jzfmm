@@ -12,7 +12,7 @@ from jztree.jax_ext import raise_if
 
 from .config import Config
 from .data import LocalExpansion
-from .multipoles import shift_local_to_children, build_multipole_hierarchy, local_readout_pos_vjp, p_of_num_multi, shift_local_to_children_vjp_x
+from .multipoles import _fmm_node_to_child, build_multipole_hierarchy, local_readout_pos_vjp, p_of_num_multi, shift_local_to_children_vjp_x
 
 import fmdj_cuda.ffi_fmm as ffi_fmm
 import fmdj_cuda.ffi_forces as ffi_forces
@@ -40,7 +40,7 @@ class FMMNodeData:
     loc: jax.Array
     num: jax.Array
 
-def evaluate_plane_interactions(
+def _fmm_node_to_node(
         node_range: jax.Array,
         node_ilist: InteractionList,
         spl: jax.Array,
@@ -100,49 +100,50 @@ def evaluate_plane_interactions(
     )
     
     return loc, new_ilist
-evaluate_plane_interactions.jit = jax.jit(evaluate_plane_interactions, static_argnames=['cfg'])
+_fmm_node_to_node.jit = jax.jit(_fmm_node_to_node, static_argnames=['cfg'])
 
-def evaluate_interaction_hierarchy(th: TreeHierarchy, mph: PackedArray, cfg: Config):
+def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
     # define root level:
     size = th.size()
-    spl_nodes, ilist, nnodes_sup = grouped_dense_interaction_list(
+    spl, ilist, nsup = grouped_dense_interaction_list(
         th.num(th.num_planes()-1), size_ilist=int(size*cfg.fmm.ilist_alloc_fac), ngroup=32, size_super=size
     )
-    node_data = FMMNodeData(
-        cent=jnp.zeros((size, 3), dtype=jnp.float32),
-        loc=jnp.zeros((size, mph.data.shape[-1]), dtype=jnp.float32),
-        num=nnodes_sup
-    )
+
+    loc = jnp.zeros((size, mph.data.shape[-1]), dtype=jnp.float32)
+
+    # Add super node data into tree information
+    spl_n2n = th.ispl_n2n.append(spl, nsup+1, fill_value=spl[-1], resize=True)
+    cent = th.center().append(jnp.zeros((size, 3), dtype=jnp.float32), nsup, fill_value=0., resize=True)
 
     def handle_level(i, carry):
-        ilevel = th.num_planes() - 1 - i
+        level = th.num_planes() - 1 - i
 
-        node_data, ilist, spl_nodes = carry
+        parent_loc, parent_ilist = carry
+        parent_spl = spl_n2n.get(level+1, size+1)
 
-        node_range = jnp.array([0, node_data.num], dtype=jnp.int32)
+        parent_range = jnp.array([0, spl_n2n.num(level+1)-1], dtype=jnp.int32)
         child_data = FMMChildData(
-            poslvl=PosLvl(pos=th.center().get(ilevel, size), lvl=th.lvl.get(ilevel, size)),
-            mp=mph.get(ilevel, size=size)
+            poslvl=PosLvl(pos=cent.get(level, size), lvl=th.lvl.get(level, size)),
+            mp=mph.get(level, size=size)
         )
 
-        loc_ch, ilist = evaluate_plane_interactions(node_range, ilist, spl_nodes, child_data, cfg=cfg)
-
-        loc_ch = loc_ch + shift_local_to_children(
-            spl_nodes, node_data.loc, node_data.cent, th.center().get(ilevel, size), cfg=cfg
+        loc_ch, ilist = _fmm_node_to_node(
+            parent_range, parent_ilist, parent_spl, child_data, cfg=cfg
         )
 
-        spl_nodes = th.ispl_n2n.get(ilevel, size+1)
-        node_data = FMMNodeData(th.center().get(ilevel, size), loc_ch, th.num(ilevel))
+        loc_ch = loc_ch + _fmm_node_to_child(
+            parent_spl, parent_loc, cent.get(level+1, size), cent.get(level, size), cfg=cfg
+        )
 
-        return node_data, ilist, spl_nodes
+        return loc_ch, ilist
 
     # unrolling the loop turns out better, since number of iterations tends to be very small
-    node_data, ilist, spl_nodes = jax.lax.fori_loop(
-        0, th.num_planes(), handle_level, (node_data, ilist, spl_nodes), unroll=True
+    loc, ilist = jax.lax.fori_loop(
+        0, th.num_planes(), handle_level, (loc, ilist), unroll=True
     )
 
-    return node_data.loc, ilist
-evaluate_interaction_hierarchy.jit = jax.jit(evaluate_interaction_hierarchy, static_argnames=['cfg'])
+    return loc, ilist
+_fmm_dual_walk.jit = jax.jit(_fmm_dual_walk, static_argnames=['cfg'])
 
 # ------------------------------------------------------------------------------------------------ #
 #                           Leaf-Leaf (Particle to Particle) Interactions                          #
@@ -266,10 +267,10 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg: Config) ->
     
     def eval_fwd(pos, mp, pout=1):
         mph = build_multipole_hierarchy(th, pos, mp, cfg=cfg)
-        loc_node, ilist = evaluate_interaction_hierarchy(th, mph, cfg=cfg)
+        loc_node, ilist = _fmm_dual_walk(th, mph, cfg=cfg)
         ispl = th.splits_leaf_to_part()
         xnode = th.center().get(0, th.size())
-        loc_part = shift_local_to_children(ispl, loc_node, xnode, pos, pout=pout, cfg=cfg)
+        loc_part = _fmm_node_to_child(ispl, loc_node, xnode, pos, pout=pout, cfg=cfg)
         return (loc_part, ilist), (pos, mp, ispl, xnode, loc_node)
     
     def eval_bwd(pout, res, grads):

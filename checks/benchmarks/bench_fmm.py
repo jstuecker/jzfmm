@@ -7,8 +7,8 @@ from dataclasses import replace
 from fmdj.data import PosMass
 from jztree.tree import build_tree_hierarchy, pos_zorder_sort, center_of_mass
 from fmdj.multipoles import build_multipole_hierarchy
-from fmdj.fmm import evaluate_interaction_hierarchy, grouped_force_and_pot, fast_multipole_method
-from fmdj.multipoles import shift_local_to_children, summarize_multipoles
+from fmdj.fmm import _fmm_dual_walk, grouped_force_and_pot, fast_multipole_method
+from fmdj.multipoles import _fmm_node_to_child, summarize_multipoles
 
 @pytest.mark.shrink_in_quick(keep_index=2)
 @pytest.mark.parametrize("coarsen_fac", [2,4,6,8])
@@ -22,7 +22,7 @@ def bench_n2n_coarsen(jax_bench, pos_mass_z, cfg, coarsen_fac):
     
     jb = jax_bench(jit_rounds=100, jit_warmup=50)
 
-    jb.measure(fn_jit=evaluate_interaction_hierarchy.jit,
+    jb.measure(fn_jit=_fmm_dual_walk.jit,
         th=th, mph=mph, cfg=cfg
     )
 
@@ -36,7 +36,7 @@ def bench_leaf_size(jax_bench, pos_mass_z, cfg, max_leaf_size):
     th = build_tree_hierarchy.jit(pos_mass_z, cfg.tree)
     mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
 
-    res, (loc, ilist) = jb.measure(fn_jit=evaluate_interaction_hierarchy.jit,
+    res, (loc, ilist) = jb.measure(fn_jit=_fmm_dual_walk.jit,
         th=th, mph=mph, cfg=cfg, tag="node2node"
     )
 
@@ -77,9 +77,9 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
     mph = jb.measure(fn_jit=build_multipole_hierarchy.jit, 
                      th=th, pos=pos_mass_z.pos, mp=pos_mass_z.mass, cfg=cfg, tag="multipoles")[1]
 
-    loc, ilist = jb.measure(fn_jit=evaluate_interaction_hierarchy.jit, 
+    loc, ilist = jb.measure(fn_jit=_fmm_dual_walk.jit, 
                             th=th, mph=mph, cfg=cfg, tag="node2node")[1]
-    phif = jb.measure(fn_jit=shift_local_to_children.jit, 
+    phif = jb.measure(fn_jit=_fmm_node_to_child.jit, 
                       ispl=th.splits_leaf_to_part(), loc=loc, xnode=th.center().get(0, th.size()), xchild=pos_mass_z.pos,
                       cfg=cfg, pout=1,tag="loc2loc")[1]
     fphi = jb.measure(fn_jit=grouped_force_and_pot.jit,

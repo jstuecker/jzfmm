@@ -11,8 +11,8 @@ from jztree.tree import dense_interaction_list
 
 from fmdj.config import Config, FMMConfig
 from fmdj.data import PosMass
-from fmdj.multipoles import summarize_multipoles, build_multipole_hierarchy, shift_local_to_children
-from fmdj.fmm import evaluate_interaction_hierarchy, evaluate_node_node_fmm
+from fmdj.multipoles import summarize_multipoles, build_multipole_hierarchy, _fmm_node_to_child
+from fmdj.fmm import _fmm_dual_walk, evaluate_node_node_fmm
 from fmdj.fmm import direct_force_and_potential, grouped_force_and_pot, fast_multipole_method
 from fmdj.external_potential import UniformAcceleration
 from fmdj.time_integration import simulate
@@ -47,12 +47,12 @@ def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
     th = tree_hierarchy
     cfg = replace(cfg, softening=1e-1)
     mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
-    loc, ilist = evaluate_interaction_hierarchy.jit(th, mph, cfg)
+    loc, ilist = _fmm_dual_walk.jit(th, mph, cfg)
 
     ispl = th.splits_leaf_to_part()
     cent =  th.center().get(0, th.size())
     def l2l(x,loc):
-        return shift_local_to_children(ispl, loc, cent, x, cfg=cfg, pout=1)
+        return _fmm_node_to_child(ispl, loc, cent, x, cfg=cfg, pout=1)
 
     loc = loc.at[:,1:4].set(0.)
     check_grads(lambda x: l2l(x, loc), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-2)

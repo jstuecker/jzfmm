@@ -78,7 +78,7 @@ def summarize_multipoles(
     
     def eval_bwd(res, gmp_n):
         mp, xchild = res
-        gmp = shift_local_to_children(ispl, gmp_n, xnode, xchild, cfg=cfg, pout=pin)
+        gmp = _fmm_node_to_child(ispl, gmp_n, xnode, xchild, cfg=cfg, pout=pin)
         gx = shift_local_to_children_vjp_x(ispl, gmp_n, xnode, xchild, mp)
 
         return gx, gmp
@@ -173,7 +173,7 @@ def shift_local_to_children_vjp_x(
     )[0]
     return locnew
 
-def shift_local_to_children(
+def _fmm_node_to_child(
         ispl: jnp.array,
         loc: jnp.array,
         xnode: jnp.array,
@@ -206,7 +206,7 @@ def shift_local_to_children(
     eval.defvjp(eval_fwd, eval_bwd)
     
     return eval(xchild, loc)
-shift_local_to_children.jit = jax.jit(shift_local_to_children, static_argnames=["cfg", "pout"])
+_fmm_node_to_child.jit = jax.jit(_fmm_node_to_child, static_argnames=["cfg", "pout"])
 
 def multipole_readout_pos_vjp(mp: jax.Array, gmp: jax.Array):
     return local_readout_pos_vjp(gmp, mp) # turns out, math is identical with transposed inputs
