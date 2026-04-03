@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 
 from jztree.data import PosMass, InteractionList, get_pos_mass, TreeHierarchy, PosLvl, PackedArray
-from jztree.tree import pos_zorder_sort, build_tree_hierarchy, grouped_dense_interaction_list
+from jztree.tree import zsort, build_tree_hierarchy, grouped_dense_interaction_list
 from jztree.jax_ext import raise_if
 
 from .config import Config
@@ -317,7 +317,7 @@ fast_multipole_method_z.jit = jax.jit(fast_multipole_method_z, static_argnames=(
 def fast_multipole_method(part: PosMass, *, cfg: Config, pout: int = 1) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
 
-    partz, isortz = pos_zorder_sort(PosMass(pos=part.pos, mass=part.mass))
+    partz, isortz = zsort(PosMass(pos=part.pos, mass=part.mass))
 
     locz = fast_multipole_method_z(partz, cfg=cfg, pout=pout)
 

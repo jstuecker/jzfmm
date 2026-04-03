@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from fmdj.config import Config, FMMConfig
 from dataclasses import replace
 from fmdj.data import PosMass
-from jztree.tree import build_tree_hierarchy, pos_zorder_sort, center_of_mass
+from jztree.tree import build_tree_hierarchy, zsort, center_of_mass
 from fmdj.multipoles import build_multipole_hierarchy
 from fmdj.fmm import _fmm_dual_walk, grouped_force_and_pot, fast_multipole_method
 from fmdj.multipoles import _fmm_node_to_child, summarize_multipoles
@@ -69,7 +69,7 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
 
     jb = jax_bench(jit_rounds=40, jit_warmup=10)
 
-    posz, isortz = jb.measure(fn_jit=pos_zorder_sort.jit, x=pos_mass.pos, tag="zsort")[1]
+    posz, isortz = jb.measure(fn_jit=zsort.jit, x=pos_mass.pos, tag="zsort")[1]
     pos_mass_z = PosMass(pos=posz, mass=pos_mass.mass[isortz])
 
     th = jb.measure(fn_jit=build_tree_hierarchy.jit, part=pos_mass_z, cfg_tree=cfg.tree, tag="build_new")[1]

@@ -6,7 +6,7 @@ import sys
 from jztree.comm import should_init_jax_distributed
 from fmdj import Config
 from fmdj.data import Particles, PosMass, LocalExpansion
-from jztree.tree import pos_zorder_sort, build_tree_hierarchy
+from jztree.tree import zsort, build_tree_hierarchy
 
 # ------------------------------------------------------------------------------------------------ #
 #                                         Configure pytest                                         #
@@ -123,7 +123,7 @@ def pos_mass(npart):
 @pytest.fixture
 def pos_mass_z(npart):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
-    posz, isort = pos_zorder_sort(pos0)
+    posz, isort = zsort(pos0)
     return PosMass(pos=posz, mass=jnp.ones(posz.shape[0]))
 
 @pytest.fixture

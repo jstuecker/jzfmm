@@ -4,7 +4,6 @@ import jax.numpy as jnp
 import aegis
 from fmdj.data import PosMass, Particles
 from jztree.comm import get_rank_info
-from jztree.tree import pos_zorder_sort
 from jztree.jax_ext import tree_map_by_len
 
 def pad_pytree(x, num, num_pad, float_val=jnp.nan, int_val=0):
@@ -18,12 +17,10 @@ def pad_pytree(x, num, num_pad, float_val=jnp.nan, int_val=0):
 
     return tree_map_by_len(pad, x, num)
 
-def gaussian_blob(N, scale=1.0, mass=1., seed=0, zsort=False, npad=0):
+def gaussian_blob(N, scale=1.0, mass=1., seed=0, npad=0):
     rank, ndev, axis_name = get_rank_info()
 
     pos = jax.random.normal(jax.random.PRNGKey(seed), (N,3), dtype=jnp.float32) * scale
-    if zsort:
-        pos, isort = pos_zorder_sort(pos)
     mass0 = jnp.ones(len(pos), dtype=pos.dtype) * (mass/N)
     posmass = PosMass(pos=pos, mass=mass0, num=N, num_total=ndev*N)
 
@@ -43,7 +40,7 @@ def discodj_sim(res, zsort=False):
     from discodj_examples.simulations import disco_sim
     pos = disco_sim(res=res, res_pm=res)[1].reshape(-1,3)
     if zsort:
-        pos = jztree.tree.pos_zorder_sort(pos)[0]
+        pos = jztree.tree.zsort(pos)[0]
 
     mass = jnp.ones(len(pos), dtype=pos.dtype) / res**3
     return PosMass(pos=pos, mass=mass)
