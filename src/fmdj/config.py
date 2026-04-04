@@ -38,7 +38,7 @@ class OldConfig():
 @dataclass(unsafe_hash=True)
 class Config():
     # Sub config objects
-    tree : TreeConfig | None = TreeConfig()
+    tree : TreeConfig | None = TreeConfig(mass_centered=True)
     fmm : FMMConfig | None = FMMConfig()
     logging : LoggingConfig = LoggingConfig()
     old : OldConfig = OldConfig()

@@ -69,7 +69,7 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
 
     jb = jax_bench(jit_rounds=40, jit_warmup=10)
 
-    posz, isortz = jb.measure(fn_jit=zsort.jit, x=pos_mass.pos, tag="zsort")[1]
+    posz, isortz = jb.measure(fn_jit=zsort.jit, pos=pos_mass.pos, tag="zsort")[1]
     pos_mass_z = PosMass(pos=posz, mass=pos_mass.mass[isortz])
 
     th = jb.measure(fn_jit=build_tree_hierarchy.jit, part=pos_mass_z, cfg_tree=cfg.tree, tag="build_new")[1]

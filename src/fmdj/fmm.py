@@ -72,7 +72,7 @@ def _fmm_node_to_node(
         "CountInteractionsAndM2L",
         (out_loc, out_interaction_count, )
     )(
-        node_range, spl, node_ilist.ispl, node_ilist.iother, children, child_data.mp,
+        node_range, spl, node_ilist.ispl, node_ilist.isrc, children, child_data.mp,
         p=np.int32(cfg.fmm.p),
         softening=np.float32(cfg.softening),
         opening_angle=np.float32(cfg.fmm.opening_angle)
@@ -86,12 +86,12 @@ def _fmm_node_to_node(
         "InsertInteractions",
         (out_child_ilist,)
     )(
-        node_range, spl, node_ilist.ispl, node_ilist.iother, children, ispl_child,
+        node_range, spl, node_ilist.ispl, node_ilist.isrc, children, ispl_child,
         opening_angle=np.float32(cfg.fmm.opening_angle)
     )[0]
 
     # Create interaction list from outputs
-    new_ilist = InteractionList(ispl=ispl_child, iother=child_ilist)
+    new_ilist = InteractionList(ispl=ispl_child, isrc=child_ilist)
 
     new_ilist.ispl = new_ilist.ispl + raise_if(
         new_ilist.nfilled() > new_ilist.size(), 
@@ -161,7 +161,7 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
     @jax.custom_vjp
     def eval(particles, ispl, ilist):
         loc = jax.ffi.ffi_call("GroupedForceAndPot", (out_type,))(
-            node_range, ispl, ilist.ispl, ilist.iother, get_pos_mass(particles),
+            node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles),
             softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
@@ -174,7 +174,7 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
     def eval_bwd(res, gloc):
         particles, ispl, ilist = res
         gposm = jax.ffi.ffi_call("BwdGroupedForceAndPot", (out_type,))(
-            node_range, ispl, ilist.ispl, ilist.iother, get_pos_mass(particles), gloc,
+            node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), gloc,
             softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
