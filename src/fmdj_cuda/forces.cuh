@@ -9,27 +9,16 @@
 /*                                        Helper Functions                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-struct __align__(16) LocalExp {
-    union {
-        struct {
-            float  pot;
-            float3 grad;
-        };
-
-        float4 f4;
-    };
-};
-
-__forceinline__ __device__ LocalExp GetForceAndPot(
-    PosMass xmi, 
-    PosMass xmj, 
+__forceinline__ __device__ LocalExp<3,float> GetForceAndPot(
+    PosMass<3,float> xmi, 
+    PosMass<3,float> xmj, 
     float softening2
 ) {
-    float3 dx = xmj.pos - xmi.pos;
-    float rinv = rsqrtf(norm2(dx) + softening2);
+    Vec<3,float> dx = xmj.pos - xmi.pos;
+    float rinv = rsqrtf(dx.norm2() + softening2);
     float minvr = -xmj.mass * rinv;
 
-    LocalExp loc = {
+    LocalExp<3,float> loc = {
         minvr,
         (minvr * rinv * rinv) * dx
     };
@@ -37,30 +26,30 @@ __forceinline__ __device__ LocalExp GetForceAndPot(
     return loc;
 }
 
-__forceinline__ __device__ PosMass VJP_GFPhiToGXM(
-    const PosMass xmi, const PosMass xmj, 
-    const LocalExp gi, const LocalExp gj, 
+__forceinline__ __device__ PosMass<3,float> VJP_GFPhiToGXM(
+    const PosMass<3,float> xmi, const PosMass<3,float> xmj, 
+    const LocalExp<3,float> gi, const LocalExp<3,float> gj, 
     float epsilon2
 ) {
     // calculates the vector jacobian product of the interaction between xmi and xmj
     // gi and gj are the final gradient vectors of fphi_i and fphi_j, respectively.
     // we have to back propagate the gradient towards a gradient with respect to xmi
     // for understanding the maths, please consider the corresponding .ipynb notebook
-    float3 dx = xmj.pos - xmi.pos;
-    float r2 = norm2(dx);
+    Vec<3,float> dx = xmj.pos - xmi.pos;
+    float r2 = dx.norm2();
     float rinv = r2 > 1e-10f * epsilon2 ? rsqrtf(r2 + epsilon2) : 0.f;
     float rinv2 = rinv*rinv;
 
     float f1 = -rinv*rinv2;
     float f2 = 3*rinv*rinv2*rinv2;
 
-    float3 gm_diff = xmi.mass * gj.grad - xmj.mass * gi.grad;
-    float fgdiff = f2*dot(gm_diff, dx) + f1 * (gi.pot * xmj.mass + gj.pot * xmi.mass);
+    Vec<3,float> gm_diff = xmi.mass * gj.grad - xmj.mass * gi.grad;
+    float fgdiff = f2*gm_diff.dot(dx) + f1 * (gi.pot * xmj.mass + gj.pot * xmi.mass);
 
-    PosMass gxmi;
+    PosMass<3,float> gxmi;
 
     gxmi.pos = f1 * gm_diff + fgdiff * dx;
-    gxmi.mass = - f1 * dot(dx, gj.grad) - rinv * gj.pot;
+    gxmi.mass = - f1 * dx.dot(gj.grad) - rinv * gj.pot;
 
     return gxmi;
 }
@@ -71,8 +60,8 @@ __forceinline__ __device__ PosMass VJP_GFPhiToGXM(
 
 template <bool kahan>
 __global__ void ForceAndPotential(
-    const PosMass *xm,
-    LocalExp *loc_out,
+    const PosMass<3,float> *xm,
+    LocalExp<3,float> *loc_out,
     int n,
     float epsilon
 ) {
@@ -80,14 +69,14 @@ __global__ void ForceAndPotential(
     float epsilon2 = epsilon * epsilon;
 
     int ipart = blockIdx.x * blockDim.x + threadIdx.x;
-    PosMass xmi;
+    PosMass<3,float> xmi;
     if(ipart < n)
         xmi = xm[ipart];
 
-    extern __shared__ PosMass xmj_shared[];
+    extern __shared__ PosMass<3,float> xmj_shared[];
 
-    LocalExp loc_i = {0.f, 0.f, 0.f, 0.f};
-    LocalExp loc_kahan = {0.f, 0.f, 0.f, 0.f};
+    LocalExp<3,float> loc_i = {0.f, 0.f, 0.f, 0.f};
+    LocalExp<3,float> loc_kahan = {0.f, 0.f, 0.f, 0.f};
 
     for (int jblock = 0; jblock < steps; jblock += 1) {
         int num = min(blockDim.x, n - blockDim.x * jblock);
@@ -98,8 +87,8 @@ __global__ void ForceAndPotential(
         __syncthreads();
 
         for (int j = 0; j < num; j++) {
-            LocalExp loc_new = GetForceAndPot(xmi, xmj_shared[j], epsilon2);
-            add_f4<kahan>(loc_i.f4, loc_new.f4, loc_kahan.f4);
+            LocalExp<3,float> loc_new = GetForceAndPot(xmi, xmj_shared[j], epsilon2);
+            kahan_add_vec(loc_i.asvec, loc_new.asvec, loc_kahan.asvec);
         }
     }
 
@@ -111,17 +100,17 @@ __global__ void ForceAndPotential(
 
 template <bool kahan>
 __global__ void BwdForceAndPotential(
-    const LocalExp *gloc,
-    const PosMass *xm,
-    PosMass *gxm,
+    const LocalExp<3,float> *gloc,
+    const PosMass<3,float> *xm,
+    PosMass<3,float> *gxm,
     int n,
     float epsilon
 ) {
     const int steps = div_ceil(n, blockDim.x);
     float epsilon2 = epsilon * epsilon;
 
-    PosMass xmi;
-    LocalExp gloc_i;
+    PosMass<3,float> xmi;
+    LocalExp<3,float> gloc_i;
 
     int ipart = blockIdx.x * blockDim.x + threadIdx.x;
     if(ipart < n) {
@@ -129,11 +118,11 @@ __global__ void BwdForceAndPotential(
         gloc_i = gloc[ipart];
     }
 
-    extern __shared__ PosMass xmj_shared[];
-    LocalExp* gloc_j_shared = (LocalExp*) &xmj_shared[blockDim.x];
+    extern __shared__ PosMass<3,float> xmj_shared[];
+    LocalExp<3,float>* gloc_j_shared = (LocalExp<3,float>*) &xmj_shared[blockDim.x];
 
-    PosMass gxm_i = {0.f, 0.f, 0.f, 0.f};
-    PosMass gxm_i_kahan = {0.f, 0.f, 0.f, 0.f};
+    PosMass<3,float> gxm_i = {0.f, 0.f, 0.f, 0.f};
+    PosMass<3,float> gxm_i_kahan = {0.f, 0.f, 0.f, 0.f};
 
     for (int jblock = 0; jblock < steps; jblock += 1) {
         int num = min(blockDim.x, n - blockDim.x * jblock);
@@ -146,12 +135,12 @@ __global__ void BwdForceAndPotential(
         __syncthreads();
 
         for (int j = 0; j < num; j++) {
-            PosMass gxm_inc = VJP_GFPhiToGXM(
+            PosMass<3,float> gxm_inc = VJP_GFPhiToGXM(
                 xmi, xmj_shared[j],
                 gloc_i, gloc_j_shared[j],
                 epsilon2
             );
-            add_f4<kahan>(gxm_i.f4, gxm_inc.f4, gxm_i_kahan.f4);
+            kahan_add_vec(gxm_i.asvec, gxm_inc.asvec, gxm_i_kahan.asvec);
         }
     }
 
@@ -170,9 +159,9 @@ __global__ void GroupedForceAndPot(
     const int* spl_nodes,
     const int* spl_ilist,
     const int* ilist_nodes,
-    const PosMass* posm,
+    const PosMass<3,float>* posm,
     // outputs:
-    LocalExp* loc_out,
+    LocalExp<3,float>* loc_out,
     // attributes:
     float softening
 ) {
@@ -198,7 +187,7 @@ __global__ void GroupedForceAndPot(
     //  but later discard their result)
     int valid = threadIdx.x < num * n_write;
 
-    PosMass xaWrite = posm[prange.x + a_write];
+    PosMass<3,float> xaWrite = posm[prange.x + a_write];
 
     __shared__ int2 segments[32];
     SegmentManager seg_mgr(
@@ -210,10 +199,10 @@ __global__ void GroupedForceAndPot(
         32
     );
 
-    LocalExp loc_a = {0.f,0.f,0.f,0.f};
-    LocalExp loc_a_kahan = {0.f,0.f,0.f,0.f};
+    LocalExp<3,float> loc_a = {0.f,0.f,0.f,0.f};
+    LocalExp<3,float> loc_a_kahan = {0.f,0.f,0.f,0.f};
 
-    extern __shared__ PosMass xm_b[];
+    extern __shared__ PosMass<3,float> xm_b[];
 
     while(!seg_mgr.finished()) {
         int id = seg_mgr.next();
@@ -225,22 +214,22 @@ __global__ void GroupedForceAndPot(
 
         // Now compute interactions
         for(int ib=read_b_offset; ib < seg_mgr.num_loaded; ib += n_write) {
-            LocalExp loc_new = GetForceAndPot(xaWrite, xm_b[ib], softening2);
-            add_f4<kahan>(loc_a.f4, loc_new.f4, loc_a_kahan.f4);
+            LocalExp<3,float> loc_new = GetForceAndPot(xaWrite, xm_b[ib], softening2);
+            add_vec<kahan>(loc_a.asvec, loc_new.asvec, loc_a_kahan.asvec);
         }
         __syncthreads();
     }
 
     // Now sum over all contributions to the same write position in shared memory
-    LocalExp* loc_shared = (LocalExp*) &xm_b[0];
+    LocalExp<3,float>* loc_shared = (LocalExp<3,float>*) &xm_b[0];
     loc_shared[threadIdx.x] = loc_a;
     __syncthreads();
 
     if(read_b_offset == 0) {
-        LocalExp loc_cum = {0.f,0.f,0.f,0.f};
+        LocalExp<3,float> loc_cum = {0.f,0.f,0.f,0.f};
         
         for(int i=0; i < n_write; i++)
-            add_f4<kahan>(loc_cum.f4, loc_shared[i*num + a_write].f4, loc_a_kahan.f4);
+            kahan_add_vec(loc_cum.asvec, loc_shared[i*num + a_write].asvec, loc_a_kahan.asvec);
 
         loc_out[prange.x + a_write] = loc_cum;
     }
@@ -253,10 +242,10 @@ __global__ void BwdGroupedForceAndPot(
     const int* spl_nodes,
     const int* spl_ilist,
     const int* ilist_nodes,
-    const PosMass* posm,
-    const LocalExp *gloc,
+    const PosMass<3,float>* posm,
+    const LocalExp<3,float> *gloc,
     // outputs:
-    PosMass* gposm_out,
+    PosMass<3,float>* gposm_out,
     // attributes:
     float softening
 ) {
@@ -277,8 +266,8 @@ __global__ void BwdGroupedForceAndPot(
     int read_b_offset = threadIdx.x / num;
     int valid = threadIdx.x < num * n_write;
 
-    PosMass xm_a = posm[prange.x + a_write];
-    LocalExp gloc_a = gloc[prange.x + a_write];
+    PosMass<3,float> xm_a = posm[prange.x + a_write];
+    LocalExp<3,float> gloc_a = gloc[prange.x + a_write];
 
     __shared__ int2 segments[32];
     SegmentManager seg_mgr(
@@ -290,11 +279,11 @@ __global__ void BwdGroupedForceAndPot(
         32
     );
 
-    PosMass gxm_a = {0.f,0.f,0.f,0.f};
-    PosMass gxm_a_kahan = {0.f,0.f,0.f,0.f};
+    PosMass<3,float> gxm_a = {0.f,0.f,0.f,0.f};
+    PosMass<3,float> gxm_a_kahan = {0.f,0.f,0.f,0.f};
 
-    extern __shared__ PosMass xm_b[];
-    LocalExp* gloc_b = (LocalExp*) &xm_b[blockDim.x];
+    extern __shared__ PosMass<3,float> xm_b[];
+    LocalExp<3,float>* gloc_b = (LocalExp<3,float>*) &xm_b[blockDim.x];
 
     while(!seg_mgr.finished()) {
         int id = seg_mgr.next();
@@ -306,22 +295,22 @@ __global__ void BwdGroupedForceAndPot(
         __syncthreads();
 
         for(int ib=read_b_offset; ib < seg_mgr.num_loaded; ib += n_write) {
-            PosMass gxm_inc = VJP_GFPhiToGXM(xm_a, xm_b[ib], gloc_a, gloc_b[ib], softening2);
-            add_f4<kahan>(gxm_a.f4, gxm_inc.f4, gxm_a_kahan.f4);
+            PosMass<3,float> gxm_inc = VJP_GFPhiToGXM(xm_a, xm_b[ib], gloc_a, gloc_b[ib], softening2);
+            kahan_add_vec(gxm_a.asvec, gxm_inc.asvec, gxm_a_kahan.asvec);
         }
         __syncthreads();
     }
 
     // Now sum over all contributions to the same write position in shared memory
-    PosMass* gxm_shared = &xm_b[0];
+    PosMass<3,float>* gxm_shared = &xm_b[0];
     gxm_shared[threadIdx.x] = gxm_a;
     __syncthreads();
 
     if(read_b_offset == 0) {
-        PosMass gxm_cum = {0.f,0.f,0.f,0.f};
+        PosMass<3,float> gxm_cum = {0.f,0.f,0.f,0.f};
         
         for(int i=0; i < n_write; i++)
-            add_f4<kahan>(gxm_cum.f4, gxm_shared[i*num + a_write].f4, gxm_a_kahan.f4);
+            kahan_add_vec(gxm_cum.asvec, gxm_shared[i*num + a_write].asvec, gxm_a_kahan.asvec);
 
         gposm_out[prange.x + a_write] = gxm_cum;
     }

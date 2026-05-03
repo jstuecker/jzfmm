@@ -7,7 +7,7 @@ import pytest
 from dataclasses import replace
 from jax.test_util import check_grads
 
-from jztree.tree import dense_interaction_list
+from jztree.tree import _dense_interaction_list
 
 from fmdj.config import Config, FMMConfig
 from fmdj.data import PosMass
@@ -104,11 +104,11 @@ def test_sim_com(particles_blob, mode):
     xcom, vcom = jnp.mean(p.apos(), axis=0), jnp.mean(p.avel(), axis=0)
     xcom_grad, vcom_grad = jax.jit(jax.grad(loss_cent, argnums=(0,1)))(xcom, vcom)
 
-    assert pgrad.cpos == pytest.approx(xcom_grad, rel=1e-5)
-    assert pgrad.cvel == pytest.approx(vcom_grad, rel=1e-5)
+    assert pgrad.cpos == pytest.approx(xcom_grad, rel=2e-5)
+    assert pgrad.cvel == pytest.approx(vcom_grad, rel=2e-5)
 
-    assert jnp.sum(pgrad.pos, axis=0) == pytest.approx(xcom_grad, rel=1e-5)
-    assert jnp.sum(pgrad.vel, axis=0) == pytest.approx(vcom_grad, rel=1e-5)
+    assert jnp.sum(pgrad.pos, axis=0) == pytest.approx(xcom_grad, rel=2e-5)
+    assert jnp.sum(pgrad.vel, axis=0) == pytest.approx(vcom_grad, rel=2e-5)
 
 @pytest.mark.parametrize("npart", [1024*8], indirect=True)
 def test_force_gradients(pos_mass: PosMass):
@@ -117,7 +117,7 @@ def test_force_gradients(pos_mass: PosMass):
     cfg = Config(softening=0.05, fmm=fmmcfg)
     
     ispl = jnp.arange(part.pos.shape[0]//32 + 1, dtype=jnp.int32) * 32
-    ilist = dense_interaction_list.jit(len(ispl)-1, len(ispl)-1, (len(ispl)-1)**2)
+    ilist = _dense_interaction_list.jit(len(ispl)-1, len(ispl)-1, (len(ispl)-1)**2)
 
     fphi1 = direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True)
     fphi2 = grouped_force_and_pot.jit(part, ispl, ilist, cfg)

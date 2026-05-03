@@ -11,13 +11,13 @@
 /* ---------------------------------------------------------------------------------------------- */
 
 __device__ __forceinline__ bool OpeningCriterion(
-    NodeWithExt nodeA,
-    NodeWithExt nodeB,
+    NodeWithExt<3,float> nodeA,
+    NodeWithExt<3,float> nodeB,
     float opening_angle
 ) {
-    float r2 = norm2(nodeA.center - nodeB.center);
-    float3 Ltot = nodeA.extent + nodeB.extent;
-    float Lmax = fmaxf(fmaxf(Ltot.x, Ltot.y), Ltot.z);
+    float r2 = (nodeA.center - nodeB.center).norm2();
+    Vec<3,float> Ltot = nodeA.extent + nodeB.extent;
+    float Lmax = fmaxf(fmaxf(Ltot[0], Ltot[1]), Ltot[2]);
     float L2 = Lmax * Lmax;
 
     bool need_open = L2 >= opening_angle * opening_angle * r2;
@@ -52,7 +52,7 @@ __global__ void CountInteractionsAndM2L(
     const int* spl_nodes,
     const int* spl_ilist,
     const int* ilist_nodes,
-    const Node* children,
+    const Node<3,float>* children,
     const float* mp_values,
     // outputs:
     float* loc_out,
@@ -79,10 +79,10 @@ __global__ void CountInteractionsAndM2L(
         int num_childrenA = min(MAX_NUMA, child_range.y - offsetA);
 
         // childA info
-        __shared__ NodeWithExt childA[MAX_NUMA];
+        __shared__ NodeWithExt<3,float> childA[MAX_NUMA];
         if(threadIdx.x < num_childrenA) {
-            Node child = children[offsetA + threadIdx.x];
-            childA[threadIdx.x] = {child.center, LvlToExt(child.level)};
+            Node<3,float> child = children[offsetA + threadIdx.x];
+            childA[threadIdx.x] = {child.center, LvlToExt<3,float>(child.level)};
         }
 
         int num_open[MAX_NUMA];
@@ -100,7 +100,7 @@ __global__ void CountInteractionsAndM2L(
         // Child B info. This is transposed to reduce smem bank conflicts
         // Todo: BLOCKSIZE does not need to be a compile time constant here.
         //       Make it more flexible! (Need to adapt the warp communication scheme below though!)
-        __shared__ float3 posB[BLOCKSIZE];
+        __shared__ Vec<3,float> posB[BLOCKSIZE];
         __shared__ float mpB[ncomb][BLOCKSIZE];
         
         // Interaction list info:
@@ -130,16 +130,16 @@ __global__ void CountInteractionsAndM2L(
         int residual_threads = blockDim.x % num_childrenA; 
         // Number of threads that write to the same childA as me:
         int n_write_a = blockDim.x / num_childrenA + (a_write < residual_threads);
-        float3 xaWrite = childA[a_write].center;
+        Vec<3,float> xaWrite = childA[a_write].center;
 
         while(!seg_mgr.finished()) {
             int id = seg_mgr.next();
 
             // Each thread loads one other child B to check the opening criterion
-            NodeWithExt childB_ext;
+            NodeWithExt<3,float> childB_ext;
             if(id >= 0) {
-                Node childB = children[id];
-                childB_ext = {childB.center, LvlToExt(childB.level)};
+                Node<3,float> childB = children[id];
+                childB_ext = {childB.center, LvlToExt<3,float>(childB.level)};
             }
 
             // For each child A, we count the cumulative number of opens and we 
@@ -210,7 +210,7 @@ __global__ void CountInteractionsAndM2L(
                     mp[k] = mpB[k][b_read];
                 }
 
-                float3 dx = posB[b_read] - xaWrite;
+                Vec<3,float> dx = posB[b_read] - xaWrite;
 
                 m2l_translator<p>(dx, mp, LocA, softening*softening);
             }
@@ -254,7 +254,7 @@ __global__ void InsertInteractions(
     const int* spl_nodes,
     const int* spl_ilist,
     const int* ilist_nodes,
-    const Node* children,
+    const Node<3,float>* children,
     const int* spl_ilist_child,
     // outputs:
     int* child_ilist_out,
@@ -277,11 +277,11 @@ __global__ void InsertInteractions(
         int num_childrenA = min(MAX_NUMA, child_range.y - offsetA);
 
         // childA info
-        __shared__ NodeWithExt childA[MAX_NUMA];
+        __shared__ NodeWithExt<3,float> childA[MAX_NUMA];
         __shared__ int ilist_offsets[MAX_NUMA];
         if(threadIdx.x < num_childrenA) {
-            Node child = children[offsetA + threadIdx.x];
-            childA[threadIdx.x] = {child.center, LvlToExt(child.level)};
+            Node<3,float> child = children[offsetA + threadIdx.x];
+            childA[threadIdx.x] = {child.center, LvlToExt<3,float>(child.level)};
             ilist_offsets[threadIdx.x] = spl_ilist_child[offsetA + threadIdx.x];
         }
 
@@ -309,10 +309,10 @@ __global__ void InsertInteractions(
             int id = seg_mgr.next();
 
             // Each thread loads one other child B to check the opening criterion
-            NodeWithExt childB_ext;
+            NodeWithExt<3,float> childB_ext;
             if(id >= 0) {
-                Node childB = children[id];
-                childB_ext = {childB.center, LvlToExt(childB.level)};
+                Node<3,float> childB = children[id];
+                childB_ext = {childB.center, LvlToExt<3,float>(childB.level)};
             }
 
             #pragma unroll

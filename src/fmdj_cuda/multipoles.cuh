@@ -25,8 +25,8 @@ __device__ void setupGn(float r2, float eps2, float* __restrict__ G)
 }
 
 template<int p>
-__device__ void setupDnG(float3 dx, float eps2, float* __restrict__ Dn) {
-    float r2 = dx.x * dx.x + dx.y * dx.y + dx.z * dx.z;
+__device__ void setupDnG(Vec<3,float> dx, float eps2, float* __restrict__ Dn) {
+    float r2 = dx.norm2();
 
     float G[p+1];
     setupGn<p>(r2, eps2, G);
@@ -45,7 +45,7 @@ __device__ void setupDnG(float3 dx, float eps2, float* __restrict__ Dn) {
 
                     const int k = nz > 0 ? 2 : (ny > 0 ? 1 : 0);
                     const int nk = nz > 0 ? nz : (ny > 0 ? ny : nx);
-                    const float xk = k == 0 ? dx.x : (k == 1 ? dx.y : dx.z);
+                    const float xk = k == 0 ? dx[0] : (k == 1 ? dx[1] : dx[2]);
 
                     const int ilast = multi_to_flat(nx - 1*(k==0), ny - 1*(k==1), nz - 1*(k==2));
                     const int ilast2 = multi_to_flat(nx - 2*(k==0), ny - 2*(k==1), nz - 2*(k==2));
@@ -65,7 +65,7 @@ __device__ void setupDnG(float3 dx, float eps2, float* __restrict__ Dn) {
 /* ---------------------------------------------------------------------------------------------- */
 
 template<int p>
-__device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const float3 dpos) {
+__device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const Vec<3,float> dpos) {
 
     // Shift in x
     int iflat = 0;
@@ -81,7 +81,7 @@ __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const
                 #pragma unroll
                 for(int i = 0; i <= kx; i++) {
                     float coeff = binomial(kx, i);
-                    mnew += coeff * powi_upto6(dpos.x, kx - i) * mp[multi_to_flat(i, ky, kz)];
+                    mnew += coeff * powi_upto6(dpos[0], kx - i) * mp[multi_to_flat(i, ky, kz)];
                 }
 
                 mp_out[iflat] = mnew;
@@ -104,7 +104,7 @@ __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const
                 #pragma unroll
                 for(int j = 0; j <= ky; j++) {
                     float coeff = binomial(ky, j);
-                    mnew += coeff * powi_upto6(dpos.y, ky - j) * mp_out[multi_to_flat(kx, j, kz)];
+                    mnew += coeff * powi_upto6(dpos[1], ky - j) * mp_out[multi_to_flat(kx, j, kz)];
                 }
 
                 mp[iflat] = mnew;
@@ -126,7 +126,7 @@ __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const
                 #pragma unroll
                 for(int l = 0; l <= kz; l++) {
                     float coeff = binomial(kz, l);
-                    mnew += coeff * powi_upto6(dpos.z, kz - l) * mp[multi_to_flat(kx, ky, l)];
+                    mnew += coeff * powi_upto6(dpos[2], kz - l) * mp[multi_to_flat(kx, ky, l)];
                 }
 
                 mp_out[iflat] = mnew;
@@ -140,8 +140,8 @@ template<int p>
 __global__ void SummarizeMultipoles(
     const int* __restrict__ isplit,
     const float* __restrict__ mp_in,
-    const float3* __restrict__ xnode,
-    const float3* __restrict__ xchild,
+    const Vec<3,float>* __restrict__ xnode,
+    const Vec<3,float>* __restrict__ xchild,
     float* __restrict__ mp_out,
     int nnodes,
     int p_in,
@@ -206,7 +206,7 @@ __global__ void SummarizeMultipoles(
 /* ---------------------------------------------------------------------------------------------- */
 
 template<int p>
-__device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out, float3 dpos) {
+__device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out, Vec<3,float> dpos) {
 
     // Shift in x
     int iflat = 0;
@@ -222,7 +222,7 @@ __device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out,
                 #pragma unroll
                 for(int i = kx; i <= p - ky - kz; i++) {
                     float coeff = binomial(i, kx);
-                    lnew += coeff * powi_upto6(dpos.x, i - kx) * loc[multi_to_flat(i, ky, kz)];
+                    lnew += coeff * powi_upto6(dpos[0], i - kx) * loc[multi_to_flat(i, ky, kz)];
                 }
 
                 loc_out[iflat] = lnew;
@@ -245,7 +245,7 @@ __device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out,
                 #pragma unroll
                 for(int j = ky; j <= p - kx - kz; j++) {
                     float coeff = binomial(j, ky);
-                    lnew += coeff * powi_upto6(dpos.y, j - ky) * loc_out[multi_to_flat(kx, j, kz)];
+                    lnew += coeff * powi_upto6(dpos[1], j - ky) * loc_out[multi_to_flat(kx, j, kz)];
                 }
 
                 loc[iflat] = lnew;
@@ -267,7 +267,7 @@ __device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out,
                 #pragma unroll
                 for(int l = kz; l <= p - kx - ky; l++) {
                     float coeff = binomial(l, kz);
-                    lnew += coeff * powi_upto6(dpos.z, l - kz) * loc[multi_to_flat(kx, ky, l)];
+                    lnew += coeff * powi_upto6(dpos[2], l - kz) * loc[multi_to_flat(kx, ky, l)];
                 }
 
                 loc_out[iflat] = lnew;
@@ -281,8 +281,8 @@ template<int p>
 __global__ void TranslateLocalToLocal(
     const int* __restrict__ isplit,
     const float* __restrict__ loc_node,
-    const float3* __restrict__ xnode,
-    const float3* __restrict__ xchild,
+    const Vec<3,float>* __restrict__ xnode,
+    const Vec<3,float>* __restrict__ xchild,
     float* __restrict__ loc_child,
     const int nnodes,
     const int pout
@@ -297,7 +297,7 @@ __global__ void TranslateLocalToLocal(
     if (istart >= iend)
         return;
     
-    float3 xn = xnode[inode];
+    Vec<3,float> xn = xnode[inode];
     float loc_in[ncomb];
     #pragma unroll
     for (int iM = 0; iM < ncomb; iM++) {
@@ -305,7 +305,7 @@ __global__ void TranslateLocalToLocal(
     }
     
     for(int ichild = istart; ichild < iend; ichild++) {
-        float3 dpos = xchild[ichild] - xn;
+        Vec<3,float> dpos = xchild[ichild] - xn;
 
         float loc_out[ncomb];
 
@@ -328,10 +328,10 @@ template<int p>
 __global__ void TranslateLocalToLocal_XVJP(
     const int* __restrict__ isplit,
     const float* __restrict__ loc_node,
-    const float3* __restrict__ xnode,
-    const float3* __restrict__ xchild,
+    const Vec<3,float>* __restrict__ xnode,
+    const Vec<3,float>* __restrict__ xchild,
     const float* __restrict__ g_loc_child,
-    float3* __restrict__ g_xchild,
+    Vec<3,float>* __restrict__ g_xchild,
     const int nnodes,
     const int pout
 ) {
@@ -345,7 +345,7 @@ __global__ void TranslateLocalToLocal_XVJP(
     if (istart >= iend)
         return;
     
-    float3 xn = xnode[inode];
+    Vec<3,float> xn = xnode[inode];
     float loc_in[ncomb];
     #pragma unroll
     for (int iM = 0; iM < ncomb; iM++) {
@@ -353,7 +353,7 @@ __global__ void TranslateLocalToLocal_XVJP(
     }
     
     for(int ichild = istart; ichild < iend; ichild++) {
-        float3 dpos = xchild[ichild] - xn;
+        Vec<3,float> dpos = xchild[ichild] - xn;
 
         float loc_child[ncomb];
 
@@ -398,12 +398,7 @@ __global__ void TranslateLocalToLocal_XVJP(
                 }
             }
 
-            if(a == 0)
-                g_xchild[ichild].x = gxa;
-            else if(a == 1)
-                g_xchild[ichild].y = gxa;
-            else
-                g_xchild[ichild].z = gxa;
+            g_xchild[ichild][a] = gxa;
         }
     }
 }
@@ -415,7 +410,7 @@ __global__ void TranslateLocalToLocal_XVJP(
 
 template<int p>
 __device__ __forceinline__ void m2l_translator(
-    float3 dx,
+    Vec<3,float> dx,
     const float* Mp,
     float* loc,
     float epsilon2
