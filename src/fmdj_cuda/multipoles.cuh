@@ -78,10 +78,10 @@ __device__ void setupDnG(Vec<3,float> dx, float eps2, float* __restrict__ Dn) {
                     const int nk = nz > 0 ? nz : (ny > 0 ? ny : nx);
                     const float xk = k == 0 ? dx[0] : (k == 1 ? dx[1] : dx[2]);
 
-                    const int ilast = multi_to_flat(nx - 1*(k==0), ny - 1*(k==1), nz - 1*(k==2));
-                    const int ilast2 = multi_to_flat(nx - 2*(k==0), ny - 2*(k==1), nz - 2*(k==2));
+                    const int ilast_k[3] = {nx - 1*(k==0), ny - 1*(k==1), nz - 1*(k==2)};
+                    const int ilast2_k[3] = {nx - 2*(k==0), ny - 2*(k==1), nz - 2*(k==2)};
 
-                    Dn[iflat] = xk*Dn[ilast] + (nk-1)*Dn[ilast2];
+                    Dn[iflat] = xk*Dn[multi_to_flat<3>(ilast_k)] + (nk-1)*Dn[multi_to_flat(ilast2_k)];
                     iflat -= 1;
                 }
             }
@@ -104,7 +104,8 @@ __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const
         #pragma unroll
         for(int i = 0; i <= k[0]; i++) {
             float coeff = binomial(k[0], i);
-            mnew += coeff * powi_upto6(dpos[0], k[0] - i) * mp[multi_to_flat(i, k[1], k[2])];
+            const int im[3] = {i, k[1], k[2]};
+            mnew += coeff * powi_upto6(dpos[0], k[0] - i) * mp[multi_to_flat<3>(im)];
         }
 
         mp_out[iflat] = mnew;
@@ -116,7 +117,8 @@ __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const
         #pragma unroll
         for(int j = 0; j <= k[1]; j++) {
             float coeff = binomial(k[1], j);
-            mnew += coeff * powi_upto6(dpos[1], k[1] - j) * mp_out[multi_to_flat(k[0], j, k[2])];
+            const int im[3] = {k[0], j, k[2]};
+            mnew += coeff * powi_upto6(dpos[1], k[1] - j) * mp_out[multi_to_flat<3>(im)];
         }
 
         mp[iflat] = mnew;
@@ -128,7 +130,8 @@ __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const
         #pragma unroll
         for(int l = 0; l <= k[2]; l++) {
             float coeff = binomial(k[2], l);
-            mnew += coeff * powi_upto6(dpos[2], k[2] - l) * mp[multi_to_flat(k[0], k[1], l)];
+            const int im[3] = {k[0], k[1], l};
+            mnew += coeff * powi_upto6(dpos[2], k[2] - l) * mp[multi_to_flat<3>(im)];
         }
 
         mp_out[iflat] = mnew;
@@ -213,7 +216,8 @@ __device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out,
         #pragma unroll
         for(int i = k[0]; i <= p - k[1] - k[2]; i++) {
             float coeff = binomial(i, k[0]);
-            lnew += coeff * powi_upto6(dpos[0], i - k[0]) * loc[multi_to_flat(i, k[1], k[2])];
+            const int im[3] = {i, k[1], k[2]};
+            lnew += coeff * powi_upto6(dpos[0], i - k[0]) * loc[multi_to_flat<3>(im)];
         }
         loc_out[iflat] = lnew;
     });
@@ -224,7 +228,8 @@ __device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out,
         #pragma unroll
         for(int j = k[1]; j <= p - k[0] - k[2]; j++) {
             float coeff = binomial(j, k[1]);
-            lnew += coeff * powi_upto6(dpos[1], j - k[1]) * loc_out[multi_to_flat(k[0], j, k[2])];
+            const int im[3] = {k[0], j, k[2]};
+            lnew += coeff * powi_upto6(dpos[1], j - k[1]) * loc_out[multi_to_flat<3>(im)];
         }
         loc[iflat] = lnew;
     });
@@ -235,7 +240,8 @@ __device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out,
         #pragma unroll
         for(int l = k[2]; l <= p - k[0] - k[1]; l++) {
             float coeff = binomial(l, k[2]);
-            lnew += coeff * powi_upto6(dpos[2], l - k[2]) * loc[multi_to_flat(k[0], k[1], l)];
+            const int im[3] = {k[0], k[1], l};
+            lnew += coeff * powi_upto6(dpos[2], l - k[2]) * loc[multi_to_flat<3>(im)];
         }
         loc_out[iflat] = lnew;
     });
@@ -348,7 +354,7 @@ __global__ void TranslateLocalToLocal_XVJP(
                 if((msum > pout) || (bsum > p))
                     return;
 
-                int ib = multi_to_flat(b[0], b[1], b[2]);
+                int ib = multi_to_flat<3>(b);
                     
                 gxa += gloc_child[im] * loc_child[ib] * (ma + 1);
             });
@@ -381,7 +387,8 @@ __device__ __forceinline__ void m2l_translator(
         int nflat = 0;
         for_each_multiindex<p,3>([&](int, int nsum, int n[3]) {
             if(nsum <= p - ksum) {
-                float Dnk = Dn[multi_to_flat(k[0] + n[0], k[1] + n[1], k[2] + n[2])];
+                const int dn[3] = {k[0] + n[0], k[1] + n[1], k[2] + n[2]};
+                float Dnk = Dn[multi_to_flat<3>(dn)];
                 float Mpn = Mp[nflat];
                 
                 const float infvac = 1./fact3f(n[0], n[1], n[2]);
