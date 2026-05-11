@@ -61,7 +61,7 @@ __global__ void CountInteractionsAndM2L(
     float softening,
     float opening_angle
 ) {
-    constexpr int ncomb = NCOMB(p);
+    constexpr int ncomb = NCOMB(p, 3);
 
     // Node A info:
     int2 nrange = node_range[0];

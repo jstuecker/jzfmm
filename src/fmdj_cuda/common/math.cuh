@@ -167,80 +167,17 @@ __device__ __forceinline__ float fact3f(unsigned kx, unsigned ky, unsigned kz) {
     return fact_upto6f(kx) * fact_upto6f(ky) * fact_upto6f(kz);
 }
 
-/* ---------------------------------------------------------------------------------------------- */
-/*                                       Multipole Indexing                                       */
-/* ---------------------------------------------------------------------------------------------- */
-
-#define NCOMB(p) (((p) + 1) * ((p) + 2) * ((p) + 3) / 6)
-
 __device__ __forceinline__ constexpr int binomial_int(int n, int k) {
-    if(k < 0 || k > n)
-        return 0;
-    if(k > n - k)
-        k = n - k;
-
     int res = 1;
+    #pragma unroll
     for(int i = 1; i <= k; i++) {
         res = (res * (n - k + i)) / i;
     }
     return res;
 }
 
-template<int dim>
-__device__ __forceinline__ constexpr int multi_to_flat(const int (&k)[dim]) {
-    int p = 0;
-    #pragma unroll
-    for(int d = 0; d < dim; d++) {
-        if(k[d] < 0)
-            return 0;
-        p += k[d];
-    }
-
-    if constexpr (dim == 2) {
-        int off = (p * (p + 1)) / 2 + k[1];
-        return off > 0 ? off : 0;
-    } else if constexpr (dim == 3) {
-        int npoff = ((p+2)*(p+1)*p) / 6; // offset of the p-th symmeric tensor
-        int off = npoff + (k[2]*(2*p + 3 - k[2]))/2 + k[1];
-        return off > 0 ? off : 0;
-    } else {
-        int off = binomial_int(p + dim - 1, dim);
-        int remaining = p;
-
-        #pragma unroll
-        for(int d = dim - 1; d >= 1; d--) {
-            for(int kd = 0; kd < k[d]; kd++) {
-                off += binomial_int(remaining - kd + d - 1, d - 1);
-            }
-            remaining -= k[d];
-        }
-
-        return off > 0 ? off : 0;
-    }
-}
-
-template<int pmax>
-__device__ __forceinline__ constexpr  int3 flat_to_multi(const int kflat) {
-    int i = 0, ksum, kz, ky;
-    #pragma unroll
-    for(ksum=0; ksum <= pmax; ksum++) {
-        int nadd = ((ksum+2)*(ksum+1)) >> 1;
-        if (i + nadd > kflat)
-            break;
-        i += nadd;
-    }
-    #pragma unroll
-    for(kz=0; kz <= ksum; kz++) {
-        int nadd = (ksum-kz+1);
-        if (i + nadd > kflat)
-            break;
-        i += nadd;
-    }
-    ky = kflat - i;
-
-    return int3{ksum-ky-kz, ky, kz};
-}
-
+#define NCOMB(p, dim) binomial_int((p) + (dim), (dim))
+// #define NCOMB(p) (((p) + 1) * ((p) + 2) * ((p) + 3) / 6)
 
 /* ---------------------------------------------------------------------------------------------- */
 /*                                         Bit operations                                         */

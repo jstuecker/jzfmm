@@ -7,6 +7,65 @@
 #include "common/math.cuh"
 
 /* ---------------------------------------------------------------------------------------------- */
+/*                                       Multipole Indexing                                       */
+/* ---------------------------------------------------------------------------------------------- */
+
+template<int dim>
+__device__ __forceinline__ constexpr int multi_to_flat(const int (&k)[dim]) {
+    int p = 0;
+    #pragma unroll
+    for(int d = 0; d < dim; d++) {
+        if(k[d] < 0)
+            return 0;
+        p += k[d];
+    }
+
+    if constexpr (dim == 2) {
+        int off = (p * (p + 1)) / 2 + k[1];
+        return off > 0 ? off : 0;
+    } else if constexpr (dim == 3) {
+        int npoff = ((p+2)*(p+1)*p) / 6; // offset of the p-th symmeric tensor
+        int off = npoff + (k[2]*(2*p + 3 - k[2]))/2 + k[1];
+        return off > 0 ? off : 0;
+    } else {
+        int off = binomial_int(p + dim - 1, dim);
+        int remaining = p;
+
+        #pragma unroll
+        for(int d = dim - 1; d >= 1; d--) {
+            for(int kd = 0; kd < k[d]; kd++) {
+                off += binomial_int(remaining - kd + d - 1, d - 1);
+            }
+            remaining -= k[d];
+        }
+
+        return off > 0 ? off : 0;
+    }
+}
+
+template<int pmax>
+__device__ __forceinline__ constexpr  int3 flat_to_multi(const int kflat) {
+    int i = 0, ksum, kz, ky;
+    #pragma unroll
+    for(ksum=0; ksum <= pmax; ksum++) {
+        int nadd = ((ksum+2)*(ksum+1)) >> 1;
+        if (i + nadd > kflat)
+            break;
+        i += nadd;
+    }
+    #pragma unroll
+    for(kz=0; kz <= ksum; kz++) {
+        int nadd = (ksum-kz+1);
+        if (i + nadd > kflat)
+            break;
+        i += nadd;
+    }
+    ky = kflat - i;
+
+    return int3{ksum-ky-kz, ky, kz};
+}
+
+/* ---------------------------------------------------------------------------------------------- */
 /*                                   Iteration Helper functions                                   */
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -73,7 +132,7 @@ __device__ void setupDnG(Vec<3,float> dx, float eps2, float* __restrict__ Dn) {
 
     #pragma unroll
     for(int q=p-1; q >= 0; q--) {
-        int iflat = NCOMB(p-q)-1;
+        int iflat = NCOMB(p-q, 3)-1;
         #pragma unroll
         for(int nsum=p-q; nsum >= 1; nsum--) {
             #pragma unroll
@@ -127,7 +186,7 @@ __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const
         });
 
         #pragma unroll
-        for(int i=0; i<NCOMB(p); i++)
+        for(int i=0; i<NCOMB(p, 3); i++)
             mp[i] = mp_out[i];
     }
 }
@@ -143,8 +202,8 @@ __global__ void SummarizeMultipoles(
     int p_in,
     bool kahan
 ) {
-    constexpr int ncomb = NCOMB(p);
-    int ncomb_in = NCOMB(p_in);
+    constexpr int ncomb = NCOMB(p, 3);
+    int ncomb_in = NCOMB(p_in, 3);
 
     int inode = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -223,7 +282,7 @@ __device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out,
         });
 
         #pragma unroll
-        for(int i=0; i<NCOMB(p); i++)
+        for(int i=0; i<NCOMB(p, 3); i++)
             loc[i] = loc_out[i]; // copy back output as input for next iteration,.
     }
 }
@@ -238,7 +297,7 @@ __global__ void TranslateLocalToLocal(
     const int nnodes,
     const int pout
 ) {
-    constexpr int ncomb = NCOMB(p);
+    constexpr int ncomb = NCOMB(p, 3);
     
     int inode = blockIdx.x * blockDim.x + threadIdx.x;
     if (inode >= nnodes)
@@ -269,8 +328,8 @@ __global__ void TranslateLocalToLocal(
         shift_local_to_local<p>(loc_src, loc_out, dpos);
 
         #pragma unroll
-        for (int iM = 0; iM < min(ncomb, NCOMB(pout)); iM++) {
-            loc_child[ichild * NCOMB(pout) + iM] = loc_out[iM];
+        for (int iM = 0; iM < min(ncomb, NCOMB(pout, 3)); iM++) {
+            loc_child[ichild * NCOMB(pout, 3) + iM] = loc_out[iM];
         }
     }
 }
@@ -286,7 +345,7 @@ __global__ void TranslateLocalToLocal_XVJP(
     const int nnodes,
     const int pout
 ) {
-    constexpr int ncomb = NCOMB(p);
+    constexpr int ncomb = NCOMB(p, 3);
     
     int inode = blockIdx.x * blockDim.x + threadIdx.x;
     if (inode >= nnodes)
@@ -318,8 +377,8 @@ __global__ void TranslateLocalToLocal_XVJP(
 
         float gloc_child[ncomb];
         #pragma unroll
-        for (int iM = 0; iM < NCOMB(pout); iM++) {
-            gloc_child[iM] = g_loc_child[ichild * NCOMB(pout) + iM];
+        for (int iM = 0; iM < NCOMB(pout, 3); iM++) {
+            gloc_child[iM] = g_loc_child[ichild * NCOMB(pout, 3) + iM];
         }
 
         #pragma unroll
@@ -357,7 +416,7 @@ __device__ __forceinline__ void m2l_translator(
     float* loc,
     float epsilon2
 ) {
-    constexpr int ncomb = NCOMB(p);
+    constexpr int ncomb = NCOMB(p, 3);
 
     float Dn[ncomb];
     setupDnG<p>(dx, epsilon2, Dn);
