@@ -43,27 +43,27 @@ __device__ __forceinline__ constexpr int multi_to_flat(const int (&k)[dim]) {
     }
 }
 
-template<int pmax>
-__device__ __forceinline__ constexpr  int3 flat_to_multi(const int kflat) {
-    int i = 0, ksum, kz, ky;
-    #pragma unroll
-    for(ksum=0; ksum <= pmax; ksum++) {
-        int nadd = ((ksum+2)*(ksum+1)) >> 1;
-        if (i + nadd > kflat)
-            break;
-        i += nadd;
-    }
-    #pragma unroll
-    for(kz=0; kz <= ksum; kz++) {
-        int nadd = (ksum-kz+1);
-        if (i + nadd > kflat)
-            break;
-        i += nadd;
-    }
-    ky = kflat - i;
+// template<int pmax>
+// __device__ __forceinline__ constexpr  int3 flat_to_multi(const int kflat) {
+//     int i = 0, ksum, kz, ky;
+//     #pragma unroll
+//     for(ksum=0; ksum <= pmax; ksum++) {
+//         int nadd = ((ksum+2)*(ksum+1)) >> 1;
+//         if (i + nadd > kflat)
+//             break;
+//         i += nadd;
+//     }
+//     #pragma unroll
+//     for(kz=0; kz <= ksum; kz++) {
+//         int nadd = (ksum-kz+1);
+//         if (i + nadd > kflat)
+//             break;
+//         i += nadd;
+//     }
+//     ky = kflat - i;
 
-    return int3{ksum-ky-kz, ky, kz};
-}
+//     return int3{ksum-ky-kz, ky, kz};
+// }
 
 /* ---------------------------------------------------------------------------------------------- */
 /*                                   Iteration Helper functions                                   */
@@ -96,6 +96,20 @@ __device__ __forceinline__ void for_each_multiindex(F&& f) {
     }
 }
 
+template<int dim, int d, typename F>
+__device__ __forceinline__ void for_each_multiindex_fixed_sum_reverse(int ksum, int remaining, int (&k)[dim], F&& f) {
+    if constexpr (d == 0) {
+        k[0] = remaining;
+        f(ksum, k);
+    } else {
+        #pragma unroll
+        for(int kd = remaining; kd >= 0; kd--) {
+            k[d] = kd;
+            for_each_multiindex_fixed_sum_reverse<dim, d - 1>(ksum, remaining - kd, k, f);
+        }
+    }
+}
+
 template<int dim>
 __device__ __forceinline__ void copy_multiindex(const int (&src)[dim], int (&dst)[dim]) {
     #pragma unroll
@@ -122,8 +136,9 @@ __device__ void setupGn(float r2, float eps2, float* __restrict__ G)
     }
 }
 
-template<int p>
-__device__ void setupDnG(Vec<3,float> dx, float eps2, float* __restrict__ Dn) {
+template<int p, int dim=3>
+__device__ void setupDnG(Vec<dim,float> dx, float eps2, float* __restrict__ Dn) {
+    // Recurrence formula by Tausch (2003)
     float r2 = dx.norm2();
 
     float G[p+1];
@@ -132,26 +147,33 @@ __device__ void setupDnG(Vec<3,float> dx, float eps2, float* __restrict__ Dn) {
 
     #pragma unroll
     for(int q=p-1; q >= 0; q--) {
-        int iflat = NCOMB(p-q, 3)-1;
+        int iflat = NCOMB(p-q, dim)-1;
+        int n[dim];
         #pragma unroll
         for(int nsum=p-q; nsum >= 1; nsum--) {
-            #pragma unroll
-            for(int nz=nsum; nz >= 0; nz--) {
+            for_each_multiindex_fixed_sum_reverse<dim, dim - 1>(nsum, nsum, n, [&](int, int (&n)[dim]) {
+                int ax = 0;
                 #pragma unroll
-                for(int ny=nsum-nz; ny >= 0; ny--) {
-                    const int nx = nsum - ny - nz;
-
-                    const int k = nz > 0 ? 2 : (ny > 0 ? 1 : 0);
-                    const int nk = nz > 0 ? nz : (ny > 0 ? ny : nx);
-                    const float xk = k == 0 ? dx[0] : (k == 1 ? dx[1] : dx[2]);
-
-                    const int ilast_k[3] = {nx - 1*(k==0), ny - 1*(k==1), nz - 1*(k==2)};
-                    const int ilast2_k[3] = {nx - 2*(k==0), ny - 2*(k==1), nz - 2*(k==2)};
-
-                    Dn[iflat] = xk*Dn[multi_to_flat<3>(ilast_k)] + (nk-1)*Dn[multi_to_flat<3>(ilast2_k)];
-                    iflat -= 1;
+                for(int d = dim - 1; d >= 1; d--) {
+                    if(n[d] > 0) {
+                        ax = d;
+                        break;
+                    }
                 }
-            }
+
+                const int na = n[ax];
+                const float xa = dx[ax];
+
+                int ilast_k[dim];
+                int ilast2_k[dim];
+                copy_multiindex<dim>(n, ilast_k);
+                copy_multiindex<dim>(n, ilast2_k);
+                ilast_k[ax] -= 1;
+                ilast2_k[ax] -= 2;
+
+                Dn[iflat] = xa*Dn[multi_to_flat<dim>(ilast_k)] + (na-1)*Dn[multi_to_flat<dim>(ilast2_k)];
+                iflat -= 1;
+            });
         }
 
         Dn[0] = G[q];
@@ -185,9 +207,11 @@ __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const
             mp_out[iflat] = mnew;
         });
 
-        #pragma unroll
-        for(int i=0; i<NCOMB(p, 3); i++)
-            mp[i] = mp_out[i];
+        if(ax < dim - 1) {
+            #pragma unroll
+            for(int i=0; i<NCOMB(p, dim); i++)
+                mp[i] = mp_out[i];
+        }
     }
 }
 
@@ -262,11 +286,11 @@ __global__ void SummarizeMultipoles(
 
 
 template<int p, int dim=3>
-__device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out, Vec<3,float> dpos) {
+__device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out, Vec<dim,float> dpos) {
     #pragma unroll
     for(int ax=0; ax<dim; ax++) {
         // Shift dimension by dimension
-        for_each_multiindex<p,dim>([&](int iflat, int ksum, int (&k)[3]) {
+        for_each_multiindex<p,dim>([&](int iflat, int ksum, int (&k)[dim]) {
             float lnew = 0.f;
             #pragma unroll
             for(int i = k[ax]; i <= p; i++) {
@@ -281,9 +305,11 @@ __device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out,
             loc_out[iflat] = lnew;
         });
 
-        #pragma unroll
-        for(int i=0; i<NCOMB(p, 3); i++)
-            loc[i] = loc_out[i]; // copy back output as input for next iteration,.
+        if(ax < dim - 1) {
+            #pragma unroll
+            for(int i=0; i<NCOMB(p, dim); i++)
+                loc[i] = loc_out[i]; // copy back output as input for next iteration.
+        }
     }
 }
 
