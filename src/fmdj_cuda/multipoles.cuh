@@ -7,6 +7,37 @@
 #include "common/math.cuh"
 
 /* ---------------------------------------------------------------------------------------------- */
+/*                                   Iteration Helper functions                                   */
+/* ---------------------------------------------------------------------------------------------- */
+
+// calls a function with each multi-index vec(k) so that sum(k) == const.
+template<int dim, int d, typename F>
+__device__ __forceinline__ void for_each_multiindex_fixed_sum(int ksum, int remaining, int (&k)[dim], int& iflat, F&& f) {
+    if constexpr (d == 0) {
+        k[0] = remaining;
+        f(iflat, ksum, k);
+        iflat += 1;
+    } else {
+        #pragma unroll
+        for(int kd = 0; kd <= remaining; kd++) {
+            k[d] = kd;
+            for_each_multiindex_fixed_sum<dim, d - 1>(ksum, remaining - kd, k, iflat, f);
+        }
+    }
+}
+
+// calls a function with each multi-index vec(k) so that sum(k) <= p
+template<int p, int dim, typename F>
+__device__ __forceinline__ void for_each_multiindex(F&& f) {
+    int k[dim];
+    int iflat = 0;
+    #pragma unroll
+    for(int ksum = 0; ksum <= p; ksum++) {
+        for_each_multiindex_fixed_sum<dim, dim - 1>(ksum, ksum, k, iflat, f);
+    }
+}
+
+/* ---------------------------------------------------------------------------------------------- */
 /*                                 Derivatives of Green's Function                                */
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -68,72 +99,40 @@ template<int p>
 __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const Vec<3,float> dpos) {
 
     // Shift in x
-    int iflat = 0;
-    #pragma unroll
-    for(int ksum = 0; ksum <= p; ksum++) {
+    for_each_multiindex<p,3>([&](int iflat, int, int k[3]) {
+        float mnew = 0.f;
         #pragma unroll
-        for(int kz = 0; kz <= ksum; kz++) {
-            #pragma unroll
-            for(int ky = 0; ky <= ksum - kz; ky++) {
-                const int kx = ksum - ky - kz;
-
-                float mnew = 0.f;
-                #pragma unroll
-                for(int i = 0; i <= kx; i++) {
-                    float coeff = binomial(kx, i);
-                    mnew += coeff * powi_upto6(dpos[0], kx - i) * mp[multi_to_flat(i, ky, kz)];
-                }
-
-                mp_out[iflat] = mnew;
-                iflat += 1;
-            }
+        for(int i = 0; i <= k[0]; i++) {
+            float coeff = binomial(k[0], i);
+            mnew += coeff * powi_upto6(dpos[0], k[0] - i) * mp[multi_to_flat(i, k[1], k[2])];
         }
-    }
+
+        mp_out[iflat] = mnew;
+    });
         
     // Shift in y
-    iflat = 0;
-    #pragma unroll
-    for(int ksum = 0; ksum <= p; ksum++) {
+    for_each_multiindex<p,3>([&](int iflat, int, int k[3]) {
+        float mnew = 0.f;
         #pragma unroll
-        for(int kz = 0; kz <= ksum; kz++) {
-            #pragma unroll
-            for(int ky = 0; ky <= ksum - kz; ky++) {
-                const int kx = ksum - ky - kz;
-
-                float mnew = 0.f;
-                #pragma unroll
-                for(int j = 0; j <= ky; j++) {
-                    float coeff = binomial(ky, j);
-                    mnew += coeff * powi_upto6(dpos[1], ky - j) * mp_out[multi_to_flat(kx, j, kz)];
-                }
-
-                mp[iflat] = mnew;
-                iflat += 1;
-            }
+        for(int j = 0; j <= k[1]; j++) {
+            float coeff = binomial(k[1], j);
+            mnew += coeff * powi_upto6(dpos[1], k[1] - j) * mp_out[multi_to_flat(k[0], j, k[2])];
         }
-    }
+
+        mp[iflat] = mnew;
+    });
 
     // Shift in z
-    iflat = 0;
-    #pragma unroll
-    for(int ksum = 0; ksum <= p; ksum++) {
+    for_each_multiindex<p,3>([&](int iflat, int, int k[3]) {
+        float mnew = 0.f;
         #pragma unroll
-        for(int kz = 0; kz <= ksum; kz++) {
-            #pragma unroll
-            for(int ky = 0; ky <= ksum - kz; ky++) {
-                const int kx = ksum - ky - kz;
-                float mnew = 0.f;
-                #pragma unroll
-                for(int l = 0; l <= kz; l++) {
-                    float coeff = binomial(kz, l);
-                    mnew += coeff * powi_upto6(dpos[2], kz - l) * mp[multi_to_flat(kx, ky, l)];
-                }
-
-                mp_out[iflat] = mnew;
-                iflat += 1;
-            }
+        for(int l = 0; l <= k[2]; l++) {
+            float coeff = binomial(k[2], l);
+            mnew += coeff * powi_upto6(dpos[2], k[2] - l) * mp[multi_to_flat(k[0], k[1], l)];
         }
-    }
+
+        mp_out[iflat] = mnew;
+    });
 }
 
 template<int p>
@@ -205,76 +204,41 @@ __global__ void SummarizeMultipoles(
 /*                                         L2L Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
+
 template<int p>
 __device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out, Vec<3,float> dpos) {
-
     // Shift in x
-    int iflat = 0;
-    #pragma unroll
-    for(int ksum = 0; ksum <= p; ksum++) {
+    for_each_multiindex<p,3>([&](int iflat, int, int k[3]) {
+        float lnew = 0.f;
         #pragma unroll
-        for(int kz = 0; kz <= ksum; kz++) {
-            #pragma unroll
-            for(int ky = 0; ky <= ksum - kz; ky++) {
-                const int kx = ksum - ky - kz;
-
-                float lnew = 0.f;
-                #pragma unroll
-                for(int i = kx; i <= p - ky - kz; i++) {
-                    float coeff = binomial(i, kx);
-                    lnew += coeff * powi_upto6(dpos[0], i - kx) * loc[multi_to_flat(i, ky, kz)];
-                }
-
-                loc_out[iflat] = lnew;
-                iflat += 1;
-            }
+        for(int i = k[0]; i <= p - k[1] - k[2]; i++) {
+            float coeff = binomial(i, k[0]);
+            lnew += coeff * powi_upto6(dpos[0], i - k[0]) * loc[multi_to_flat(i, k[1], k[2])];
         }
-    }
-        
+        loc_out[iflat] = lnew;
+    });
+    
     // Shift in y
-    iflat = 0;
-    #pragma unroll
-    for(int ksum = 0; ksum <= p; ksum++) {
+    for_each_multiindex<p,3>([&](int iflat, int, int k[3]) {
+        float lnew = 0.f;
         #pragma unroll
-        for(int kz = 0; kz <= ksum; kz++) {
-            #pragma unroll
-            for(int ky = 0; ky <= ksum - kz; ky++) {
-                const int kx = ksum - ky - kz;
-
-                float lnew = 0.f;
-                #pragma unroll
-                for(int j = ky; j <= p - kx - kz; j++) {
-                    float coeff = binomial(j, ky);
-                    lnew += coeff * powi_upto6(dpos[1], j - ky) * loc_out[multi_to_flat(kx, j, kz)];
-                }
-
-                loc[iflat] = lnew;
-                iflat += 1;
-            }
+        for(int j = k[1]; j <= p - k[0] - k[2]; j++) {
+            float coeff = binomial(j, k[1]);
+            lnew += coeff * powi_upto6(dpos[1], j - k[1]) * loc_out[multi_to_flat(k[0], j, k[2])];
         }
-    }
+        loc[iflat] = lnew;
+    });
 
     // Shift in z
-    iflat = 0;
-    #pragma unroll
-    for(int ksum = 0; ksum <= p; ksum++) {
+    for_each_multiindex<p,3>([&](int iflat, int, int k[3]) {
+        float lnew = 0.f;
         #pragma unroll
-        for(int kz = 0; kz <= ksum; kz++) {
-            #pragma unroll
-            for(int ky = 0; ky <= ksum - kz; ky++) {
-                const int kx = ksum - ky - kz;
-                float lnew = 0.f;
-                #pragma unroll
-                for(int l = kz; l <= p - kx - ky; l++) {
-                    float coeff = binomial(l, kz);
-                    lnew += coeff * powi_upto6(dpos[2], l - kz) * loc[multi_to_flat(kx, ky, l)];
-                }
-
-                loc_out[iflat] = lnew;
-                iflat += 1;
-            }
+        for(int l = k[2]; l <= p - k[0] - k[1]; l++) {
+            float coeff = binomial(l, k[2]);
+            lnew += coeff * powi_upto6(dpos[2], l - k[2]) * loc[multi_to_flat(k[0], k[1], l)];
         }
-    }
+        loc_out[iflat] = lnew;
+    });
 }
 
 template<int p>
@@ -374,29 +338,20 @@ __global__ void TranslateLocalToLocal_XVJP(
         #pragma unroll
         for (int a=0; a < 3; a++) {
             float gxa = 0.f;
-            #pragma unroll
-            for(int msum = 0; msum <= p; msum++) {
-                #pragma unroll
-                for(int mz = 0; mz <= msum; mz++) {
-                    #pragma unroll
-                    for(int my = 0; my <= msum - mz; my++) {
-                        const int mx = msum - my - mz;
+            for_each_multiindex<p,3>([&](int im, int msum, int m[3]) {
+                const int ma = m[a];
 
-                        const int ma = a == 0 ? mx : (a == 1 ? my : mz);
+                int b[3] = {m[0], m[1], m[2]};
+                b[a] += 1;
+                const int bsum = msum + 1;
 
-                        const int bx = mx + (a == 0 ? 1 : 0);
-                        const int by = my + (a == 1 ? 1 : 0);
-                        const int bz = mz + (a == 2 ? 1 : 0);
+                if((msum > pout) || (bsum > p))
+                    return;
 
-                        if((mx + my + mz > pout) || (bx + by + bz > p))
-                            continue;
-
-                        int im = multi_to_flat(mx, my, mz), ib = multi_to_flat(bx, by, bz);
-                            
-                        gxa += gloc_child[im] * loc_child[ib] * (ma + 1);
-                    }
-                }
-            }
+                int ib = multi_to_flat(b[0], b[1], b[2]);
+                    
+                gxa += gloc_child[im] * loc_child[ib] * (ma + 1);
+            });
 
             g_xchild[ichild][a] = gxa;
         }
@@ -420,44 +375,26 @@ __device__ __forceinline__ void m2l_translator(
     float Dn[ncomb];
     setupDnG<p>(dx, epsilon2, Dn);
 
-    int kflat = 0;
-    #pragma unroll
-    for(int ksum = 0; ksum <= p; ksum++) {
-        #pragma unroll
-        for(int kz = 0; kz <= ksum; kz++) {
-            #pragma unroll
-            for(int ky = 0; ky <= ksum - kz; ky++) {
-                const int kx = ksum - ky - kz;
-                float Lnew = 0.f;
+    for_each_multiindex<p,3>([&](int kflat, int ksum, int k[3]) {
+        float Lnew = 0.f;
 
-                int nflat = 0;
-                #pragma unroll
-                for (int nsum = 0; nsum <= p - ksum; nsum++) {
-                    #pragma unroll
-                    for (int nz = 0; nz <= nsum; nz++) {
-                        #pragma unroll
-                        for (int ny = 0; ny <= nsum - nz; ny++) {
-                            const int nx = nsum - ny - nz;
-                            
-                            float Dnk = Dn[multi_to_flat(kx + nx, ky + ny, kz + nz)];
-                            float Mpn = Mp[nflat];
-                            
-                            const float infvac = 1./fact3f(nx, ny, nz);
-                            Lnew += Dnk * Mpn * infvac;
-                            nflat += 1;
-                        }
-                    }
-                }
-
-                const float sign = ksum % 2 == 0 ? -1.f : 1.f;
-                const float fac = sign / fact3f(kx, ky, kz);
-
-                loc[kflat] += Lnew * fac;
-
-                kflat += 1;
+        int nflat = 0;
+        for_each_multiindex<p,3>([&](int, int nsum, int n[3]) {
+            if(nsum <= p - ksum) {
+                float Dnk = Dn[multi_to_flat(k[0] + n[0], k[1] + n[1], k[2] + n[2])];
+                float Mpn = Mp[nflat];
+                
+                const float infvac = 1./fact3f(n[0], n[1], n[2]);
+                Lnew += Dnk * Mpn * infvac;
+                nflat += 1;
             }
-        }
-    }
+        });
+
+        const float sign = ksum % 2 == 0 ? -1.f : 1.f;
+        const float fac = sign / fact3f(k[0], k[1], k[2]);
+
+        loc[kflat] += Lnew * fac;
+    });
 }
 
 #endif // MULTIPOLES_H
