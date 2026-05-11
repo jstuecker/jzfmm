@@ -37,6 +37,14 @@ __device__ __forceinline__ void for_each_multiindex(F&& f) {
     }
 }
 
+template<int dim>
+__device__ __forceinline__ void copy_multiindex(const int (&src)[dim], int (&dst)[dim]) {
+    #pragma unroll
+    for(int d = 0; d < dim; d++) {
+        dst[d] = src[d];
+    }
+}
+
 /* ---------------------------------------------------------------------------------------------- */
 /*                                 Derivatives of Green's Function                                */
 /* ---------------------------------------------------------------------------------------------- */
@@ -81,7 +89,7 @@ __device__ void setupDnG(Vec<3,float> dx, float eps2, float* __restrict__ Dn) {
                     const int ilast_k[3] = {nx - 1*(k==0), ny - 1*(k==1), nz - 1*(k==2)};
                     const int ilast2_k[3] = {nx - 2*(k==0), ny - 2*(k==1), nz - 2*(k==2)};
 
-                    Dn[iflat] = xk*Dn[multi_to_flat<3>(ilast_k)] + (nk-1)*Dn[multi_to_flat(ilast2_k)];
+                    Dn[iflat] = xk*Dn[multi_to_flat<3>(ilast_k)] + (nk-1)*Dn[multi_to_flat<3>(ilast2_k)];
                     iflat -= 1;
                 }
             }
@@ -95,47 +103,33 @@ __device__ void setupDnG(Vec<3,float> dx, float eps2, float* __restrict__ Dn) {
 /*                                         M2M Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int p>
-__device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const Vec<3,float> dpos) {
-
+template<int p, int dim=3>
+__device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const Vec<dim,float> dpos) {
     // Shift in x
-    for_each_multiindex<p,3>([&](int iflat, int, int k[3]) {
-        float mnew = 0.f;
+    #pragma unroll
+    for(int ax=0; ax<dim; ax++) {
+        // shift dimension by dimension
+        for_each_multiindex<p,dim>([&](int iflat, int, int (&k)[dim]) {
+            float mnew = 0.f;
+            #pragma unroll
+            for(int i = 0; i <= p; i++) {
+                if(i <= k[ax]) { // not in loop boundaries to avoid dynamic indexing / local memory
+                    int kfrom[dim];
+                    copy_multiindex<dim>(k, kfrom);
+                    kfrom[ax] = i;
+
+                    float coeff = binomial(k[ax], i);
+                    mnew += coeff * powi_upto6(dpos[ax], k[ax] - i) * mp[multi_to_flat<dim>(kfrom)];
+                }
+            }
+
+            mp_out[iflat] = mnew;
+        });
+
         #pragma unroll
-        for(int i = 0; i <= k[0]; i++) {
-            float coeff = binomial(k[0], i);
-            const int im[3] = {i, k[1], k[2]};
-            mnew += coeff * powi_upto6(dpos[0], k[0] - i) * mp[multi_to_flat<3>(im)];
-        }
-
-        mp_out[iflat] = mnew;
-    });
-        
-    // Shift in y
-    for_each_multiindex<p,3>([&](int iflat, int, int k[3]) {
-        float mnew = 0.f;
-        #pragma unroll
-        for(int j = 0; j <= k[1]; j++) {
-            float coeff = binomial(k[1], j);
-            const int im[3] = {k[0], j, k[2]};
-            mnew += coeff * powi_upto6(dpos[1], k[1] - j) * mp_out[multi_to_flat<3>(im)];
-        }
-
-        mp[iflat] = mnew;
-    });
-
-    // Shift in z
-    for_each_multiindex<p,3>([&](int iflat, int, int k[3]) {
-        float mnew = 0.f;
-        #pragma unroll
-        for(int l = 0; l <= k[2]; l++) {
-            float coeff = binomial(k[2], l);
-            const int im[3] = {k[0], k[1], l};
-            mnew += coeff * powi_upto6(dpos[2], k[2] - l) * mp[multi_to_flat<3>(im)];
-        }
-
-        mp_out[iflat] = mnew;
-    });
+        for(int i=0; i<NCOMB(p); i++)
+            mp[i] = mp_out[i];
+    }
 }
 
 template<int p>
@@ -208,43 +202,30 @@ __global__ void SummarizeMultipoles(
 /* ---------------------------------------------------------------------------------------------- */
 
 
-template<int p>
+template<int p, int dim=3>
 __device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out, Vec<3,float> dpos) {
-    // Shift in x
-    for_each_multiindex<p,3>([&](int iflat, int, int k[3]) {
-        float lnew = 0.f;
-        #pragma unroll
-        for(int i = k[0]; i <= p - k[1] - k[2]; i++) {
-            float coeff = binomial(i, k[0]);
-            const int im[3] = {i, k[1], k[2]};
-            lnew += coeff * powi_upto6(dpos[0], i - k[0]) * loc[multi_to_flat<3>(im)];
-        }
-        loc_out[iflat] = lnew;
-    });
-    
-    // Shift in y
-    for_each_multiindex<p,3>([&](int iflat, int, int k[3]) {
-        float lnew = 0.f;
-        #pragma unroll
-        for(int j = k[1]; j <= p - k[0] - k[2]; j++) {
-            float coeff = binomial(j, k[1]);
-            const int im[3] = {k[0], j, k[2]};
-            lnew += coeff * powi_upto6(dpos[1], j - k[1]) * loc_out[multi_to_flat<3>(im)];
-        }
-        loc[iflat] = lnew;
-    });
+    #pragma unroll
+    for(int ax=0; ax<dim; ax++) {
+        // Shift dimension by dimension
+        for_each_multiindex<p,dim>([&](int iflat, int ksum, int (&k)[3]) {
+            float lnew = 0.f;
+            #pragma unroll
+            for(int i = k[ax]; i <= p; i++) {
+                if(i <= p - ksum + k[ax]) { // not in loop boundaries to avoid dynamic indexing / local memory
+                    float coeff = binomial(i, k[ax]);
+                    int kfrom[dim];
+                    copy_multiindex<dim>(k, kfrom);
+                    kfrom[ax] = i;
+                    lnew += coeff * powi_upto6(dpos[ax], i - k[ax]) * loc[multi_to_flat<dim>(kfrom)];
+                }
+            }
+            loc_out[iflat] = lnew;
+        });
 
-    // Shift in z
-    for_each_multiindex<p,3>([&](int iflat, int, int k[3]) {
-        float lnew = 0.f;
         #pragma unroll
-        for(int l = k[2]; l <= p - k[0] - k[1]; l++) {
-            float coeff = binomial(l, k[2]);
-            const int im[3] = {k[0], k[1], l};
-            lnew += coeff * powi_upto6(dpos[2], l - k[2]) * loc[multi_to_flat<3>(im)];
-        }
-        loc_out[iflat] = lnew;
-    });
+        for(int i=0; i<NCOMB(p); i++)
+            loc[i] = loc_out[i]; // copy back output as input for next iteration,.
+    }
 }
 
 template<int p>
@@ -344,7 +325,7 @@ __global__ void TranslateLocalToLocal_XVJP(
         #pragma unroll
         for (int a=0; a < 3; a++) {
             float gxa = 0.f;
-            for_each_multiindex<p,3>([&](int im, int msum, int m[3]) {
+            for_each_multiindex<p,3>([&](int im, int msum, int (&m)[3]) {
                 const int ma = m[a];
 
                 int b[3] = {m[0], m[1], m[2]};
@@ -381,11 +362,11 @@ __device__ __forceinline__ void m2l_translator(
     float Dn[ncomb];
     setupDnG<p>(dx, epsilon2, Dn);
 
-    for_each_multiindex<p,3>([&](int kflat, int ksum, int k[3]) {
+    for_each_multiindex<p,3>([&](int kflat, int ksum, int (&k)[3]) {
         float Lnew = 0.f;
 
         int nflat = 0;
-        for_each_multiindex<p,3>([&](int, int nsum, int n[3]) {
+        for_each_multiindex<p,3>([&](int, int nsum, int (&n)[3]) {
             if(nsum <= p - ksum) {
                 const int dn[3] = {k[0] + n[0], k[1] + n[1], k[2] + n[2]};
                 float Dnk = Dn[multi_to_flat<3>(dn)];
