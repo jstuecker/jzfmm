@@ -8,6 +8,7 @@ from dataclasses import replace
 from jax.test_util import check_grads
 
 from jztree.tree import _dense_interaction_list
+from jztree_utils import ics
 
 from fmdj.config import Config, FMMConfig
 from fmdj.data import PosMass
@@ -110,9 +111,14 @@ def test_sim_com(particles_blob, mode):
     assert jnp.sum(pgrad.pos, axis=0) == pytest.approx(xcom_grad, rel=2e-5)
     assert jnp.sum(pgrad.vel, axis=0) == pytest.approx(vcom_grad, rel=2e-5)
 
-@pytest.mark.parametrize("npart", [1024*8], indirect=True)
-def test_force_gradients(pos_mass: PosMass):
-    part = pos_mass
+@pytest.mark.shrink_in_quick(keep_index=1)
+@pytest.mark.parametrize("dim", (2,3))
+def test_force_gradients(dim):
+    npart = 1024*8
+    part = ics.gaussian_particles(npart, dim=dim, total_mass=npart*1.)
+    part.num = None # currently causes some problems with gradients
+    part.num_total = None # currently causes some problems with gradients
+    part.mass = part.mass * jnp.ones(part.pos.shape[0], dtype=jnp.float32)
     fmmcfg = FMMConfig(p=4, kahan_summation=True, opening_angle=0.8)
     cfg = Config(softening=0.05, fmm=fmmcfg)
     
@@ -132,9 +138,9 @@ def test_force_gradients(pos_mass: PosMass):
     def f2(part): return direct_force_and_potential(part, softening=cfg.softening, kahan=True).sum()
     def f3(part): return fast_multipole_method(part, cfg=cfg).values.sum() / cfg.G()
     
-    gposm1 = jax.jit(jax.grad(f1))(part)
-    gposm2 = jax.jit(jax.grad(f2))(part)
-    gposm3 = jax.jit(jax.grad(f3))(part)
+    gposm1 = jax.jit(jax.grad(f1, allow_int=True))(part)
+    gposm2 = jax.jit(jax.grad(f2, allow_int=True))(part)
+    gposm3 = jax.jit(jax.grad(f3, allow_int=True))(part)
 
     abstol_pos = float(jnp.std(gposm2.pos) * 2e-2)
     abstol_mass = float(jnp.std(gposm2.mass) * 1e-2)
