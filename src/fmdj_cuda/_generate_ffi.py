@@ -5,7 +5,7 @@ from jax_ffi_gen import parse, generator as gen
 
 HERE = Path(__file__).resolve().parent
 
-dimensions = (3,)
+dimensions = (2,3)
 p_instance_values = (1, 2, 3, 4, 5)
 default_includes = ["../common/math.cuh"]
 

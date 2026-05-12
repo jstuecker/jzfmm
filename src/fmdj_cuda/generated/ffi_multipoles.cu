@@ -70,10 +70,15 @@ ffi::Error SummarizeMultipolesFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
+        { {1, 2}, reinterpret_cast<TFunc>(&SummarizeMultipoles<1, 2>) },
         { {1, 3}, reinterpret_cast<TFunc>(&SummarizeMultipoles<1, 3>) },
+        { {2, 2}, reinterpret_cast<TFunc>(&SummarizeMultipoles<2, 2>) },
         { {2, 3}, reinterpret_cast<TFunc>(&SummarizeMultipoles<2, 3>) },
+        { {3, 2}, reinterpret_cast<TFunc>(&SummarizeMultipoles<3, 2>) },
         { {3, 3}, reinterpret_cast<TFunc>(&SummarizeMultipoles<3, 3>) },
+        { {4, 2}, reinterpret_cast<TFunc>(&SummarizeMultipoles<4, 2>) },
         { {4, 3}, reinterpret_cast<TFunc>(&SummarizeMultipoles<4, 3>) },
+        { {5, 2}, reinterpret_cast<TFunc>(&SummarizeMultipoles<5, 2>) },
         { {5, 3}, reinterpret_cast<TFunc>(&SummarizeMultipoles<5, 3>) }
     };
 
@@ -84,7 +89,7 @@ ffi::Error SummarizeMultipolesFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p, dim)"\
             " in SummarizeMultipolesFFIHost -- Only supporting:\n"\
-            "(1, 3), (2, 3), (3, 3), (4, 3), (5, 3)"
+            "(1, 2), (1, 3), (2, 2), (2, 3), (3, 2), (3, 3), (4, 2), (4, 3), (5, 2), (5, 3)"
         );
     }
     const void* instance = it->second;
@@ -169,10 +174,15 @@ ffi::Error TranslateLocalToLocalFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
+        { {1, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<1, 2>) },
         { {1, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<1, 3>) },
+        { {2, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<2, 2>) },
         { {2, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<2, 3>) },
+        { {3, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<3, 2>) },
         { {3, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<3, 3>) },
+        { {4, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<4, 2>) },
         { {4, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<4, 3>) },
+        { {5, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<5, 2>) },
         { {5, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<5, 3>) }
     };
 
@@ -183,7 +193,7 @@ ffi::Error TranslateLocalToLocalFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p, dim)"\
             " in TranslateLocalToLocalFFIHost -- Only supporting:\n"\
-            "(1, 3), (2, 3), (3, 3), (4, 3), (5, 3)"
+            "(1, 2), (1, 3), (2, 2), (2, 3), (3, 2), (3, 3), (4, 2), (4, 3), (5, 2), (5, 3)"
         );
     }
     const void* instance = it->second;
@@ -267,10 +277,15 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
+        { {1, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<1, 2>) },
         { {1, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<1, 3>) },
+        { {2, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<2, 2>) },
         { {2, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<2, 3>) },
+        { {3, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<3, 2>) },
         { {3, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<3, 3>) },
+        { {4, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<4, 2>) },
         { {4, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<4, 3>) },
+        { {5, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<5, 2>) },
         { {5, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<5, 3>) }
     };
 
@@ -281,7 +296,7 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p, dim)"\
             " in TranslateLocalToLocal_XVJPFFIHost -- Only supporting:\n"\
-            "(1, 3), (2, 3), (3, 3), (4, 3), (5, 3)"
+            "(1, 2), (1, 3), (2, 2), (2, 3), (3, 2), (3, 3), (4, 2), (4, 3), (5, 2), (5, 3)"
         );
     }
     const void* instance = it->second;

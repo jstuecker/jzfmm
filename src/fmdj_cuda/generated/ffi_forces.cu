@@ -59,7 +59,9 @@ ffi::Error ForceAndPotentialFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
+        { {true, 2}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 2>) },
         { {true, 3}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 3>) },
+        { {false, 2}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 2>) },
         { {false, 3}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 3>) }
     };
 
@@ -70,7 +72,7 @@ ffi::Error ForceAndPotentialFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, dim)"\
             " in ForceAndPotentialFFIHost -- Only supporting:\n"\
-            "(true, 3), (false, 3)"
+            "(true, 2), (true, 3), (false, 2), (false, 3)"
         );
     }
     const void* instance = it->second;
@@ -142,7 +144,9 @@ ffi::Error BwdForceAndPotentialFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
+        { {true, 2}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 2>) },
         { {true, 3}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 3>) },
+        { {false, 2}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 2>) },
         { {false, 3}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 3>) }
     };
 
@@ -153,7 +157,7 @@ ffi::Error BwdForceAndPotentialFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, dim)"\
             " in BwdForceAndPotentialFFIHost -- Only supporting:\n"\
-            "(true, 3), (false, 3)"
+            "(true, 2), (true, 3), (false, 2), (false, 3)"
         );
     }
     const void* instance = it->second;
@@ -233,7 +237,9 @@ ffi::Error GroupedForceAndPotFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
+        { {true, 2}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 2>) },
         { {true, 3}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 3>) },
+        { {false, 2}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 2>) },
         { {false, 3}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 3>) }
     };
 
@@ -244,7 +250,7 @@ ffi::Error GroupedForceAndPotFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, dim)"\
             " in GroupedForceAndPotFFIHost -- Only supporting:\n"\
-            "(true, 3), (false, 3)"
+            "(true, 2), (true, 3), (false, 2), (false, 3)"
         );
     }
     const void* instance = it->second;
@@ -330,7 +336,9 @@ ffi::Error BwdGroupedForceAndPotFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
+        { {true, 2}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 2>) },
         { {true, 3}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 3>) },
+        { {false, 2}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 2>) },
         { {false, 3}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 3>) }
     };
 
@@ -341,7 +349,7 @@ ffi::Error BwdGroupedForceAndPotFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, dim)"\
             " in BwdGroupedForceAndPotFFIHost -- Only supporting:\n"\
-            "(true, 3), (false, 3)"
+            "(true, 2), (true, 3), (false, 2), (false, 3)"
         );
     }
     const void* instance = it->second;

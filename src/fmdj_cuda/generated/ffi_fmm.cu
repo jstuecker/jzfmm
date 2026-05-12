@@ -80,10 +80,15 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
+        { {1, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2>) },
         { {1, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3>) },
+        { {2, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<2, 2>) },
         { {2, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<2, 3>) },
+        { {3, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<3, 2>) },
         { {3, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<3, 3>) },
+        { {4, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<4, 2>) },
         { {4, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<4, 3>) },
+        { {5, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<5, 2>) },
         { {5, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<5, 3>) }
     };
 
@@ -94,7 +99,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p, dim)"\
             " in CountInteractionsAndM2LFFIHost -- Only supporting:\n"\
-            "(1, 3), (2, 3), (3, 3), (4, 3), (5, 3)"
+            "(1, 2), (1, 3), (2, 2), (2, 3), (3, 2), (3, 3), (4, 2), (4, 3), (5, 2), (5, 3)"
         );
     }
     const void* instance = it->second;
@@ -180,6 +185,7 @@ ffi::Error InsertInteractionsFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
+        { {2}, reinterpret_cast<TFunc>(&InsertInteractions<2>) },
         { {3}, reinterpret_cast<TFunc>(&InsertInteractions<3>) }
     };
 
@@ -190,7 +196,7 @@ ffi::Error InsertInteractionsFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (dim)"\
             " in InsertInteractionsFFIHost -- Only supporting:\n"\
-            "(3)"
+            "(2), (3)"
         );
     }
     const void* instance = it->second;

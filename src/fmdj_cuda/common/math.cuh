@@ -167,7 +167,7 @@ __device__ __forceinline__ float fact3f(unsigned kx, unsigned ky, unsigned kz) {
     return fact_upto6f(kx) * fact_upto6f(ky) * fact_upto6f(kz);
 }
 
-__device__ __forceinline__ constexpr int binomial_int(int n, int k) {
+__host__ __device__ __forceinline__ constexpr int binomial_int(int n, int k) {
     int res = 1;
     #pragma unroll
     for(int i = 1; i <= k; i++) {
@@ -176,7 +176,21 @@ __device__ __forceinline__ constexpr int binomial_int(int n, int k) {
     return res;
 }
 
-#define NCOMB(p, dim) binomial_int((p) + (dim), (dim))
+template<int dim>
+__host__ __device__ __forceinline__ constexpr int ncomb_dim(int p) {
+    if constexpr (dim == 2) {
+        return (p + 1) * (p + 2) / 2;
+    } else if constexpr (dim == 3) {
+        return (p + 1) * (p + 2) * (p + 3) / 6;
+    } else {
+        // Theoretically the dim=2 and dim=3 specializations should be unnecessary...
+        // However, sometimes arrays landed in local memory with the more general version below:
+        return binomial_int(p + dim, dim);
+    }
+}
+
+// #define NCOMB(p, dim) binomial_int((p) + (dim), (dim))
+#define NCOMB(p, dim) ncomb_dim<dim>((p))
 // #define NCOMB(p) (((p) + 1) * ((p) + 2) * ((p) + 3) / 6)
 
 /* ---------------------------------------------------------------------------------------------- */

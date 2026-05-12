@@ -133,7 +133,7 @@ __device__ __forceinline__ float multiindex_factorial(const int (&k)[dim]) {
 /* ---------------------------------------------------------------------------------------------- */
 
 template<int p>
-__device__ void setupGn(float r2, float eps2, float* __restrict__ G)
+__device__ __forceinline__ void setupGn(float r2, float eps2, float* __restrict__ G)
 {
     // The derivatives of (1/r d/dr)^n G_0  with G_0 = 1/r
     float rinv = rsqrtf(r2 + eps2); 
@@ -147,7 +147,7 @@ __device__ void setupGn(float r2, float eps2, float* __restrict__ G)
 }
 
 template<int p, int dim=3>
-__device__ void setupDnG(Vec<dim,float> dx, float eps2, float* __restrict__ Dn) {
+__device__ __forceinline__ void setupDnG(Vec<dim,float> dx, float eps2, float* __restrict__ Dn) {
     // Recurrence formula by Tausch (2003)
     float r2 = dx.norm2();
 
