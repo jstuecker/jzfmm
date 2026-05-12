@@ -105,6 +105,7 @@ _fmm_node_to_node.jit = jax.jit(_fmm_node_to_node, static_argnames=['cfg'])
 def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
     # define root level:
     size = th.size()
+    dim = th.center().get(0, size).shape[-1]
     spl, ilist, nsup = grouped_dense_interaction_list(
         th.num(th.num_planes()-1), size_ilist=int(size*cfg.fmm.ilist_alloc_fac), ngroup=32, size_super=size
     )
@@ -113,7 +114,7 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
 
     # Add super node data into tree information
     spl_n2n = th.ispl_n2n.append(spl, nsup+1, fill_value=spl[-1], resize=True)
-    cent = th.center().append(jnp.zeros((size, 3), dtype=jnp.float32), nsup, fill_value=0., resize=True)
+    cent = th.center().append(jnp.zeros((size, dim), dtype=jnp.float32), nsup, fill_value=0., resize=True)
 
     def handle_level(i, carry):
         level = th.num_planes() - 1 - i
@@ -154,9 +155,10 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
     block_size = 128
     assert cfg.tree.max_leaf_size <= block_size
     assert len(ispl) == len(ilist.ispl)
+    dim = particles.pos.shape[-1]
 
     node_range = jnp.array([0, ispl.size-1], dtype=jnp.int32)
-    out_type = jax.ShapeDtypeStruct((particles.pos.shape[0], 4), jnp.float32)
+    out_type = jax.ShapeDtypeStruct((particles.pos.shape[0], dim + 1), jnp.float32)
 
     @jax.custom_vjp
     def eval(particles, ispl, ilist):
@@ -178,7 +180,7 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
             softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
-        return PosMass(pos=gposm[:,0:3], mass=gposm[:,3]), None, None
+        return PosMass(pos=gposm[:,:dim], mass=gposm[:,dim]), None, None
     
     eval.defvjp(eval_fwd, eval_bwd)
 
@@ -282,7 +284,8 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg: Config) ->
 
         gx1 = shift_local_to_children_vjp_x(ispl, loc_node, xnode, pos, gloc)
         
-        (gmp, _), (_, _, _, _, gmp_node) = eval_fwd(pos, gloc, pout=p_of_num_multi(mp.shape[-1]))
+        dim = pos.shape[-1]
+        (gmp, _), (_, _, _, _, gmp_node) = eval_fwd(pos, gloc, pout=p_of_num_multi(mp.shape[-1], dim=dim))
 
         gx2 = shift_local_to_children_vjp_x(ispl, gmp_node, xnode, pos, mp)
         
@@ -311,7 +314,7 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jax.Array | None = None, cfg
     loc_leaf_leaf = grouped_force_and_pot(partz, spl, jax.lax.stop_gradient(ilist), cfg=cfg)
     loc = loc_leaf_leaf + loc_node_node
 
-    return LocalExpansion(loc * cfg.G())
+    return LocalExpansion(loc * cfg.G(), dim=partz.pos.shape[-1])
 fast_multipole_method_z.jit = jax.jit(fast_multipole_method_z, static_argnames=("cfg", "pout"))
 
 def fast_multipole_method(part: PosMass, *, cfg: Config, pout: int = 1) -> LocalExpansion:
@@ -323,13 +326,13 @@ def fast_multipole_method(part: PosMass, *, cfg: Config, pout: int = 1) -> Local
 
     inv_sort = jnp.zeros_like(isortz).at[isortz].set(jnp.arange(len(isortz), dtype=isortz.dtype))
 
-    return LocalExpansion(locz.values[inv_sort])
+    return LocalExpansion(locz.values[inv_sort], dim=part.pos.shape[-1])
 fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg", "pout"))
 
 def force_and_potential(p: PosMass, cfg : Config) -> LocalExpansion:
     if cfg.fmm is None:
         loc = direct_force_and_potential(p, softening=cfg.softening, kahan=True) * cfg.G()
-        return LocalExpansion(loc)
+        return LocalExpansion(loc, dim=p.pos.shape[-1])
     else:
         return fast_multipole_method(p, cfg=cfg, pout=1)
 force_and_potential.jit = jax.jit(force_and_potential, static_argnames=("cfg",))

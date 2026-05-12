@@ -14,16 +14,19 @@ def static_field(*args, **kwargs):
 class LocalExpansion:
     values: jax.Array
 
+    dim: int = static_field(default=3)
+
     def fphi(self):
         return jnp.concatenate([self.force(), self.potential()[...,None]], axis=-1)
     def potential(self):
         return self.values[:, 0]
     def force(self):
-        assert self.values.shape[1] >= 4, "Force components not available"
-        return -self.values[:, 1:4]
+        assert self.values.shape[1] >= 1 + self.dim, "Force components not available"
+        return -self.values[:, 1:1+self.dim]
     def tide(self):
-        assert self.values.shape[1] >= 10, "Tidal components not available"
-        return -self.values[:, 4:10]
+        ntide = self.dim * (self.dim + 1) // 2
+        assert self.values.shape[1] >= 1 + self.dim + ntide, "Tidal components not available"
+        return -self.values[:, 1+self.dim: 1+self.dim+ntide]
 
 @jax.tree_util.register_dataclass
 @dataclass(slots=True, kw_only=True)

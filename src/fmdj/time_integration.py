@@ -34,8 +34,8 @@ def find_center(p : Particles, cfg : Config = None):
         cpos = p.pos[i]
         cvel = p.vel[i]
     else:
-        cpos = jnp.zeros(3)
-        cvel = jnp.zeros(3)
+        cpos = jnp.zeros(p.pos.shape[-1], dtype=p.pos.dtype)
+        cvel = jnp.zeros(p.vel.shape[-1], dtype=p.vel.dtype)
 
     return cpos, cvel
 find_center.jit = jax.jit(find_center, static_argnames=("cfg",))
@@ -126,7 +126,8 @@ def clean_particles(p: Particles) -> Particles:
     p.mass = jnp.asarray(p.mass)
 
     if p.loc is None:
-        p.loc = LocalExpansion(jnp.zeros((p.pos.shape[0], 4), dtype=p.pos.dtype))
+        dim = p.pos.shape[-1]
+        p.loc = LocalExpansion(jnp.zeros((p.pos.shape[0], dim + 1), dtype=p.pos.dtype), dim=dim)
     
     return p
 
