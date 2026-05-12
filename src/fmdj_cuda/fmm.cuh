@@ -96,7 +96,7 @@ __global__ void CountInteractionsAndM2L(
             num_open[i] = 0;
         }
 
-        float LocA[ncomb];
+        Vec<ncomb,float> LocA;
         #pragma unroll
         for(int i = 0; i < ncomb; i++) {
             LocA[i] = 0.0f;
@@ -106,7 +106,7 @@ __global__ void CountInteractionsAndM2L(
         // Todo: BLOCKSIZE does not need to be a compile time constant here.
         //       Make it more flexible! (Need to adapt the warp communication scheme below though!)
         __shared__ Vec<dim,float> posB[BLOCKSIZE];
-        __shared__ float mpB[ncomb][BLOCKSIZE];
+        __shared__ Vec<ncomb,float> mpB[BLOCKSIZE];
         
         // Interaction list info:
         int2 ilist_range = {spl_ilist[nodeid], spl_ilist[nodeid + 1]};
@@ -176,11 +176,8 @@ __global__ void CountInteractionsAndM2L(
             // only read the multipoles if at least one interaction happens with this childB
             if(any_interacts) {
                 posB[threadIdx.x] = childB_ext.center;
-
-                // Todo: Check whether this read is more efficient if we coalesced the loads better
-                // or maybe if we transposed the multipole layout in advance:
                 for(int k=0; k<ncomb; k++) {
-                    mpB[k][threadIdx.x] = mp_values[id * ncomb + k];
+                    mpB[threadIdx.x][k] = mp_values[id * ncomb + k];
                 }
             }
 
@@ -209,15 +206,9 @@ __global__ void CountInteractionsAndM2L(
                     continue;
                 }
 
-                float mp[ncomb];
-                #pragma unroll
-                for(int k = 0; k < ncomb; k++) {
-                    mp[k] = mpB[k][b_read];
-                }
-
                 Vec<dim,float> dx = posB[b_read] - xaWrite;
 
-                m2l_translator<p,dim>(dx, mp, LocA, softening*softening);
+                m2l_translator<p,dim>(dx, mpB[b_read], LocA, softening*softening);
             }
         }
 

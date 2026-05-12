@@ -133,7 +133,7 @@ __device__ __forceinline__ float multiindex_factorial(const int (&k)[dim]) {
 /* ---------------------------------------------------------------------------------------------- */
 
 template<int p>
-__device__ __forceinline__ void setupGn(float r2, float eps2, float* __restrict__ G)
+__device__ __forceinline__ void setupGn(float r2, float eps2, Vec<p+1,float>& G)
 {
     // The derivatives of (1/r d/dr)^n G_0  with G_0 = 1/r
     float rinv = rsqrtf(r2 + eps2); 
@@ -147,11 +147,11 @@ __device__ __forceinline__ void setupGn(float r2, float eps2, float* __restrict_
 }
 
 template<int p, int dim=3>
-__device__ __forceinline__ void setupDnG(Vec<dim,float> dx, float eps2, float* __restrict__ Dn) {
+__device__ __forceinline__ void setupDnG(Vec<dim,float> dx, float eps2, Vec<NCOMB(p, dim),float>& Dn) {
     // Recurrence formula by Tausch (2003)
     float r2 = dx.norm2();
 
-    float G[p+1];
+    Vec<p+1,float> G;
     setupGn<p>(r2, eps2, G);
     Dn[0] = G[p];
 
@@ -195,7 +195,8 @@ __device__ __forceinline__ void setupDnG(Vec<dim,float> dx, float eps2, float* _
 /* ---------------------------------------------------------------------------------------------- */
 
 template<int p, int dim=3>
-__device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const Vec<dim,float> dpos) {
+__device__ __forceinline__ void shift_multipoles(Vec<NCOMB(p, dim),float>& mp, Vec<NCOMB(p, dim),float>& mp_out, const Vec<dim,float> dpos) {
+    constexpr int ncomb = NCOMB(p, dim);
     // Shift in x
     #pragma unroll
     for(int ax=0; ax<dim; ax++) {
@@ -219,7 +220,7 @@ __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const
 
         if(ax < dim - 1) {
             #pragma unroll
-            for(int i=0; i<NCOMB(p, dim); i++)
+            for(int i=0; i<ncomb; i++)
                 mp[i] = mp_out[i];
         }
     }
@@ -253,8 +254,8 @@ __global__ void SummarizeMultipoles(
         return;
     }
     
-    float mp_sum[ncomb];
-    float mp_kahan[ncomb];
+    Vec<ncomb,float> mp_sum;
+    Vec<ncomb,float> mp_kahan;
 
     #pragma unroll
     for(int iM=0; iM < ncomb; iM++) {
@@ -263,7 +264,7 @@ __global__ void SummarizeMultipoles(
     }
 
     for(int ip = istart; ip < iend; ip++) {
-        float mp_new_in[ncomb];
+        Vec<ncomb,float> mp_new_in;
         for(int iM=0; iM < ncomb; iM++) {
             if(iM < ncomb_in)
                 mp_new_in[iM] = mp_in[ip * ncomb_in + iM];
@@ -271,12 +272,12 @@ __global__ void SummarizeMultipoles(
                 mp_new_in[iM] = 0.f;
         }
 
-        float mp_new_out[ncomb];
+        Vec<ncomb,float> mp_new_out;
 
         shift_multipoles<p,dim>(mp_new_in, mp_new_out, xchild[ip] - xnode[inode]);
 
         if(kahan)
-            kahan_add_array<ncomb>(mp_sum, mp_new_out, mp_kahan);
+            kahan_add_vec<ncomb,float>(mp_sum, mp_new_out, mp_kahan);
         else {
             #pragma unroll
             for(int iM=0; iM < ncomb; iM++) {
@@ -296,7 +297,8 @@ __global__ void SummarizeMultipoles(
 
 
 template<int p, int dim=3>
-__device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out, Vec<dim,float> dpos) {
+__device__ __forceinline__ void shift_local_to_local(Vec<NCOMB(p, dim),float>& loc, Vec<NCOMB(p, dim),float>& loc_out, Vec<dim,float> dpos) {
+    constexpr int ncomb = NCOMB(p, dim);
     #pragma unroll
     for(int ax=0; ax<dim; ax++) {
         // Shift dimension by dimension
@@ -317,7 +319,7 @@ __device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out,
 
         if(ax < dim - 1) {
             #pragma unroll
-            for(int i=0; i<NCOMB(p, dim); i++)
+            for(int i=0; i<ncomb; i++)
                 loc[i] = loc_out[i]; // copy back output as input for next iteration.
         }
     }
@@ -344,7 +346,7 @@ __global__ void TranslateLocalToLocal(
         return;
     
     Vec<dim,float> xn = xnode[inode];
-    float loc_in[ncomb];
+    Vec<ncomb,float> loc_in;
     #pragma unroll
     for (int iM = 0; iM < ncomb; iM++) {
         loc_in[iM] = loc_node[inode * ncomb + iM];
@@ -353,9 +355,9 @@ __global__ void TranslateLocalToLocal(
     for(int ichild = istart; ichild < iend; ichild++) {
         Vec<dim,float> dpos = xchild[ichild] - xn;
 
-        float loc_out[ncomb];
+        Vec<ncomb,float> loc_out;
 
-        float loc_src[ncomb];
+        Vec<ncomb,float> loc_src;
         #pragma unroll
         for (int i = 0; i < ncomb; i++) {
             loc_src[i] = loc_in[i];
@@ -392,7 +394,7 @@ __global__ void TranslateLocalToLocal_XVJP(
         return;
     
     Vec<dim,float> xn = xnode[inode];
-    float loc_in[ncomb];
+    Vec<ncomb,float> loc_in;
     #pragma unroll
     for (int iM = 0; iM < ncomb; iM++) {
         loc_in[iM] = loc_node[inode * ncomb + iM];
@@ -401,9 +403,9 @@ __global__ void TranslateLocalToLocal_XVJP(
     for(int ichild = istart; ichild < iend; ichild++) {
         Vec<dim,float> dpos = xchild[ichild] - xn;
 
-        float loc_child[ncomb];
+        Vec<ncomb,float> loc_child;
 
-        float loc_src[ncomb];
+        Vec<ncomb,float> loc_src;
         #pragma unroll
         for (int i = 0; i < ncomb; i++) {
             loc_src[i] = loc_in[i];
@@ -411,7 +413,7 @@ __global__ void TranslateLocalToLocal_XVJP(
 
         shift_local_to_local<p,dim>(loc_src, loc_child, dpos);
 
-        float gloc_child[ncomb];
+        Vec<ncomb,float> gloc_child;
         #pragma unroll
         for (int iM = 0; iM < NCOMB(pout, dim); iM++) {
             gloc_child[iM] = g_loc_child[ichild * NCOMB(pout, dim) + iM];
@@ -449,13 +451,13 @@ __global__ void TranslateLocalToLocal_XVJP(
 template<int p, int dim>
 __device__ __forceinline__ void m2l_translator(
     Vec<dim,float> dx,
-    const float* Mp,
-    float* loc,
+    const Vec<NCOMB(p, dim),float>& Mp,
+    Vec<NCOMB(p, dim),float>& loc,
     float epsilon2
 ) {
     constexpr int ncomb = NCOMB(p, dim);
 
-    float Dn[ncomb];
+    Vec<ncomb,float> Dn;
     setupDnG<p,dim>(dx, epsilon2, Dn);
 
     for_each_multiindex<p,dim>([&](int kflat, int ksum, int (&k)[dim]) {
