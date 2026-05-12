@@ -42,6 +42,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     float opening_angle,
     int p
 ) {
+    int dim = children.dimensions()[1] - 1;
     dim3 blockDim(32);
     dim3 gridDim(spl_nodes.element_count() - 1);
     size_t smem = 0;
@@ -75,25 +76,25 @@ ffi::Error CountInteractionsAndM2LFFIHost(
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<int>;
+    using TTuple = std::tuple<int, int>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {1}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1>) },
-        { {2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<2>) },
-        { {3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<3>) },
-        { {4}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<4>) },
-        { {5}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<5>) }
+        { {1, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3>) },
+        { {2, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<2, 3>) },
+        { {3, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<3, 3>) },
+        { {4, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<4, 3>) },
+        { {5, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<5, 3>) }
     };
 
-    const TTuple key = TTuple(p);
+    const TTuple key = TTuple(p, dim);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (p)"\
+            "\nUnsupported template parameter combination for (p, dim)"\
             " in CountInteractionsAndM2LFFIHost -- Only supporting:\n"\
-            "(1), (2), (3), (4), (5)"
+            "(1, 3), (2, 3), (3, 3), (4, 3), (5, 3)"
         );
     }
     const void* instance = it->second;
@@ -148,6 +149,7 @@ ffi::Error InsertInteractionsFFIHost(
     ffi::Result<ffi::AnyBuffer> child_ilist_out,
     float opening_angle
 ) {
+    int dim = children.dimensions()[1] - 1;
     dim3 blockDim(32);
     dim3 gridDim(spl_nodes.element_count() - 1);
     size_t smem = 0;
@@ -170,7 +172,28 @@ ffi::Error InsertInteractionsFFIHost(
         &child_ilist_out_arg,
         &opening_angle
     };
-    const void* instance = (const void*)InsertInteractions;
+    
+
+    // We have template parameters, so we need to instantiate all valid templates.
+    // We select a function pointer through a map with a stable, type-erased signature.
+    using TTuple = std::tuple<int>;
+    using TFunc = const void*;
+
+    static const std::map<TTuple, TFunc> instance_map = {
+        { {3}, reinterpret_cast<TFunc>(&InsertInteractions<3>) }
+    };
+
+    const TTuple key = TTuple(dim);
+
+    const auto it = instance_map.find(key);
+    if (it == instance_map.end()) {
+        return ffi::Error::Internal(
+            "\nUnsupported template parameter combination for (dim)"\
+            " in InsertInteractionsFFIHost -- Only supporting:\n"\
+            "(3)"
+        );
+    }
+    const void* instance = it->second;
 
     cudaLaunchKernel(
         instance,
