@@ -90,7 +90,8 @@ __global__ void ForceAndPotential(
     if(ipart < n)
         xmi = xm[ipart];
 
-    extern __shared__ PosMass<dim,float> xmj_shared[];
+    extern __shared__ unsigned char force_smem[];
+    PosMass<dim,float>* xmj_shared = reinterpret_cast<PosMass<dim,float>*>(force_smem);
 
     LocalExp<dim,float> loc_i = zero_local_exp<dim>();
     LocalExp<dim,float> loc_kahan = zero_local_exp<dim>();
@@ -135,8 +136,11 @@ __global__ void BwdForceAndPotential(
         gloc_i = gloc[ipart];
     }
 
-    extern __shared__ PosMass<dim,float> xmj_shared[];
-    LocalExp<dim,float>* gloc_j_shared = (LocalExp<dim,float>*) &xmj_shared[blockDim.x];
+    extern __shared__ unsigned char bwd_force_smem[];
+    PosMass<dim,float>* xmj_shared = reinterpret_cast<PosMass<dim,float>*>(bwd_force_smem);
+    LocalExp<dim,float>* gloc_j_shared = reinterpret_cast<LocalExp<dim,float>*>(
+        bwd_force_smem + blockDim.x * sizeof(PosMass<dim,float>)
+    );
 
     PosMass<dim,float> gxm_i = zero_pos_mass<dim>();
     PosMass<dim,float> gxm_i_kahan = zero_pos_mass<dim>();
@@ -219,7 +223,8 @@ __global__ void GroupedForceAndPot(
     LocalExp<dim,float> loc_a = zero_local_exp<dim>();
     LocalExp<dim,float> loc_a_kahan = zero_local_exp<dim>();
 
-    extern __shared__ PosMass<dim,float> xm_b[];
+    extern __shared__ unsigned char grouped_force_smem[];
+    PosMass<dim,float>* xm_b = reinterpret_cast<PosMass<dim,float>*>(grouped_force_smem);
 
     while(!seg_mgr.finished()) {
         int id = seg_mgr.next();
@@ -238,7 +243,7 @@ __global__ void GroupedForceAndPot(
     }
 
     // Now sum over all contributions to the same write position in shared memory
-    LocalExp<dim,float>* loc_shared = (LocalExp<dim,float>*) &xm_b[0];
+    LocalExp<dim,float>* loc_shared = reinterpret_cast<LocalExp<dim,float>*>(grouped_force_smem);
     loc_shared[threadIdx.x] = loc_a;
     __syncthreads();
 
@@ -248,7 +253,8 @@ __global__ void GroupedForceAndPot(
         for(int i=0; i < n_write; i++)
             kahan_add_vec(loc_cum.asvec, loc_shared[i*num + a_write].asvec, loc_a_kahan.asvec);
 
-        loc_out[prange.x + a_write] = loc_cum;
+        if(valid)
+            loc_out[prange.x + a_write] = loc_cum;
     }
 }
 
@@ -299,8 +305,11 @@ __global__ void BwdGroupedForceAndPot(
     PosMass<dim,float> gxm_a = zero_pos_mass<dim>();
     PosMass<dim,float> gxm_a_kahan = zero_pos_mass<dim>();
 
-    extern __shared__ PosMass<dim,float> xm_b[];
-    LocalExp<dim,float>* gloc_b = (LocalExp<dim,float>*) &xm_b[blockDim.x];
+    extern __shared__ unsigned char bwd_grouped_force_smem[];
+    PosMass<dim,float>* xm_b = reinterpret_cast<PosMass<dim,float>*>(bwd_grouped_force_smem);
+    LocalExp<dim,float>* gloc_b = reinterpret_cast<LocalExp<dim,float>*>(
+        bwd_grouped_force_smem + blockDim.x * sizeof(PosMass<dim,float>)
+    );
 
     while(!seg_mgr.finished()) {
         int id = seg_mgr.next();
@@ -319,7 +328,7 @@ __global__ void BwdGroupedForceAndPot(
     }
 
     // Now sum over all contributions to the same write position in shared memory
-    PosMass<dim,float>* gxm_shared = &xm_b[0];
+    PosMass<dim,float>* gxm_shared = reinterpret_cast<PosMass<dim,float>*>(bwd_grouped_force_smem);
     gxm_shared[threadIdx.x] = gxm_a;
     __syncthreads();
 

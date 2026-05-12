@@ -94,7 +94,7 @@ for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToL
     kernels[kname].par["nnodes"].expression = "isplit.element_count() - 1"
 
 for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
-    kernels[kname].template_par["dim"].instances = (3,)
+    kernels[kname].template_par["dim"].instances = dimensions
     kernels[kname].template_par["dim"].expression = "xnode.dimensions()[1]"
 
 gen.generate_ffi_module_file(
