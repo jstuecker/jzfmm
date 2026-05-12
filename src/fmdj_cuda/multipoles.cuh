@@ -466,22 +466,38 @@ __device__ __forceinline__ void m2l_translator(
         int nflat = 0;
         for_each_multiindex<p,dim>([&](int, int nsum, int (&n)[dim]) {
             if(nsum <= p - ksum) {
-                int dn[dim];
-                #pragma unroll
-                for(int d = 0; d < dim; d++) {
-                    dn[d] = k[d] + n[d];
+                if constexpr (dim == 3) {
+                    // This specialization helps with keeping the arrays in registers
+                    // for dim = 3 and p = 5. Why? I don't know. For that case it makes
+                    // a 40x performance difference
+                    const int dn[3] = {k[0] + n[0], k[1] + n[1], k[2] + n[2]};
+                    const float Dnk = Dn[multi_to_flat<3>(dn)];
+                    const float Mpn = Mp[nflat];
+                    const float infvac = 1.f / fact3f(n[0], n[1], n[2]);
+                    Lnew += Dnk * Mpn * infvac;
+                } else {
+                    // General case, stays in registers for most setups
+                    int dn[dim];
+                    #pragma unroll
+                    for(int d = 0; d < dim; d++) {
+                        dn[d] = k[d] + n[d];
+                    }
+                    float Dnk = Dn[multi_to_flat<dim>(dn)];
+                    float Mpn = Mp[nflat];
+
+                    const float infvac = 1.f / multiindex_factorial<dim>(n);
+                    Lnew += Dnk * Mpn * infvac;
                 }
-                float Dnk = Dn[multi_to_flat<dim>(dn)];
-                float Mpn = Mp[nflat];
-                
-                const float infvac = 1.f / multiindex_factorial<dim>(n);
-                Lnew += Dnk * Mpn * infvac;
                 nflat += 1;
             }
         });
 
         const float sign = ksum % 2 == 0 ? -1.f : 1.f;
-        const float fac = sign / multiindex_factorial<dim>(k);
+        float fac;
+        if constexpr (dim == 3)
+            fac = sign / fact3f(k[0], k[1], k[2]);
+        else
+            fac = sign / multiindex_factorial<dim>(k);
 
         loc[kflat] += Lnew * fac;
     });
