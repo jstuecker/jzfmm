@@ -5,6 +5,7 @@ from jax_ffi_gen import parse, generator as gen
 
 HERE = Path(__file__).resolve().parent
 
+dimensions = (3,)
 p_instance_values = (1, 2, 3, 4, 5)
 default_includes = ["../common/math.cuh"]
 
@@ -80,6 +81,10 @@ for kname in ("TranslateLocalToLocal",):
 for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
     kernels[kname].grid_size_expression = "div_ceil(isplit.element_count() - 1, block_size)"
     kernels[kname].par["nnodes"].expression = "isplit.element_count() - 1"
+
+for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
+    kernels[kname].template_par["dim"].instances = (3,)
+    kernels[kname].template_par["dim"].expression = "xnode.dimensions()[1]"
 
 gen.generate_ffi_module_file(
     output_file = str(HERE / "generated/ffi_multipoles.cu"), 

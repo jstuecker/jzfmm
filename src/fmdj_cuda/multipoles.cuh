@@ -118,6 +118,16 @@ __device__ __forceinline__ void copy_multiindex(const int (&src)[dim], int (&dst
     }
 }
 
+template<int dim>
+__device__ __forceinline__ float multiindex_factorial(const int (&k)[dim]) {
+    float f = 1.f;
+    #pragma unroll
+    for(int d = 0; d < dim; d++) {
+        f *= fact_upto6f(k[d]);
+    }
+    return f;
+}
+
 /* ---------------------------------------------------------------------------------------------- */
 /*                                 Derivatives of Green's Function                                */
 /* ---------------------------------------------------------------------------------------------- */
@@ -215,19 +225,19 @@ __device__ __forceinline__ void shift_multipoles(float *mp, float *mp_out, const
     }
 }
 
-template<int p>
+template<int p, int dim>
 __global__ void SummarizeMultipoles(
     const int* __restrict__ isplit,
     const float* __restrict__ mp_in,
-    const Vec<3,float>* __restrict__ xnode,
-    const Vec<3,float>* __restrict__ xchild,
+    const Vec<dim,float>* __restrict__ xnode,
+    const Vec<dim,float>* __restrict__ xchild,
     float* __restrict__ mp_out,
     int nnodes,
     int p_in,
     bool kahan
 ) {
-    constexpr int ncomb = NCOMB(p, 3);
-    int ncomb_in = NCOMB(p_in, 3);
+    constexpr int ncomb = NCOMB(p, dim);
+    int ncomb_in = NCOMB(p_in, dim);
 
     int inode = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -263,7 +273,7 @@ __global__ void SummarizeMultipoles(
 
         float mp_new_out[ncomb];
 
-        shift_multipoles<p>(mp_new_in, mp_new_out, xchild[ip] - xnode[inode]);
+        shift_multipoles<p,dim>(mp_new_in, mp_new_out, xchild[ip] - xnode[inode]);
 
         if(kahan)
             kahan_add_array<ncomb>(mp_sum, mp_new_out, mp_kahan);
@@ -313,17 +323,17 @@ __device__ __forceinline__ void shift_local_to_local(float *loc, float *loc_out,
     }
 }
 
-template<int p>
+template<int p, int dim>
 __global__ void TranslateLocalToLocal(
     const int* __restrict__ isplit,
     const float* __restrict__ loc_node,
-    const Vec<3,float>* __restrict__ xnode,
-    const Vec<3,float>* __restrict__ xchild,
+    const Vec<dim,float>* __restrict__ xnode,
+    const Vec<dim,float>* __restrict__ xchild,
     float* __restrict__ loc_child,
     const int nnodes,
     const int pout
 ) {
-    constexpr int ncomb = NCOMB(p, 3);
+    constexpr int ncomb = NCOMB(p, dim);
     
     int inode = blockIdx.x * blockDim.x + threadIdx.x;
     if (inode >= nnodes)
@@ -333,7 +343,7 @@ __global__ void TranslateLocalToLocal(
     if (istart >= iend)
         return;
     
-    Vec<3,float> xn = xnode[inode];
+    Vec<dim,float> xn = xnode[inode];
     float loc_in[ncomb];
     #pragma unroll
     for (int iM = 0; iM < ncomb; iM++) {
@@ -341,7 +351,7 @@ __global__ void TranslateLocalToLocal(
     }
     
     for(int ichild = istart; ichild < iend; ichild++) {
-        Vec<3,float> dpos = xchild[ichild] - xn;
+        Vec<dim,float> dpos = xchild[ichild] - xn;
 
         float loc_out[ncomb];
 
@@ -351,27 +361,27 @@ __global__ void TranslateLocalToLocal(
             loc_src[i] = loc_in[i];
         }
 
-        shift_local_to_local<p>(loc_src, loc_out, dpos);
+        shift_local_to_local<p,dim>(loc_src, loc_out, dpos);
 
         #pragma unroll
-        for (int iM = 0; iM < min(ncomb, NCOMB(pout, 3)); iM++) {
-            loc_child[ichild * NCOMB(pout, 3) + iM] = loc_out[iM];
+        for (int iM = 0; iM < min(ncomb, NCOMB(pout, dim)); iM++) {
+            loc_child[ichild * NCOMB(pout, dim) + iM] = loc_out[iM];
         }
     }
 }
 
-template<int p>
+template<int p, int dim>
 __global__ void TranslateLocalToLocal_XVJP(
     const int* __restrict__ isplit,
     const float* __restrict__ loc_node,
-    const Vec<3,float>* __restrict__ xnode,
-    const Vec<3,float>* __restrict__ xchild,
+    const Vec<dim,float>* __restrict__ xnode,
+    const Vec<dim,float>* __restrict__ xchild,
     const float* __restrict__ g_loc_child,
-    Vec<3,float>* __restrict__ g_xchild,
+    Vec<dim,float>* __restrict__ g_xchild,
     const int nnodes,
     const int pout
 ) {
-    constexpr int ncomb = NCOMB(p, 3);
+    constexpr int ncomb = NCOMB(p, dim);
     
     int inode = blockIdx.x * blockDim.x + threadIdx.x;
     if (inode >= nnodes)
@@ -381,7 +391,7 @@ __global__ void TranslateLocalToLocal_XVJP(
     if (istart >= iend)
         return;
     
-    Vec<3,float> xn = xnode[inode];
+    Vec<dim,float> xn = xnode[inode];
     float loc_in[ncomb];
     #pragma unroll
     for (int iM = 0; iM < ncomb; iM++) {
@@ -389,7 +399,7 @@ __global__ void TranslateLocalToLocal_XVJP(
     }
     
     for(int ichild = istart; ichild < iend; ichild++) {
-        Vec<3,float> dpos = xchild[ichild] - xn;
+        Vec<dim,float> dpos = xchild[ichild] - xn;
 
         float loc_child[ncomb];
 
@@ -399,28 +409,29 @@ __global__ void TranslateLocalToLocal_XVJP(
             loc_src[i] = loc_in[i];
         }
 
-        shift_local_to_local<p>(loc_src, loc_child, dpos);
+        shift_local_to_local<p,dim>(loc_src, loc_child, dpos);
 
         float gloc_child[ncomb];
         #pragma unroll
-        for (int iM = 0; iM < NCOMB(pout, 3); iM++) {
-            gloc_child[iM] = g_loc_child[ichild * NCOMB(pout, 3) + iM];
+        for (int iM = 0; iM < NCOMB(pout, dim); iM++) {
+            gloc_child[iM] = g_loc_child[ichild * NCOMB(pout, dim) + iM];
         }
 
         #pragma unroll
-        for (int a=0; a < 3; a++) {
+        for (int a=0; a < dim; a++) {
             float gxa = 0.f;
-            for_each_multiindex<p,3>([&](int im, int msum, int (&m)[3]) {
+            for_each_multiindex<p,dim>([&](int im, int msum, int (&m)[dim]) {
                 const int ma = m[a];
 
-                int b[3] = {m[0], m[1], m[2]};
+                int b[dim];
+                copy_multiindex<dim>(m, b);
                 b[a] += 1;
                 const int bsum = msum + 1;
 
                 if((msum > pout) || (bsum > p))
                     return;
 
-                int ib = multi_to_flat<3>(b);
+                int ib = multi_to_flat<dim>(b);
                     
                 gxa += gloc_child[im] * loc_child[ib] * (ma + 1);
             });
@@ -435,36 +446,40 @@ __global__ void TranslateLocalToLocal_XVJP(
 /*                                         M2L Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int p>
+template<int p, int dim>
 __device__ __forceinline__ void m2l_translator(
-    Vec<3,float> dx,
+    Vec<dim,float> dx,
     const float* Mp,
     float* loc,
     float epsilon2
 ) {
-    constexpr int ncomb = NCOMB(p, 3);
+    constexpr int ncomb = NCOMB(p, dim);
 
     float Dn[ncomb];
-    setupDnG<p>(dx, epsilon2, Dn);
+    setupDnG<p,dim>(dx, epsilon2, Dn);
 
-    for_each_multiindex<p,3>([&](int kflat, int ksum, int (&k)[3]) {
+    for_each_multiindex<p,dim>([&](int kflat, int ksum, int (&k)[dim]) {
         float Lnew = 0.f;
 
         int nflat = 0;
-        for_each_multiindex<p,3>([&](int, int nsum, int (&n)[3]) {
+        for_each_multiindex<p,dim>([&](int, int nsum, int (&n)[dim]) {
             if(nsum <= p - ksum) {
-                const int dn[3] = {k[0] + n[0], k[1] + n[1], k[2] + n[2]};
-                float Dnk = Dn[multi_to_flat<3>(dn)];
+                int dn[dim];
+                #pragma unroll
+                for(int d = 0; d < dim; d++) {
+                    dn[d] = k[d] + n[d];
+                }
+                float Dnk = Dn[multi_to_flat<dim>(dn)];
                 float Mpn = Mp[nflat];
                 
-                const float infvac = 1./fact3f(n[0], n[1], n[2]);
+                const float infvac = 1.f / multiindex_factorial<dim>(n);
                 Lnew += Dnk * Mpn * infvac;
                 nflat += 1;
             }
         });
 
         const float sign = ksum % 2 == 0 ? -1.f : 1.f;
-        const float fac = sign / fact3f(k[0], k[1], k[2]);
+        const float fac = sign / multiindex_factorial<dim>(k);
 
         loc[kflat] += Lnew * fac;
     });
