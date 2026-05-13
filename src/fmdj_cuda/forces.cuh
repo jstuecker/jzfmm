@@ -4,6 +4,7 @@
 #include "common/data.cuh"
 #include "common/math.cuh"
 #include "common/iterators.cuh"
+#include "radial_kernels.cuh"
 
 /* ---------------------------------------------------------------------------------------------- */
 /*                                        Helper Functions                                        */
@@ -25,28 +26,30 @@ __forceinline__ __device__ PosMass<dim,float> zero_pos_mass() {
     return xm;
 }
 
-template<int dim>
+template<int radial_kernel_kind, int dim>
 __forceinline__ __device__ LocalExp<dim,float> GetForceAndPot(
     PosMass<dim,float> xmi,
     PosMass<dim,float> xmj,
-    float softening2
+    typename RadialKernel<radial_kernel_kind>::Params radial_kernel
 ) {
     Vec<dim,float> dx = xmj.pos - xmi.pos;
-    float rinv = rsqrtf(dx.norm2() + softening2);
-    float minvr = -xmj.mass * rinv;
+    float r2 = dx.norm2();
+
+    Vec<2,float> coeffs;
+    RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<1>(r2, radial_kernel, coeffs);
 
     LocalExp<dim,float> loc;
-    loc.pot = minvr;
-    loc.grad = (minvr * rinv * rinv) * dx;
+    loc.pot = -xmj.mass * coeffs[0];
+    loc.grad = (xmj.mass * coeffs[1]) * dx;
 
     return loc;
 }
 
-template<int dim>
+template<int radial_kernel_kind, int dim>
 __forceinline__ __device__ PosMass<dim,float> VJP_GFPhiToGXM(
     const PosMass<dim,float> xmi, const PosMass<dim,float> xmj,
     const LocalExp<dim,float> gi, const LocalExp<dim,float> gj,
-    float epsilon2
+    typename RadialKernel<radial_kernel_kind>::Params radial_kernel
 ) {
     // calculates the vector jacobian product of the interaction between xmi and xmj
     // gi and gj are the final gradient vectors of fphi_i and fphi_j, respectively.
@@ -54,11 +57,12 @@ __forceinline__ __device__ PosMass<dim,float> VJP_GFPhiToGXM(
     // for understanding the maths, please consider the corresponding .ipynb notebook
     Vec<dim,float> dx = xmj.pos - xmi.pos;
     float r2 = dx.norm2();
-    float rinv = r2 > 1e-10f * epsilon2 ? rsqrtf(r2 + epsilon2) : 0.f;
-    float rinv2 = rinv*rinv;
 
-    float f1 = -rinv*rinv2;
-    float f2 = 3*rinv*rinv2*rinv2;
+    Vec<3,float> coeffs;
+    RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<2>(r2, radial_kernel, coeffs);
+    float K = r2 > 1e-20f ? coeffs[0] : 0.f;
+    float f1 = r2 > 1e-20f ? coeffs[1] : 0.f;
+    float f2 = r2 > 1e-20f ? coeffs[2] : 0.f;
 
     Vec<dim,float> gm_diff = xmi.mass * gj.grad - xmj.mass * gi.grad;
     float fgdiff = f2*gm_diff.dot(dx) + f1 * (gi.pot * xmj.mass + gj.pot * xmi.mass);
@@ -66,7 +70,7 @@ __forceinline__ __device__ PosMass<dim,float> VJP_GFPhiToGXM(
     PosMass<dim,float> gxmi;
 
     gxmi.pos = f1 * gm_diff + fgdiff * dx;
-    gxmi.mass = - f1 * dx.dot(gj.grad) - rinv * gj.pot;
+    gxmi.mass = - f1 * dx.dot(gj.grad) - K * gj.pot;
 
     return gxmi;
 }
@@ -75,15 +79,15 @@ __forceinline__ __device__ PosMass<dim,float> VJP_GFPhiToGXM(
 /*                                       Simple Force Kernel                                      */
 /* ---------------------------------------------------------------------------------------------- */
 
-template <bool kahan, int dim>
+template <bool kahan, int radial_kernel_kind, int dim>
 __global__ void ForceAndPotential(
     const PosMass<dim,float> *xm,
+    const float* radial_kernel_params,
     LocalExp<dim,float> *loc_out,
-    int n,
-    float epsilon
+    int n
 ) {
     const int steps = div_ceil(n, blockDim.x);
-    float epsilon2 = epsilon * epsilon;
+    auto radial_kernel = RadialKernel<radial_kernel_kind>::make_params(radial_kernel_params);
 
     int ipart = blockIdx.x * blockDim.x + threadIdx.x;
     PosMass<dim,float> xmi = zero_pos_mass<dim>();
@@ -105,27 +109,27 @@ __global__ void ForceAndPotential(
         __syncthreads();
 
         for (int j = 0; j < num; j++) {
-            LocalExp<dim,float> loc_new = GetForceAndPot<dim>(xmi, xmj_shared[j], epsilon2);
+            LocalExp<dim,float> loc_new = GetForceAndPot<radial_kernel_kind,dim>(xmi, xmj_shared[j], radial_kernel);
             kahan_add_vec(loc_i.asvec, loc_new.asvec, loc_kahan.asvec);
         }
     }
 
-    loc_i.pot += xmi.mass / epsilon; // remove self-interaction from potential
+    loc_i.pot += xmi.mass * RadialKernel<radial_kernel_kind>::self_value(radial_kernel); // remove self-interaction from potential
 
     if(ipart < n)
         loc_out[blockIdx.x * blockDim.x + threadIdx.x] = loc_i;
 }
 
-template <bool kahan, int dim>
+template <bool kahan, int radial_kernel_kind, int dim>
 __global__ void BwdForceAndPotential(
     const LocalExp<dim,float> *gloc,
     const PosMass<dim,float> *xm,
+    const float* radial_kernel_params,
     PosMass<dim,float> *gxm,
-    int n,
-    float epsilon
+    int n
 ) {
     const int steps = div_ceil(n, blockDim.x);
-    float epsilon2 = epsilon * epsilon;
+    auto radial_kernel = RadialKernel<radial_kernel_kind>::make_params(radial_kernel_params);
 
     PosMass<dim,float> xmi = zero_pos_mass<dim>();
     LocalExp<dim,float> gloc_i = zero_local_exp<dim>();
@@ -156,10 +160,10 @@ __global__ void BwdForceAndPotential(
         __syncthreads();
 
         for (int j = 0; j < num; j++) {
-            PosMass<dim,float> gxm_inc = VJP_GFPhiToGXM<dim>(
+            PosMass<dim,float> gxm_inc = VJP_GFPhiToGXM<radial_kernel_kind,dim>(
                 xmi, xmj_shared[j],
                 gloc_i, gloc_j_shared[j],
-                epsilon2
+                radial_kernel
             );
             kahan_add_vec(gxm_i.asvec, gxm_inc.asvec, gxm_i_kahan.asvec);
         }
@@ -173,7 +177,7 @@ __global__ void BwdForceAndPotential(
 /*                                     Grouped force kernel                                       */
 /* ---------------------------------------------------------------------------------------------- */
 
-template <bool kahan, int dim>
+template <bool kahan, int radial_kernel_kind, int dim>
 __global__ void GroupedForceAndPot(
     // inputs:
     const int2* node_range,
@@ -181,12 +185,11 @@ __global__ void GroupedForceAndPot(
     const int* spl_ilist,
     const int* ilist_nodes,
     const PosMass<dim,float>* posm,
+    const float* radial_kernel_params,
     // outputs:
-    LocalExp<dim,float>* loc_out,
-    // attributes:
-    float softening
+    LocalExp<dim,float>* loc_out
 ) {
-    float softening2 = softening * softening;
+    auto radial_kernel = RadialKernel<radial_kernel_kind>::make_params(radial_kernel_params);
 
     int2 nrange = node_range[0];
     int nodeid = nrange.x + blockIdx.x;
@@ -236,7 +239,7 @@ __global__ void GroupedForceAndPot(
 
         // Now compute interactions
         for(int ib=read_b_offset; ib < seg_mgr.num_loaded; ib += n_write) {
-            LocalExp<dim,float> loc_new = GetForceAndPot<dim>(xaWrite, xm_b[ib], softening2);
+            LocalExp<dim,float> loc_new = GetForceAndPot<radial_kernel_kind,dim>(xaWrite, xm_b[ib], radial_kernel);
             add_vec<kahan>(loc_a.asvec, loc_new.asvec, loc_a_kahan.asvec);
         }
         __syncthreads();
@@ -258,7 +261,7 @@ __global__ void GroupedForceAndPot(
     }
 }
 
-template <bool kahan, int dim>
+template <bool kahan, int radial_kernel_kind, int dim>
 __global__ void BwdGroupedForceAndPot(
     // inputs:
     const int2* node_range,
@@ -266,13 +269,12 @@ __global__ void BwdGroupedForceAndPot(
     const int* spl_ilist,
     const int* ilist_nodes,
     const PosMass<dim,float>* posm,
+    const float* radial_kernel_params,
     const LocalExp<dim,float> *gloc,
     // outputs:
-    PosMass<dim,float>* gposm_out,
-    // attributes:
-    float softening
+    PosMass<dim,float>* gposm_out
 ) {
-    float softening2 = softening * softening;
+    auto radial_kernel = RadialKernel<radial_kernel_kind>::make_params(radial_kernel_params);
 
     int2 nrange = node_range[0];
     int nodeid = nrange.x + blockIdx.x;
@@ -321,7 +323,7 @@ __global__ void BwdGroupedForceAndPot(
         __syncthreads();
 
         for(int ib=read_b_offset; ib < seg_mgr.num_loaded; ib += n_write) {
-            PosMass<dim,float> gxm_inc = VJP_GFPhiToGXM<dim>(xm_a, xm_b[ib], gloc_a, gloc_b[ib], softening2);
+            PosMass<dim,float> gxm_inc = VJP_GFPhiToGXM<radial_kernel_kind,dim>(xm_a, xm_b[ib], gloc_a, gloc_b[ib], radial_kernel);
             kahan_add_vec(gxm_a.asvec, gxm_inc.asvec, gxm_a_kahan.asvec);
         }
         __syncthreads();

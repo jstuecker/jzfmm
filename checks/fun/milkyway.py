@@ -95,7 +95,7 @@ def update(t_and_p):
 #                                         Run and Visualize                                        #
 # ------------------------------------------------------------------------------------------------ #
 
-cfg = fmdj.Config(softening=1e-2)
+cfg = fmdj.Config(kernel=fmdj.PlummerKernel(softening=1e-2))
 cfg.tree.alloc_fac_nodes = 2.0
 cfg.external_potential = MilkyWayPotential()
 if not dm:

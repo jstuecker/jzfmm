@@ -1,4 +1,4 @@
-from .config import Config
+from .config import Config, FMMConfig, KernelConfig, PlummerKernel
 from . import data
 from . import multipoles
 from . import fmm

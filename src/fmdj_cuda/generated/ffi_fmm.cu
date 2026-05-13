@@ -36,10 +36,11 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     ffi::AnyBuffer ilist_nodes,
     ffi::AnyBuffer children,
     ffi::AnyBuffer mp_values,
+    ffi::AnyBuffer radial_kernel_params,
     ffi::Result<ffi::AnyBuffer> loc_out,
     ffi::Result<ffi::AnyBuffer> ilist_child_count_out,
-    float softening,
     float opening_angle,
+    int radial_kernel_kind,
     int p
 ) {
     int dim = children.dimensions()[1] - 1;
@@ -58,6 +59,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     void* ilist_nodes_arg = ilist_nodes.untyped_data();
     void* children_arg = children.untyped_data();
     void* mp_values_arg = mp_values.untyped_data();
+    void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
     void* loc_out_arg = loc_out->untyped_data();
     void* ilist_child_count_out_arg = ilist_child_count_out->untyped_data();
     void* args[] = {
@@ -67,39 +69,39 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         &ilist_nodes_arg,
         &children_arg,
         &mp_values_arg,
+        &radial_kernel_params_arg,
         &loc_out_arg,
         &ilist_child_count_out_arg,
-        &softening,
         &opening_angle
     };
     
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<int, int>;
+    using TTuple = std::tuple<int, int, int>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {1, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2>) },
-        { {1, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3>) },
-        { {2, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<2, 2>) },
-        { {2, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<2, 3>) },
-        { {3, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<3, 2>) },
-        { {3, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<3, 3>) },
-        { {4, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<4, 2>) },
-        { {4, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<4, 3>) },
-        { {5, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<5, 2>) },
-        { {5, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<5, 3>) }
+        { {0, 1, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 2>) },
+        { {0, 1, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 3>) },
+        { {0, 2, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 2>) },
+        { {0, 2, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 3>) },
+        { {0, 3, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 2>) },
+        { {0, 3, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 3>) },
+        { {0, 4, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 2>) },
+        { {0, 4, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 3>) },
+        { {0, 5, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 2>) },
+        { {0, 5, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 3>) }
     };
 
-    const TTuple key = TTuple(p, dim);
+    const TTuple key = TTuple(radial_kernel_kind, p, dim);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (p, dim)"\
+            "\nUnsupported template parameter combination for (radial_kernel_kind, p, dim)"\
             " in CountInteractionsAndM2LFFIHost -- Only supporting:\n"\
-            "(1, 2), (1, 3), (2, 2), (2, 3), (3, 2), (3, 3), (4, 2), (4, 3), (5, 2), (5, 3)"
+            "(0, 1, 2), (0, 1, 3), (0, 2, 2), (0, 2, 3), (0, 3, 2), (0, 3, 3), (0, 4, 2), (0, 4, 3), (0, 5, 2), (0, 5, 3)"
         );
     }
     const void* instance = it->second;
@@ -130,10 +132,11 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // ilist_nodes
         .Arg<ffi::AnyBuffer>() // children
         .Arg<ffi::AnyBuffer>() // mp_values
+        .Arg<ffi::AnyBuffer>() // radial_kernel_params
         .Ret<ffi::AnyBuffer>() // loc_out
         .Ret<ffi::AnyBuffer>() // ilist_child_count_out
-        .Attr<float>("softening")
         .Attr<float>("opening_angle")
+        .Attr<int>("radial_kernel_kind")
         .Attr<int>("p"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );

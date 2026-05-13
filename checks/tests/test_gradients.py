@@ -10,7 +10,7 @@ from jax.test_util import check_grads
 from jztree.tree import _dense_interaction_list
 from jztree_utils import ics
 
-from fmdj.config import Config, FMMConfig
+from fmdj.config import Config, FMMConfig, PlummerKernel
 from fmdj.data import PosMass
 from fmdj.multipoles import summarize_multipoles, build_multipole_hierarchy, _fmm_node_to_child
 from fmdj.fmm import _fmm_dual_walk, evaluate_node_node_fmm
@@ -46,7 +46,7 @@ def test_m2m_gradients(pos_mass_z, tree_hierarchy, cfg):
 @pytest.mark.skip_in_quick
 def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
     th = tree_hierarchy
-    cfg = replace(cfg, softening=1e-1)
+    cfg = replace(cfg, kernel=PlummerKernel(softening=1e-1))
     mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
     loc, ilist = _fmm_dual_walk.jit(th, mph, cfg)
 
@@ -63,7 +63,7 @@ def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
 @pytest.mark.skip_in_quick
 def test_fmm_node_gradients(pos_mass_z, tree_hierarchy, cfg):
     cfg_fmm = replace(cfg.fmm, p=4)
-    cfg = replace(cfg, softening=1e-1, fmm=cfg_fmm)
+    cfg = replace(cfg, kernel=PlummerKernel(softening=1e-1), fmm=cfg_fmm)
 
     def f(pos):
         pm = PosMass(pos=pos, mass=pos_mass_z.mass)
@@ -83,7 +83,7 @@ def test_sim_com(particles_blob, mode):
 
     acc = (0.,0.,0.05)
 
-    cfg = Config(softening=0.3)
+    cfg = Config(kernel=PlummerKernel(softening=0.3))
     cfg.external_potential = UniformAcceleration(acc=acc)
     if mode == "direct":
         cfg.fmm = None
@@ -120,12 +120,12 @@ def test_force_gradients(dim):
     part.num_total = None # currently causes some problems with gradients
     part.mass = part.mass * jnp.ones(part.pos.shape[0], dtype=jnp.float32)
     fmmcfg = FMMConfig(p=4, kahan_summation=True, opening_angle=0.8)
-    cfg = Config(softening=0.05, fmm=fmmcfg)
+    cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=fmmcfg)
     
     ispl = jnp.arange(part.pos.shape[0]//32 + 1, dtype=jnp.int32) * 32
     ilist = _dense_interaction_list.jit(len(ispl)-1, len(ispl)-1, (len(ispl)-1)**2)
 
-    fphi1 = direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True)
+    fphi1 = direct_force_and_potential.jit(part, kernel=cfg.kernel, kahan=True)
     fphi2 = grouped_force_and_pot.jit(part, ispl, ilist, cfg)
     fphi3 = fast_multipole_method.jit(part, cfg=cfg).values / cfg.G()
 
@@ -135,7 +135,7 @@ def test_force_gradients(dim):
     assert fphi3 == pytest.approx(fphi1, abs=abstol)
 
     def f1(part): return grouped_force_and_pot(part, ispl, ilist, cfg=cfg).sum()
-    def f2(part): return direct_force_and_potential(part, softening=cfg.softening, kahan=True).sum()
+    def f2(part): return direct_force_and_potential(part, kernel=cfg.kernel, kahan=True).sum()
     def f3(part): return fast_multipole_method(part, cfg=cfg).values.sum() / cfg.G()
     
     gposm1 = jax.jit(jax.grad(f1, allow_int=True))(part)

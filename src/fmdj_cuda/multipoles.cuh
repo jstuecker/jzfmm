@@ -5,6 +5,7 @@
 
 #include "common/data.cuh"
 #include "common/math.cuh"
+#include "radial_kernels.cuh"
 
 /* ---------------------------------------------------------------------------------------------- */
 /*                                       Multipole Indexing                                       */
@@ -129,30 +130,20 @@ __device__ __forceinline__ float multiindex_factorial(const int (&k)[dim]) {
 }
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                                 Derivatives of Green's Function                                */
+/*                                  Derivatives of Radial Kernel                                  */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int p>
-__device__ __forceinline__ void setupGn(float r2, float eps2, Vec<p+1,float>& G)
-{
-    // The derivatives of (1/r d/dr)^n G_0  with G_0 = 1/r
-    float rinv = rsqrtf(r2 + eps2); 
-    float rinv2 = rinv*rinv;
-    G[0] = 1.0f * rinv;
-
-    #pragma unroll
-    for (int n = 1; n <= p; n++) {
-        G[n] = -(2*n-1) * G[n-1] * rinv2;
-    }
-}
-
-template<int p, int dim=3>
-__device__ __forceinline__ void setupDnG(Vec<dim,float> dx, float eps2, Vec<NCOMB(p, dim),float>& Dn) {
+template<int radial_kernel_kind, int p, int dim=3>
+__device__ __forceinline__ void setupDnG(
+    Vec<dim,float> dx,
+    typename RadialKernel<radial_kernel_kind>::Params radial_kernel,
+    Vec<NCOMB(p, dim),float>& Dn
+) {
     // Recurrence formula by Tausch (2003)
     float r2 = dx.norm2();
 
     Vec<p+1,float> G;
-    setupGn<p>(r2, eps2, G);
+    RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<p>(r2, radial_kernel, G);
     Dn[0] = G[p];
 
     #pragma unroll
@@ -448,17 +439,17 @@ __global__ void TranslateLocalToLocal_XVJP(
 /*                                         M2L Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int p, int dim>
+template<int radial_kernel_kind, int p, int dim>
 __device__ __forceinline__ void m2l_translator(
     Vec<dim,float> dx,
     const Vec<NCOMB(p, dim),float>& Mp,
     Vec<NCOMB(p, dim),float>& loc,
-    float epsilon2
+    typename RadialKernel<radial_kernel_kind>::Params radial_kernel
 ) {
     constexpr int ncomb = NCOMB(p, dim);
 
     Vec<ncomb,float> Dn;
-    setupDnG<p,dim>(dx, epsilon2, Dn);
+    setupDnG<radial_kernel_kind,p,dim>(dx, radial_kernel, Dn);
 
     for_each_multiindex<p,dim>([&](int kflat, int ksum, int (&k)[dim]) {
         float Lnew = 0.f;

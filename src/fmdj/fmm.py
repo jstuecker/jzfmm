@@ -56,6 +56,7 @@ def _fmm_node_to_node(
     """
     size = len(child_data.poslvl.pos)
     ilist_alloc_size = cfg.fmm.ilist_alloc_fac * size
+    kernel = cfg.kernel
 
     assert ilist_alloc_size < 2**31, "So far only int32 supported {ilist_alloc_size/2**31}"
     assert len(spl) == len(node_ilist.ispl)
@@ -72,9 +73,9 @@ def _fmm_node_to_node(
         "CountInteractionsAndM2L",
         (out_loc, out_interaction_count, )
     )(
-        node_range, spl, node_ilist.ispl, node_ilist.isrc, children, child_data.mp,
+        node_range, spl, node_ilist.ispl, node_ilist.isrc, children, child_data.mp, kernel.params(),
         p=np.int32(cfg.fmm.p),
-        softening=np.float32(cfg.softening),
+        radial_kernel_kind=np.int32(kernel.kind_id()),
         opening_angle=np.float32(cfg.fmm.opening_angle)
     )
 
@@ -159,15 +160,16 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
 
     node_range = jnp.array([0, ispl.size-1], dtype=jnp.int32)
     out_type = jax.ShapeDtypeStruct((particles.pos.shape[0], dim + 1), jnp.float32)
+    kernel = cfg.kernel
 
     @jax.custom_vjp
     def eval(particles, ispl, ilist):
         loc = jax.ffi.ffi_call("GroupedForceAndPot", (out_type,))(
-            node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles),
-            softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
+            node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), kernel.params(),
+            radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
-        loc = loc.at[...,0].add(particles.mass/cfg.softening) # Remove self-interaction from potential
+        loc = loc.at[...,0].add(particles.mass*kernel.self_value()) # Remove self-interaction from potential
         return loc
     
     def eval_fwd(particles, ispl, ilist):
@@ -176,8 +178,8 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
     def eval_bwd(res, gloc):
         particles, ispl, ilist = res
         gposm = jax.ffi.ffi_call("BwdGroupedForceAndPot", (out_type,))(
-            node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), gloc,
-            softening=np.float32(cfg.softening), block_size=np.uint64(block_size),
+            node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), kernel.params(), gloc,
+            radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
         return PosMass(pos=gposm[:,:dim], mass=gposm[:,dim]), None, None
@@ -192,29 +194,35 @@ grouped_force_and_pot.jit = jax.jit(grouped_force_and_pot, static_argnames=['cfg
 #                                      Direct Summation Forces                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def direct_force_and_potential(part: PosMass, softening: float = 1e-2, kahan: bool = False
+def direct_force_and_potential(part: PosMass, kahan: bool = False,
+                               kernel = None
                                ) -> jax.Array:
     block_size = 64
     posm = get_pos_mass(part)
     out_type = jax.ShapeDtypeStruct(posm.shape, posm.dtype)
+    if kernel is None:
+        from .config import PlummerKernel
+        kernel = PlummerKernel()
     
     @jax.custom_vjp
     def eval(xm):
         loc = jax.ffi.ffi_call("ForceAndPotential", (out_type,))(
-        xm, block_size=np.uint64(block_size), epsilon=np.float32(softening), kahan=kahan)[0]
+        xm, kernel.params(), block_size=np.uint64(block_size),
+        radial_kernel_kind=np.int32(kernel.kind_id()), kahan=kahan)[0]
         return loc
     def eval_fwd(xm):
         return eval(xm), xm
     def eval_bwd(xm, gloc):
         gxm = jax.ffi.ffi_call("BwdForceAndPotential", (out_type,))(
-            gloc, xm, block_size=np.uint64(block_size), epsilon=np.float32(softening), kahan=kahan
+            gloc, xm, kernel.params(), block_size=np.uint64(block_size),
+            radial_kernel_kind=np.int32(kernel.kind_id()), kahan=kahan
         )[0]
         return gxm,
     
     eval.defvjp(eval_fwd, eval_bwd)
 
     return eval(posm)
-direct_force_and_potential.jit = jax.jit(direct_force_and_potential, static_argnames=['softening', 'kahan'])
+direct_force_and_potential.jit = jax.jit(direct_force_and_potential, static_argnames=['kahan', 'kernel'])
 
 def direct_potential_jax(x, m=1., softening=1e-2):
     rij2 = jnp.sum((x[:, None, :] - x[None, :, :]) ** 2, axis=-1)
@@ -331,7 +339,7 @@ fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg
 
 def force_and_potential(p: PosMass, cfg : Config) -> LocalExpansion:
     if cfg.fmm is None:
-        loc = direct_force_and_potential(p, softening=cfg.softening, kahan=True) * cfg.G()
+        loc = direct_force_and_potential(p, kernel=cfg.kernel, kahan=True) * cfg.G()
         return LocalExpansion(loc, dim=p.pos.shape[-1])
     else:
         return fast_multipole_method(p, cfg=cfg, pout=1)

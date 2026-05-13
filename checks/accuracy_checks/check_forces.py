@@ -6,12 +6,12 @@ import time
 from dataclasses import replace
 from fmdj_utils.ics import gaussian_blob
 from fmdj.data import LocalExpansion
-from fmdj.config import Config
+from fmdj.config import Config, PlummerKernel
 from fmdj.fmm import direct_force_and_potential, fast_multipole_method
 
 part = gaussian_blob(N=int(512*1024), scale=1.0, mass=1.)
 
-cfg = Config(softening=1e-2)
+cfg = Config(kernel=PlummerKernel(softening=1e-2))
 cfg.fmm.kahan_summation = True
 cfg.tree.mass_centered = True
 
@@ -25,7 +25,7 @@ def rel_mom_cons(a: LocalExpansion):
 
 t0 = time.time()
 
-loc = direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True) * cfg.G()
+loc = direct_force_and_potential.jit(part, kernel=cfg.kernel, kahan=True) * cfg.G()
 loc_ref = LocalExpansion(loc)
 
 print(f"Direct sum. done, {time.time() - t0:.2f}s, rel. mom. cons = {rel_mom_cons(loc_ref):.2e}")

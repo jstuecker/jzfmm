@@ -1,8 +1,30 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import jax
 import jax.numpy as jnp
 
 from jztree.config import TreeConfig, LoggingConfig
+
+@dataclass(unsafe_hash=True)
+class KernelConfig:
+    def kind_id(self) -> int:
+        raise NotImplementedError
+    def params(self) -> jax.Array:
+        raise NotImplementedError
+    def self_value(self) -> float:
+        raise NotImplementedError
+
+@dataclass(unsafe_hash=True)
+class PlummerKernel(KernelConfig):
+    softening : float = 1e-3
+
+    def kind_id(self) -> int:
+        return 0
+
+    def params(self) -> jax.Array:
+        return jnp.asarray([self.softening], dtype=jnp.float32)
+
+    def self_value(self) -> float:
+        return 1.0 / self.softening
 
 @dataclass(unsafe_hash=True)
 class PotentialField:
@@ -45,9 +67,7 @@ class Config():
 
     # flexible objects
     external_potential : PotentialField | None = None
-
-    # parameters
-    softening : float = 1e-3
+    kernel : KernelConfig = field(default_factory=PlummerKernel)
 
     # Time integration
     centered : int = 100       # If > 0, express positions relative to the #N most bound particles

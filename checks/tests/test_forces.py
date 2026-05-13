@@ -6,17 +6,17 @@ import jax
 import pytest
 from jztree_utils import ics
 
-from fmdj.config import Config, FMMConfig
+from fmdj.config import Config, FMMConfig, PlummerKernel
 from fmdj.data import PosMass, LocalExpansion
 from fmdj.fmm import direct_force_and_potential, fast_multipole_method
 
 @pytest.mark.parametrize("p", [2,3,4])
 def test_fmm_uniform(p):
-    cfg = Config(softening=0.05, fmm=FMMConfig(p=p, opening_angle=0.4, kahan_summation=True))
+    cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=FMMConfig(p=p, opening_angle=0.4, kahan_summation=True))
 
     part = ics.uniform_particles(int(1e4))
 
-    fref = LocalExpansion(direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True) * cfg.G()).force()
+    fref = LocalExpansion(direct_force_and_potential.jit(part, kernel=cfg.kernel, kahan=True) * cfg.G()).force()
     ffmm = fast_multipole_method.jit(part, cfg=cfg).force()
 
     ferr = jnp.linalg.norm(fref - ffmm, axis=-1)
@@ -30,12 +30,12 @@ def test_fmm_uniform(p):
 @pytest.mark.parametrize("dim", [2,3])
 def test_dim(dim):
     p = 3
-    cfg = Config(softening=0.05, fmm=FMMConfig(p=p, opening_angle=0.4, kahan_summation=True))
+    cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=FMMConfig(p=p, opening_angle=0.4, kahan_summation=True))
 
     part = ics.uniform_particles(int(1e4), dim=dim)
 
     fref = LocalExpansion(
-        values=direct_force_and_potential.jit(part, softening=cfg.softening, kahan=True) * cfg.G(),
+        values=direct_force_and_potential.jit(part, kernel=cfg.kernel, kahan=True) * cfg.G(),
         dim = dim
     ).force()
     ffmm = fast_multipole_method.jit(part, cfg=cfg).force()

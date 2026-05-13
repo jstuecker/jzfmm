@@ -111,7 +111,7 @@ def update(t_and_p):
     fig, ax, s1, title = previous
     return [s1,title]
 
-cfg = fmdj.Config(softening=0.1)
+cfg = fmdj.Config(kernel=fmdj.PlummerKernel(softening=0.1))
 cfg.tree.alloc_fac_nodes = 2.0
 
 if dm:

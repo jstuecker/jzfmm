@@ -31,9 +31,10 @@ using DT = ffi::DataType;
 ffi::Error ForceAndPotentialFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer xm,
+    ffi::AnyBuffer radial_kernel_params,
     ffi::Result<ffi::AnyBuffer> loc_out,
-    float epsilon,
     bool kahan,
+    int radial_kernel_kind,
     size_t block_size
 ) {
     int n = xm.dimensions()[0];
@@ -44,35 +45,36 @@ ffi::Error ForceAndPotentialFFIHost(
     
     // Build a bundled argument list for cudaLaunchKernel
     void* xm_arg = xm.untyped_data();
+    void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
     void* loc_out_arg = loc_out->untyped_data();
     void* args[] = {
         &xm_arg,
+        &radial_kernel_params_arg,
         &loc_out_arg,
-        &n,
-        &epsilon
+        &n
     };
     
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<bool, int>;
+    using TTuple = std::tuple<bool, int, int>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {true, 2}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 2>) },
-        { {true, 3}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 3>) },
-        { {false, 2}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 2>) },
-        { {false, 3}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 3>) }
+        { {true, 0, 2}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 0, 2>) },
+        { {true, 0, 3}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 0, 3>) },
+        { {false, 0, 2}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 0, 2>) },
+        { {false, 0, 3}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 0, 3>) }
     };
 
-    const TTuple key = TTuple(kahan, dim);
+    const TTuple key = TTuple(kahan, radial_kernel_kind, dim);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (kahan, dim)"\
+            "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim)"\
             " in ForceAndPotentialFFIHost -- Only supporting:\n"\
-            "(true, 2), (true, 3), (false, 2), (false, 3)"
+            "(true, 0, 2), (true, 0, 3), (false, 0, 2), (false, 0, 3)"
         );
     }
     const void* instance = it->second;
@@ -98,9 +100,10 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // xm
+        .Arg<ffi::AnyBuffer>() // radial_kernel_params
         .Ret<ffi::AnyBuffer>() // loc_out
-        .Attr<float>("epsilon")
         .Attr<bool>("kahan")
+        .Attr<int>("radial_kernel_kind")
         .Attr<size_t>("block_size"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );
@@ -114,9 +117,10 @@ ffi::Error BwdForceAndPotentialFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer gloc,
     ffi::AnyBuffer xm,
+    ffi::AnyBuffer radial_kernel_params,
     ffi::Result<ffi::AnyBuffer> gxm,
-    float epsilon,
     bool kahan,
+    int radial_kernel_kind,
     size_t block_size
 ) {
     int n = xm.dimensions()[0];
@@ -128,36 +132,37 @@ ffi::Error BwdForceAndPotentialFFIHost(
     // Build a bundled argument list for cudaLaunchKernel
     void* gloc_arg = gloc.untyped_data();
     void* xm_arg = xm.untyped_data();
+    void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
     void* gxm_arg = gxm->untyped_data();
     void* args[] = {
         &gloc_arg,
         &xm_arg,
+        &radial_kernel_params_arg,
         &gxm_arg,
-        &n,
-        &epsilon
+        &n
     };
     
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<bool, int>;
+    using TTuple = std::tuple<bool, int, int>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {true, 2}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 2>) },
-        { {true, 3}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 3>) },
-        { {false, 2}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 2>) },
-        { {false, 3}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 3>) }
+        { {true, 0, 2}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 0, 2>) },
+        { {true, 0, 3}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 0, 3>) },
+        { {false, 0, 2}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 0, 2>) },
+        { {false, 0, 3}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 0, 3>) }
     };
 
-    const TTuple key = TTuple(kahan, dim);
+    const TTuple key = TTuple(kahan, radial_kernel_kind, dim);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (kahan, dim)"\
+            "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim)"\
             " in BwdForceAndPotentialFFIHost -- Only supporting:\n"\
-            "(true, 2), (true, 3), (false, 2), (false, 3)"
+            "(true, 0, 2), (true, 0, 3), (false, 0, 2), (false, 0, 3)"
         );
     }
     const void* instance = it->second;
@@ -184,9 +189,10 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // gloc
         .Arg<ffi::AnyBuffer>() // xm
+        .Arg<ffi::AnyBuffer>() // radial_kernel_params
         .Ret<ffi::AnyBuffer>() // gxm
-        .Attr<float>("epsilon")
         .Attr<bool>("kahan")
+        .Attr<int>("radial_kernel_kind")
         .Attr<size_t>("block_size"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );
@@ -203,9 +209,10 @@ ffi::Error GroupedForceAndPotFFIHost(
     ffi::AnyBuffer spl_ilist,
     ffi::AnyBuffer ilist_nodes,
     ffi::AnyBuffer posm,
+    ffi::AnyBuffer radial_kernel_params,
     ffi::Result<ffi::AnyBuffer> loc_out,
-    float softening,
     bool kahan,
+    int radial_kernel_kind,
     size_t block_size
 ) {
     int dim = posm.dimensions()[1] - 1;
@@ -219,6 +226,7 @@ ffi::Error GroupedForceAndPotFFIHost(
     void* spl_ilist_arg = spl_ilist.untyped_data();
     void* ilist_nodes_arg = ilist_nodes.untyped_data();
     void* posm_arg = posm.untyped_data();
+    void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
     void* loc_out_arg = loc_out->untyped_data();
     void* args[] = {
         &node_range_arg,
@@ -226,31 +234,31 @@ ffi::Error GroupedForceAndPotFFIHost(
         &spl_ilist_arg,
         &ilist_nodes_arg,
         &posm_arg,
-        &loc_out_arg,
-        &softening
+        &radial_kernel_params_arg,
+        &loc_out_arg
     };
     
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<bool, int>;
+    using TTuple = std::tuple<bool, int, int>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {true, 2}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 2>) },
-        { {true, 3}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 3>) },
-        { {false, 2}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 2>) },
-        { {false, 3}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 3>) }
+        { {true, 0, 2}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 0, 2>) },
+        { {true, 0, 3}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 0, 3>) },
+        { {false, 0, 2}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 0, 2>) },
+        { {false, 0, 3}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 0, 3>) }
     };
 
-    const TTuple key = TTuple(kahan, dim);
+    const TTuple key = TTuple(kahan, radial_kernel_kind, dim);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (kahan, dim)"\
+            "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim)"\
             " in GroupedForceAndPotFFIHost -- Only supporting:\n"\
-            "(true, 2), (true, 3), (false, 2), (false, 3)"
+            "(true, 0, 2), (true, 0, 3), (false, 0, 2), (false, 0, 3)"
         );
     }
     const void* instance = it->second;
@@ -280,9 +288,10 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // spl_ilist
         .Arg<ffi::AnyBuffer>() // ilist_nodes
         .Arg<ffi::AnyBuffer>() // posm
+        .Arg<ffi::AnyBuffer>() // radial_kernel_params
         .Ret<ffi::AnyBuffer>() // loc_out
-        .Attr<float>("softening")
         .Attr<bool>("kahan")
+        .Attr<int>("radial_kernel_kind")
         .Attr<size_t>("block_size"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );
@@ -299,10 +308,11 @@ ffi::Error BwdGroupedForceAndPotFFIHost(
     ffi::AnyBuffer spl_ilist,
     ffi::AnyBuffer ilist_nodes,
     ffi::AnyBuffer posm,
+    ffi::AnyBuffer radial_kernel_params,
     ffi::AnyBuffer gloc,
     ffi::Result<ffi::AnyBuffer> gposm_out,
-    float softening,
     bool kahan,
+    int radial_kernel_kind,
     size_t block_size
 ) {
     int dim = posm.dimensions()[1] - 1;
@@ -316,6 +326,7 @@ ffi::Error BwdGroupedForceAndPotFFIHost(
     void* spl_ilist_arg = spl_ilist.untyped_data();
     void* ilist_nodes_arg = ilist_nodes.untyped_data();
     void* posm_arg = posm.untyped_data();
+    void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
     void* gloc_arg = gloc.untyped_data();
     void* gposm_out_arg = gposm_out->untyped_data();
     void* args[] = {
@@ -324,32 +335,32 @@ ffi::Error BwdGroupedForceAndPotFFIHost(
         &spl_ilist_arg,
         &ilist_nodes_arg,
         &posm_arg,
+        &radial_kernel_params_arg,
         &gloc_arg,
-        &gposm_out_arg,
-        &softening
+        &gposm_out_arg
     };
     
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<bool, int>;
+    using TTuple = std::tuple<bool, int, int>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {true, 2}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 2>) },
-        { {true, 3}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 3>) },
-        { {false, 2}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 2>) },
-        { {false, 3}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 3>) }
+        { {true, 0, 2}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 0, 2>) },
+        { {true, 0, 3}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 0, 3>) },
+        { {false, 0, 2}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 0, 2>) },
+        { {false, 0, 3}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 0, 3>) }
     };
 
-    const TTuple key = TTuple(kahan, dim);
+    const TTuple key = TTuple(kahan, radial_kernel_kind, dim);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (kahan, dim)"\
+            "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim)"\
             " in BwdGroupedForceAndPotFFIHost -- Only supporting:\n"\
-            "(true, 2), (true, 3), (false, 2), (false, 3)"
+            "(true, 0, 2), (true, 0, 3), (false, 0, 2), (false, 0, 3)"
         );
     }
     const void* instance = it->second;
@@ -379,10 +390,11 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // spl_ilist
         .Arg<ffi::AnyBuffer>() // ilist_nodes
         .Arg<ffi::AnyBuffer>() // posm
+        .Arg<ffi::AnyBuffer>() // radial_kernel_params
         .Arg<ffi::AnyBuffer>() // gloc
         .Ret<ffi::AnyBuffer>() // gposm_out
-        .Attr<float>("softening")
         .Attr<bool>("kahan")
+        .Attr<int>("radial_kernel_kind")
         .Attr<size_t>("block_size"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );

@@ -50,7 +50,7 @@ __device__ __forceinline__ bool OpeningCriterion(
 
 #define ALLTHREADS 0xFFFFFFFF
 
-template<int p, int dim>
+template<int radial_kernel_kind, int p, int dim>
 __global__ void CountInteractionsAndM2L(
     // inputs:
     const int2* node_range,
@@ -59,14 +59,15 @@ __global__ void CountInteractionsAndM2L(
     const int* ilist_nodes,
     const Node<dim,float>* children,
     const float* mp_values,
+    const float* radial_kernel_params,
     // outputs:
     float* loc_out,
     int* ilist_child_count_out,
     // attributes:
-    float softening,
     float opening_angle
 ) {
     constexpr int ncomb = NCOMB(p, dim);
+    auto radial_kernel = RadialKernel<radial_kernel_kind>::make_params(radial_kernel_params);
 
     // Node A info:
     int2 nrange = node_range[0];
@@ -208,7 +209,7 @@ __global__ void CountInteractionsAndM2L(
 
                 Vec<dim,float> dx = posB[b_read] - xaWrite;
 
-                m2l_translator<p,dim>(dx, mpB[b_read], LocA, softening*softening);
+                m2l_translator<radial_kernel_kind,p,dim>(dx, mpB[b_read], LocA, radial_kernel);
             }
         }
 
