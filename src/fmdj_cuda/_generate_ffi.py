@@ -6,9 +6,18 @@ from jax_ffi_gen import parse, generator as gen
 HERE = Path(__file__).resolve().parent
 
 dimensions = (2,3)
+# float_types = ("float", "double")
+float_types = ("float",) # by default don't compile double for now... doubles compilation time...
 p_instance_values = (1, 2, 3, 4, 5)
 radial_kernel_instance_values = (0, 1)
 default_includes = ["../common/math.cuh"]
+
+def add_dtype_template(func, buf_from, pos_types=float_types):
+    func.template_par["tvec"].instances = pos_types
+    func.template_par["tvec"].expression = f"{buf_from}.element_type()"
+
+def dtype_size_expression(buf_from):
+    return f"({buf_from}.element_type() == DT::F64 ? sizeof(double) : sizeof(float))"
 
 # ------------------------------------------------------------------------------------------------ #
 #                                            forces.cuh                                            #
@@ -20,28 +29,30 @@ kernels = parse.get_functions_from_file(
 )
 
 kernels["GroupedForceAndPot"].grid_size_expression = "spl_nodes.element_count() - 1"
-kernels["GroupedForceAndPot"].smem_size_expression = "blockDim.x * (dim + 1) * sizeof(float)"
+kernels["GroupedForceAndPot"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('posm')}"
 
 kernels["BwdGroupedForceAndPot"].grid_size_expression = "spl_nodes.element_count() - 1"
-kernels["BwdGroupedForceAndPot"].smem_size_expression = "2 * blockDim.x * (dim + 1) * sizeof(float)"
+kernels["BwdGroupedForceAndPot"].smem_size_expression = f"2 * blockDim.x * (dim + 1) * {dtype_size_expression('posm')}"
 
 kernels["ForceAndPotential"].grid_size_expression = "div_ceil(xm.dimensions()[0], block_size)"
-kernels["ForceAndPotential"].smem_size_expression = "blockDim.x * (dim + 1) * sizeof(float)"
+kernels["ForceAndPotential"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('xm')}"
 kernels["ForceAndPotential"].par["n"].expression = "xm.dimensions()[0]"
 
 kernels["BwdForceAndPotential"].grid_size_expression = "div_ceil(xm.dimensions()[0], block_size)"
-kernels["BwdForceAndPotential"].smem_size_expression = "2 * blockDim.x * (dim + 1) * sizeof(float)"
+kernels["BwdForceAndPotential"].smem_size_expression = f"2 * blockDim.x * (dim + 1) * {dtype_size_expression('xm')}"
 kernels["BwdForceAndPotential"].par["n"].expression = "xm.dimensions()[0]"
 
 for kname in ("ForceAndPotential", "BwdForceAndPotential"):
     kernels[kname].template_par["dim"].instances = dimensions
     kernels[kname].template_par["dim"].expression = "xm.dimensions()[1] - 1"
     kernels[kname].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values
+    add_dtype_template(kernels[kname], "xm")
 
 for kname in ("GroupedForceAndPot", "BwdGroupedForceAndPot"):
     kernels[kname].template_par["dim"].instances = dimensions
     kernels[kname].template_par["dim"].expression = "posm.dimensions()[1] - 1"
     kernels[kname].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values
+    add_dtype_template(kernels[kname], "posm")
 
 gen.generate_ffi_module_file(
     output_file = str(HERE / "generated/ffi_forces.cu"), 
@@ -65,12 +76,14 @@ kernels["CountInteractionsAndM2L"].template_par["p"].instances = p_instance_valu
 kernels["CountInteractionsAndM2L"].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values
 kernels["CountInteractionsAndM2L"].template_par["dim"].instances = dimensions
 kernels["CountInteractionsAndM2L"].template_par["dim"].expression = "children.dimensions()[1] - 1"
+add_dtype_template(kernels["CountInteractionsAndM2L"], "children")
 
 kernels["InsertInteractions"].grid_size_expression = "spl_nodes.element_count() - 1"
 # kernels["InsertInteractions"].init_outputs_zero = True # this is actually expensive and not needed
 kernels["InsertInteractions"].block_size_expression = 32
 kernels["InsertInteractions"].template_par["dim"].instances = dimensions
 kernels["InsertInteractions"].template_par["dim"].expression = "children.dimensions()[1] - 1"
+add_dtype_template(kernels["InsertInteractions"], "children")
 
 gen.generate_ffi_module_file(
     output_file = str(HERE / "generated/ffi_fmm.cu"), 
@@ -100,6 +113,10 @@ for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToL
 for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
     kernels[kname].template_par["dim"].instances = dimensions
     kernels[kname].template_par["dim"].expression = "xnode.dimensions()[1]"
+
+add_dtype_template(kernels["SummarizeMultipoles"], "mp_in")
+add_dtype_template(kernels["TranslateLocalToLocal"], "loc_node")
+add_dtype_template(kernels["TranslateLocalToLocal_XVJP"], "loc_node")
 
 gen.generate_ffi_module_file(
     output_file = str(HERE / "generated/ffi_multipoles.cu"), 

@@ -65,7 +65,9 @@ def _fmm_node_to_node(
     children = child_data.poslvl.pos_lvl()
     
     # Determine output shapes
-    out_loc = jax.ShapeDtypeStruct(child_data.mp.shape, jnp.float32)
+    dtype = child_data.mp.dtype
+    kernel_params = kernel.params(dtype=dtype)
+    out_loc = jax.ShapeDtypeStruct(child_data.mp.shape, dtype)
     out_interaction_count = jax.ShapeDtypeStruct((size,), jnp.int32)
     
     # Count opened interactions and evaluate M2L
@@ -73,7 +75,7 @@ def _fmm_node_to_node(
         "CountInteractionsAndM2L",
         (out_loc, out_interaction_count, )
     )(
-        node_range, spl, node_ilist.ispl, node_ilist.isrc, children, child_data.mp, kernel.params(),
+        node_range, spl, node_ilist.ispl, node_ilist.isrc, children, child_data.mp, kernel_params,
         p=np.int32(cfg.fmm.p),
         radial_kernel_kind=np.int32(kernel.kind_id()),
         opening_angle=np.float32(cfg.fmm.opening_angle)
@@ -106,16 +108,17 @@ _fmm_node_to_node.jit = jax.jit(_fmm_node_to_node, static_argnames=['cfg'])
 def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
     # define root level:
     size = th.size()
-    dim = th.center().get(0, size).shape[-1]
+    center0 = th.center().get(0, size)
+    dim = center0.shape[-1]
     spl, ilist, nsup = grouped_dense_interaction_list(
         th.num(th.num_planes()-1), size_ilist=int(size*cfg.fmm.ilist_alloc_fac), ngroup=32, size_super=size
     )
 
-    loc = jnp.zeros((size, mph.data.shape[-1]), dtype=jnp.float32)
+    loc = jnp.zeros((size, mph.data.shape[-1]), dtype=mph.data.dtype)
 
     # Add super node data into tree information
     spl_n2n = th.ispl_n2n.append(spl, nsup+1, fill_value=spl[-1], resize=True)
-    cent = th.center().append(jnp.zeros((size, dim), dtype=jnp.float32), nsup, fill_value=0., resize=True)
+    cent = th.center().append(jnp.zeros((size, dim), dtype=center0.dtype), nsup, fill_value=0., resize=True)
 
     def handle_level(i, carry):
         level = th.num_planes() - 1 - i
@@ -159,13 +162,15 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
     dim = particles.pos.shape[-1]
 
     node_range = jnp.array([0, ispl.size-1], dtype=jnp.int32)
-    out_type = jax.ShapeDtypeStruct((particles.pos.shape[0], dim + 1), jnp.float32)
+    posm = get_pos_mass(particles)
+    out_type = jax.ShapeDtypeStruct((particles.pos.shape[0], dim + 1), posm.dtype)
     kernel = cfg.kernel
+    kernel_params = kernel.params(dtype=posm.dtype)
 
     @jax.custom_vjp
     def eval(particles, ispl, ilist):
         loc = jax.ffi.ffi_call("GroupedForceAndPot", (out_type,))(
-            node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), kernel.params(),
+            node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), kernel_params,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
@@ -178,7 +183,7 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
     def eval_bwd(res, gloc):
         particles, ispl, ilist = res
         gposm = jax.ffi.ffi_call("BwdGroupedForceAndPot", (out_type,))(
-            node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), kernel.params(), gloc,
+            node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), kernel_params, gloc,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
@@ -203,18 +208,19 @@ def direct_force_and_potential(part: PosMass, kahan: bool = False,
     if kernel is None:
         from .config import PlummerKernel
         kernel = PlummerKernel()
+    kernel_params = kernel.params(dtype=posm.dtype)
     
     @jax.custom_vjp
     def eval(xm):
         loc = jax.ffi.ffi_call("ForceAndPotential", (out_type,))(
-        xm, kernel.params(), block_size=np.uint64(block_size),
+        xm, kernel_params, block_size=np.uint64(block_size),
         radial_kernel_kind=np.int32(kernel.kind_id()), kahan=kahan)[0]
         return loc
     def eval_fwd(xm):
         return eval(xm), xm
     def eval_bwd(xm, gloc):
         gxm = jax.ffi.ffi_call("BwdForceAndPotential", (out_type,))(
-            gloc, xm, kernel.params(), block_size=np.uint64(block_size),
+            gloc, xm, kernel_params, block_size=np.uint64(block_size),
             radial_kernel_kind=np.int32(kernel.kind_id()), kahan=kahan
         )[0]
         return gxm,

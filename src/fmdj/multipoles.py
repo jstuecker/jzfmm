@@ -53,7 +53,6 @@ def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg, block_size=32):
     if len(mp.shape) == 1: # probably plain masses corresponding to monopoles
         mp = mp.reshape(-1,1)
 
-    assert mp.dtype == jnp.float32
     assert ispl.dtype == jnp.int32
     dtype = mp.dtype
     dim = xnode.shape[-1]
@@ -117,7 +116,7 @@ def build_multipole_hierarchy(th: TreeHierarchy, pos: jax.Array, mp: jax.Array, 
     mp0 = summarize_multipoles(th.splits_leaf_to_part(size=size+1), mp, th.center().get(0, size), pos, cfg=cfg)
 
     mph = PackedArray.create_empty(
-        (size, num_multi(cfg.fmm.p, dim=dim)), levels=th.num_planes(), dtype=jnp.float32, fill_values=jnp.nan
+        (size, num_multi(cfg.fmm.p, dim=dim)), levels=th.num_planes(), dtype=mp0.dtype, fill_values=jnp.nan
     )
     mph = mph.set(0, mp0, th.num(0))
 
@@ -145,8 +144,6 @@ def _shift_local_to_children_impl(
     ) -> jnp.array:
     """Shifts local expansions to child nodes"""
     dtype = loc.dtype
-
-    assert loc.dtype == jnp.float32
 
     dim = xnode.shape[-1]
     p = p_of_num_multi(loc.shape[1], dim=dim)

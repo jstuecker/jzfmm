@@ -8,7 +8,7 @@ from jztree.config import TreeConfig, LoggingConfig
 class KernelConfig:
     def kind_id(self) -> int:
         raise NotImplementedError
-    def params(self) -> jax.Array:
+    def params(self, dtype=jnp.float32) -> jax.Array:
         raise NotImplementedError
     def self_value(self) -> float:
         raise NotImplementedError
@@ -20,8 +20,8 @@ class PlummerKernel(KernelConfig):
     def kind_id(self) -> int:
         return 0
 
-    def params(self) -> jax.Array:
-        return jnp.asarray([self.softening], dtype=jnp.float32)
+    def params(self, dtype=jnp.float32) -> jax.Array:
+        return jnp.asarray([self.softening], dtype=dtype)
 
     def self_value(self) -> float:
         return 1.0 / self.softening
@@ -33,8 +33,8 @@ class QuarticPlummerKernel(KernelConfig):
     def kind_id(self) -> int:
         return 1
 
-    def params(self) -> jax.Array:
-        return jnp.asarray([self.softening], dtype=jnp.float32)
+    def params(self, dtype=jnp.float32) -> jax.Array:
+        return jnp.asarray([self.softening], dtype=dtype)
 
     def self_value(self) -> float:
         return 1.0 / self.softening

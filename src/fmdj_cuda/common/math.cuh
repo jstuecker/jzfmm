@@ -129,18 +129,23 @@ __host__ __device__ __forceinline__ int div_ceil(int a, int b) {
     return (a + b - 1) / b;
 }
 
+template<typename tvec>
 __host__ __device__ __forceinline__
-float powi_upto6(float x, int n) {
+tvec powi_upto6(tvec x, int n) {
     switch (n) {
-        case 0: return 1.0f;
+        case 0: return tvec(1);
         case 1: return x;
         case 2: return x * x;
-        case 3: { float x2 = x * x; return x2 * x; }
-        case 4: { float x2 = x * x; return x2 * x2; }
-        case 5: { float x2 = x * x; float x4 = x2 * x2; return x4 * x; }
-        case 6: { float x2 = x * x; float x3 = x2 * x; return x3 * x3; }
+        case 3: { tvec x2 = x * x; return x2 * x; }
+        case 4: { tvec x2 = x * x; return x2 * x2; }
+        case 5: { tvec x2 = x * x; tvec x4 = x2 * x2; return x4 * x; }
+        case 6: { tvec x2 = x * x; tvec x3 = x2 * x; return x3 * x3; }
         default: // fallback if someone passes >6
-            return powf(x, (float)n);
+            if constexpr (std::is_same_v<tvec, float>) {
+                return powf(x, float(n));
+            } else {
+                return pow(x, double(n));
+            }
     }
 }
 
@@ -434,7 +439,7 @@ __device__ __forceinline__ tvec wrap_dx(tvec dx, const tvec boxsize) {
     // whether we are periodic. However, my tests suggest that this would only be 3% or so.
     if(boxsize > static_cast<tvec>(0)) {
         if constexpr (std::is_floating_point_v<tvec>) {
-            float bh = static_cast<tvec>(0.5) * boxsize;
+            tvec bh = static_cast<tvec>(0.5) * boxsize;
             dx = dx < -bh ? dx + boxsize : dx;
             dx = dx >= bh ? dx - boxsize : dx;
         }

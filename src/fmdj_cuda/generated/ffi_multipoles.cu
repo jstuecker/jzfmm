@@ -42,6 +42,7 @@ ffi::Error SummarizeMultipolesFFIHost(
 ) {
     int nnodes = isplit.element_count() - 1;
     int dim = xnode.dimensions()[1];
+    DT tvec = mp_in.element_type();
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(isplit.element_count() - 1, block_size));
     size_t smem = 0;
@@ -66,30 +67,30 @@ ffi::Error SummarizeMultipolesFFIHost(
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<int, int>;
+    using TTuple = std::tuple<int, int, DT>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {1, 2}, reinterpret_cast<TFunc>(&SummarizeMultipoles<1, 2>) },
-        { {1, 3}, reinterpret_cast<TFunc>(&SummarizeMultipoles<1, 3>) },
-        { {2, 2}, reinterpret_cast<TFunc>(&SummarizeMultipoles<2, 2>) },
-        { {2, 3}, reinterpret_cast<TFunc>(&SummarizeMultipoles<2, 3>) },
-        { {3, 2}, reinterpret_cast<TFunc>(&SummarizeMultipoles<3, 2>) },
-        { {3, 3}, reinterpret_cast<TFunc>(&SummarizeMultipoles<3, 3>) },
-        { {4, 2}, reinterpret_cast<TFunc>(&SummarizeMultipoles<4, 2>) },
-        { {4, 3}, reinterpret_cast<TFunc>(&SummarizeMultipoles<4, 3>) },
-        { {5, 2}, reinterpret_cast<TFunc>(&SummarizeMultipoles<5, 2>) },
-        { {5, 3}, reinterpret_cast<TFunc>(&SummarizeMultipoles<5, 3>) }
+        { {1, 2, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<1, 2, float>) },
+        { {1, 3, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<1, 3, float>) },
+        { {2, 2, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<2, 2, float>) },
+        { {2, 3, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<2, 3, float>) },
+        { {3, 2, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<3, 2, float>) },
+        { {3, 3, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<3, 3, float>) },
+        { {4, 2, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<4, 2, float>) },
+        { {4, 3, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<4, 3, float>) },
+        { {5, 2, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<5, 2, float>) },
+        { {5, 3, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<5, 3, float>) }
     };
 
-    const TTuple key = TTuple(p, dim);
+    const TTuple key = TTuple(p, dim, tvec);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (p, dim)"\
+            "\nUnsupported template parameter combination for (p, dim, tvec)"\
             " in SummarizeMultipolesFFIHost -- Only supporting:\n"\
-            "(1, 2), (1, 3), (2, 2), (2, 3), (3, 2), (3, 3), (4, 2), (4, 3), (5, 2), (5, 3)"
+            "(1, 2, float), (1, 3, float), (2, 2, float), (2, 3, float), (3, 2, float), (3, 3, float), (4, 2, float), (4, 3, float), (5, 2, float), (5, 3, float)"
         );
     }
     const void* instance = it->second;
@@ -144,6 +145,7 @@ ffi::Error TranslateLocalToLocalFFIHost(
 ) {
     int nnodes = isplit.element_count() - 1;
     int dim = xnode.dimensions()[1];
+    DT tvec = loc_node.element_type();
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(isplit.element_count() - 1, block_size));
     size_t smem = 0;
@@ -170,30 +172,30 @@ ffi::Error TranslateLocalToLocalFFIHost(
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<int, int>;
+    using TTuple = std::tuple<int, int, DT>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {1, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<1, 2>) },
-        { {1, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<1, 3>) },
-        { {2, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<2, 2>) },
-        { {2, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<2, 3>) },
-        { {3, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<3, 2>) },
-        { {3, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<3, 3>) },
-        { {4, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<4, 2>) },
-        { {4, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<4, 3>) },
-        { {5, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<5, 2>) },
-        { {5, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<5, 3>) }
+        { {1, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<1, 2, float>) },
+        { {1, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<1, 3, float>) },
+        { {2, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<2, 2, float>) },
+        { {2, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<2, 3, float>) },
+        { {3, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<3, 2, float>) },
+        { {3, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<3, 3, float>) },
+        { {4, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<4, 2, float>) },
+        { {4, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<4, 3, float>) },
+        { {5, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<5, 2, float>) },
+        { {5, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<5, 3, float>) }
     };
 
-    const TTuple key = TTuple(p, dim);
+    const TTuple key = TTuple(p, dim, tvec);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (p, dim)"\
+            "\nUnsupported template parameter combination for (p, dim, tvec)"\
             " in TranslateLocalToLocalFFIHost -- Only supporting:\n"\
-            "(1, 2), (1, 3), (2, 2), (2, 3), (3, 2), (3, 3), (4, 2), (4, 3), (5, 2), (5, 3)"
+            "(1, 2, float), (1, 3, float), (2, 2, float), (2, 3, float), (3, 2, float), (3, 3, float), (4, 2, float), (4, 3, float), (5, 2, float), (5, 3, float)"
         );
     }
     const void* instance = it->second;
@@ -248,6 +250,7 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
 ) {
     int nnodes = isplit.element_count() - 1;
     int dim = xnode.dimensions()[1];
+    DT tvec = loc_node.element_type();
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(isplit.element_count() - 1, block_size));
     size_t smem = 0;
@@ -273,30 +276,30 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<int, int>;
+    using TTuple = std::tuple<int, int, DT>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {1, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<1, 2>) },
-        { {1, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<1, 3>) },
-        { {2, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<2, 2>) },
-        { {2, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<2, 3>) },
-        { {3, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<3, 2>) },
-        { {3, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<3, 3>) },
-        { {4, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<4, 2>) },
-        { {4, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<4, 3>) },
-        { {5, 2}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<5, 2>) },
-        { {5, 3}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<5, 3>) }
+        { {1, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<1, 2, float>) },
+        { {1, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<1, 3, float>) },
+        { {2, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<2, 2, float>) },
+        { {2, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<2, 3, float>) },
+        { {3, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<3, 2, float>) },
+        { {3, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<3, 3, float>) },
+        { {4, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<4, 2, float>) },
+        { {4, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<4, 3, float>) },
+        { {5, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<5, 2, float>) },
+        { {5, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<5, 3, float>) }
     };
 
-    const TTuple key = TTuple(p, dim);
+    const TTuple key = TTuple(p, dim, tvec);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (p, dim)"\
+            "\nUnsupported template parameter combination for (p, dim, tvec)"\
             " in TranslateLocalToLocal_XVJPFFIHost -- Only supporting:\n"\
-            "(1, 2), (1, 3), (2, 2), (2, 3), (3, 2), (3, 3), (4, 2), (4, 3), (5, 2), (5, 3)"
+            "(1, 2, float), (1, 3, float), (2, 2, float), (2, 3, float), (3, 2, float), (3, 3, float), (4, 2, float), (4, 3, float), (5, 2, float), (5, 3, float)"
         );
     }
     const void* instance = it->second;

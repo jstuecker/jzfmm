@@ -10,64 +10,64 @@
 /*                                        Helper Functions                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int dim>
-__forceinline__ __device__ LocalExp<dim,float> zero_local_exp() {
-    LocalExp<dim,float> loc;
-    loc.pot = 0.f;
-    loc.grad = Vec<dim,float>::constant(0.f);
+template<int dim, typename tvec>
+__forceinline__ __device__ LocalExp<dim,tvec> zero_local_exp() {
+    LocalExp<dim,tvec> loc;
+    loc.pot = tvec(0);
+    loc.grad = Vec<dim,tvec>::constant(tvec(0));
     return loc;
 }
 
-template<int dim>
-__forceinline__ __device__ PosMass<dim,float> zero_pos_mass() {
-    PosMass<dim,float> xm;
-    xm.pos = Vec<dim,float>::constant(0.f);
-    xm.mass = 0.f;
+template<int dim, typename tvec>
+__forceinline__ __device__ PosMass<dim,tvec> zero_pos_mass() {
+    PosMass<dim,tvec> xm;
+    xm.pos = Vec<dim,tvec>::constant(tvec(0));
+    xm.mass = tvec(0);
     return xm;
 }
 
-template<int radial_kernel_kind, int dim>
-__forceinline__ __device__ LocalExp<dim,float> GetForceAndPot(
-    PosMass<dim,float> xmi,
-    PosMass<dim,float> xmj,
-    typename RadialKernel<radial_kernel_kind>::Params radial_kernel
+template<int radial_kernel_kind, int dim, typename tvec>
+__forceinline__ __device__ LocalExp<dim,tvec> GetForceAndPot(
+    PosMass<dim,tvec> xmi,
+    PosMass<dim,tvec> xmj,
+    typename RadialKernel<radial_kernel_kind>::template Params<tvec> radial_kernel
 ) {
-    Vec<dim,float> dx = xmj.pos - xmi.pos;
-    float r2 = dx.norm2();
+    Vec<dim,tvec> dx = xmj.pos - xmi.pos;
+    tvec r2 = dx.norm2();
 
-    Vec<2,float> coeffs;
-    RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<1>(r2, radial_kernel, coeffs);
+    Vec<2,tvec> coeffs;
+    RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<1,tvec>(r2, radial_kernel, coeffs);
 
-    LocalExp<dim,float> loc;
+    LocalExp<dim,tvec> loc;
     loc.pot = -xmj.mass * coeffs[0];
     loc.grad = (xmj.mass * coeffs[1]) * dx;
 
     return loc;
 }
 
-template<int radial_kernel_kind, int dim>
-__forceinline__ __device__ PosMass<dim,float> VJP_GFPhiToGXM(
-    const PosMass<dim,float> xmi, const PosMass<dim,float> xmj,
-    const LocalExp<dim,float> gi, const LocalExp<dim,float> gj,
-    typename RadialKernel<radial_kernel_kind>::Params radial_kernel
+template<int radial_kernel_kind, int dim, typename tvec>
+__forceinline__ __device__ PosMass<dim,tvec> VJP_GFPhiToGXM(
+    const PosMass<dim,tvec> xmi, const PosMass<dim,tvec> xmj,
+    const LocalExp<dim,tvec> gi, const LocalExp<dim,tvec> gj,
+    typename RadialKernel<radial_kernel_kind>::template Params<tvec> radial_kernel
 ) {
     // calculates the vector jacobian product of the interaction between xmi and xmj
     // gi and gj are the final gradient vectors of fphi_i and fphi_j, respectively.
     // we have to back propagate the gradient towards a gradient with respect to xmi
     // for understanding the maths, please consider the corresponding .ipynb notebook
-    Vec<dim,float> dx = xmj.pos - xmi.pos;
-    float r2 = dx.norm2();
+    Vec<dim,tvec> dx = xmj.pos - xmi.pos;
+    tvec r2 = dx.norm2();
 
-    Vec<3,float> coeffs;
-    RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<2>(r2, radial_kernel, coeffs);
-    float K = r2 > 1e-20f ? coeffs[0] : 0.f;
-    float f1 = r2 > 1e-20f ? coeffs[1] : 0.f;
-    float f2 = r2 > 1e-20f ? coeffs[2] : 0.f;
+    Vec<3,tvec> coeffs;
+    RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<2,tvec>(r2, radial_kernel, coeffs);
+    tvec K = r2 > tvec(1e-20) ? coeffs[0] : tvec(0);
+    tvec f1 = r2 > tvec(1e-20) ? coeffs[1] : tvec(0);
+    tvec f2 = r2 > tvec(1e-20) ? coeffs[2] : tvec(0);
 
-    Vec<dim,float> gm_diff = xmi.mass * gj.grad - xmj.mass * gi.grad;
-    float fgdiff = f2*gm_diff.dot(dx) + f1 * (gi.pot * xmj.mass + gj.pot * xmi.mass);
+    Vec<dim,tvec> gm_diff = xmi.mass * gj.grad - xmj.mass * gi.grad;
+    tvec fgdiff = f2*gm_diff.dot(dx) + f1 * (gi.pot * xmj.mass + gj.pot * xmi.mass);
 
-    PosMass<dim,float> gxmi;
+    PosMass<dim,tvec> gxmi;
 
     gxmi.pos = f1 * gm_diff + fgdiff * dx;
     gxmi.mass = - f1 * dx.dot(gj.grad) - K * gj.pot;
@@ -79,26 +79,26 @@ __forceinline__ __device__ PosMass<dim,float> VJP_GFPhiToGXM(
 /*                                       Simple Force Kernel                                      */
 /* ---------------------------------------------------------------------------------------------- */
 
-template <bool kahan, int radial_kernel_kind, int dim>
+template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
 __global__ void ForceAndPotential(
-    const PosMass<dim,float> *xm,
-    const float* radial_kernel_params,
-    LocalExp<dim,float> *loc_out,
+    const PosMass<dim,tvec> *xm,
+    const tvec* radial_kernel_params,
+    LocalExp<dim,tvec> *loc_out,
     int n
 ) {
     const int steps = div_ceil(n, blockDim.x);
-    auto radial_kernel = RadialKernel<radial_kernel_kind>::make_params(radial_kernel_params);
+    auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
 
     int ipart = blockIdx.x * blockDim.x + threadIdx.x;
-    PosMass<dim,float> xmi = zero_pos_mass<dim>();
+    PosMass<dim,tvec> xmi = zero_pos_mass<dim,tvec>();
     if(ipart < n)
         xmi = xm[ipart];
 
     extern __shared__ unsigned char force_smem[];
-    PosMass<dim,float>* xmj_shared = reinterpret_cast<PosMass<dim,float>*>(force_smem);
+    PosMass<dim,tvec>* xmj_shared = reinterpret_cast<PosMass<dim,tvec>*>(force_smem);
 
-    LocalExp<dim,float> loc_i = zero_local_exp<dim>();
-    LocalExp<dim,float> loc_kahan = zero_local_exp<dim>();
+    LocalExp<dim,tvec> loc_i = zero_local_exp<dim,tvec>();
+    LocalExp<dim,tvec> loc_kahan = zero_local_exp<dim,tvec>();
 
     for (int jblock = 0; jblock < steps; jblock += 1) {
         int num = min(blockDim.x, n - blockDim.x * jblock);
@@ -109,7 +109,7 @@ __global__ void ForceAndPotential(
         __syncthreads();
 
         for (int j = 0; j < num; j++) {
-            LocalExp<dim,float> loc_new = GetForceAndPot<radial_kernel_kind,dim>(xmi, xmj_shared[j], radial_kernel);
+            LocalExp<dim,tvec> loc_new = GetForceAndPot<radial_kernel_kind,dim,tvec>(xmi, xmj_shared[j], radial_kernel);
             kahan_add_vec(loc_i.asvec, loc_new.asvec, loc_kahan.asvec);
         }
     }
@@ -120,19 +120,19 @@ __global__ void ForceAndPotential(
         loc_out[blockIdx.x * blockDim.x + threadIdx.x] = loc_i;
 }
 
-template <bool kahan, int radial_kernel_kind, int dim>
+template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
 __global__ void BwdForceAndPotential(
-    const LocalExp<dim,float> *gloc,
-    const PosMass<dim,float> *xm,
-    const float* radial_kernel_params,
-    PosMass<dim,float> *gxm,
+    const LocalExp<dim,tvec> *gloc,
+    const PosMass<dim,tvec> *xm,
+    const tvec* radial_kernel_params,
+    PosMass<dim,tvec> *gxm,
     int n
 ) {
     const int steps = div_ceil(n, blockDim.x);
-    auto radial_kernel = RadialKernel<radial_kernel_kind>::make_params(radial_kernel_params);
+    auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
 
-    PosMass<dim,float> xmi = zero_pos_mass<dim>();
-    LocalExp<dim,float> gloc_i = zero_local_exp<dim>();
+    PosMass<dim,tvec> xmi = zero_pos_mass<dim,tvec>();
+    LocalExp<dim,tvec> gloc_i = zero_local_exp<dim,tvec>();
 
     int ipart = blockIdx.x * blockDim.x + threadIdx.x;
     if(ipart < n) {
@@ -141,13 +141,13 @@ __global__ void BwdForceAndPotential(
     }
 
     extern __shared__ unsigned char bwd_force_smem[];
-    PosMass<dim,float>* xmj_shared = reinterpret_cast<PosMass<dim,float>*>(bwd_force_smem);
-    LocalExp<dim,float>* gloc_j_shared = reinterpret_cast<LocalExp<dim,float>*>(
-        bwd_force_smem + blockDim.x * sizeof(PosMass<dim,float>)
+    PosMass<dim,tvec>* xmj_shared = reinterpret_cast<PosMass<dim,tvec>*>(bwd_force_smem);
+    LocalExp<dim,tvec>* gloc_j_shared = reinterpret_cast<LocalExp<dim,tvec>*>(
+        bwd_force_smem + blockDim.x * sizeof(PosMass<dim,tvec>)
     );
 
-    PosMass<dim,float> gxm_i = zero_pos_mass<dim>();
-    PosMass<dim,float> gxm_i_kahan = zero_pos_mass<dim>();
+    PosMass<dim,tvec> gxm_i = zero_pos_mass<dim,tvec>();
+    PosMass<dim,tvec> gxm_i_kahan = zero_pos_mass<dim,tvec>();
 
     for (int jblock = 0; jblock < steps; jblock += 1) {
         int num = min(blockDim.x, n - blockDim.x * jblock);
@@ -160,7 +160,7 @@ __global__ void BwdForceAndPotential(
         __syncthreads();
 
         for (int j = 0; j < num; j++) {
-            PosMass<dim,float> gxm_inc = VJP_GFPhiToGXM<radial_kernel_kind,dim>(
+            PosMass<dim,tvec> gxm_inc = VJP_GFPhiToGXM<radial_kernel_kind,dim,tvec>(
                 xmi, xmj_shared[j],
                 gloc_i, gloc_j_shared[j],
                 radial_kernel
@@ -177,19 +177,19 @@ __global__ void BwdForceAndPotential(
 /*                                     Grouped force kernel                                       */
 /* ---------------------------------------------------------------------------------------------- */
 
-template <bool kahan, int radial_kernel_kind, int dim>
+template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
 __global__ void GroupedForceAndPot(
     // inputs:
     const int2* node_range,
     const int* spl_nodes,
     const int* spl_ilist,
     const int* ilist_nodes,
-    const PosMass<dim,float>* posm,
-    const float* radial_kernel_params,
+    const PosMass<dim,tvec>* posm,
+    const tvec* radial_kernel_params,
     // outputs:
-    LocalExp<dim,float>* loc_out
+    LocalExp<dim,tvec>* loc_out
 ) {
-    auto radial_kernel = RadialKernel<radial_kernel_kind>::make_params(radial_kernel_params);
+    auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
 
     int2 nrange = node_range[0];
     int nodeid = nrange.x + blockIdx.x;
@@ -211,7 +211,7 @@ __global__ void GroupedForceAndPot(
     //  but later discard their result)
     int valid = threadIdx.x < num * n_write;
 
-    PosMass<dim,float> xaWrite = posm[prange.x + a_write];
+    PosMass<dim,tvec> xaWrite = posm[prange.x + a_write];
 
     __shared__ int2 segments[32];
     SegmentManager seg_mgr(
@@ -223,11 +223,11 @@ __global__ void GroupedForceAndPot(
         32
     );
 
-    LocalExp<dim,float> loc_a = zero_local_exp<dim>();
-    LocalExp<dim,float> loc_a_kahan = zero_local_exp<dim>();
+    LocalExp<dim,tvec> loc_a = zero_local_exp<dim,tvec>();
+    LocalExp<dim,tvec> loc_a_kahan = zero_local_exp<dim,tvec>();
 
     extern __shared__ unsigned char grouped_force_smem[];
-    PosMass<dim,float>* xm_b = reinterpret_cast<PosMass<dim,float>*>(grouped_force_smem);
+    PosMass<dim,tvec>* xm_b = reinterpret_cast<PosMass<dim,tvec>*>(grouped_force_smem);
 
     while(!seg_mgr.finished()) {
         int id = seg_mgr.next();
@@ -239,19 +239,19 @@ __global__ void GroupedForceAndPot(
 
         // Now compute interactions
         for(int ib=read_b_offset; ib < seg_mgr.num_loaded; ib += n_write) {
-            LocalExp<dim,float> loc_new = GetForceAndPot<radial_kernel_kind,dim>(xaWrite, xm_b[ib], radial_kernel);
+            LocalExp<dim,tvec> loc_new = GetForceAndPot<radial_kernel_kind,dim,tvec>(xaWrite, xm_b[ib], radial_kernel);
             add_vec<kahan>(loc_a.asvec, loc_new.asvec, loc_a_kahan.asvec);
         }
         __syncthreads();
     }
 
     // Now sum over all contributions to the same write position in shared memory
-    LocalExp<dim,float>* loc_shared = reinterpret_cast<LocalExp<dim,float>*>(grouped_force_smem);
+    LocalExp<dim,tvec>* loc_shared = reinterpret_cast<LocalExp<dim,tvec>*>(grouped_force_smem);
     loc_shared[threadIdx.x] = loc_a;
     __syncthreads();
 
     if(read_b_offset == 0) {
-        LocalExp<dim,float> loc_cum = zero_local_exp<dim>();
+        LocalExp<dim,tvec> loc_cum = zero_local_exp<dim,tvec>();
         
         for(int i=0; i < n_write; i++)
             kahan_add_vec(loc_cum.asvec, loc_shared[i*num + a_write].asvec, loc_a_kahan.asvec);
@@ -261,20 +261,20 @@ __global__ void GroupedForceAndPot(
     }
 }
 
-template <bool kahan, int radial_kernel_kind, int dim>
+template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
 __global__ void BwdGroupedForceAndPot(
     // inputs:
     const int2* node_range,
     const int* spl_nodes,
     const int* spl_ilist,
     const int* ilist_nodes,
-    const PosMass<dim,float>* posm,
-    const float* radial_kernel_params,
-    const LocalExp<dim,float> *gloc,
+    const PosMass<dim,tvec>* posm,
+    const tvec* radial_kernel_params,
+    const LocalExp<dim,tvec> *gloc,
     // outputs:
-    PosMass<dim,float>* gposm_out
+    PosMass<dim,tvec>* gposm_out
 ) {
-    auto radial_kernel = RadialKernel<radial_kernel_kind>::make_params(radial_kernel_params);
+    auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
 
     int2 nrange = node_range[0];
     int nodeid = nrange.x + blockIdx.x;
@@ -291,8 +291,8 @@ __global__ void BwdGroupedForceAndPot(
     int read_b_offset = threadIdx.x / num;
     int valid = threadIdx.x < num * n_write;
 
-    PosMass<dim,float> xm_a = posm[prange.x + a_write];
-    LocalExp<dim,float> gloc_a = gloc[prange.x + a_write];
+    PosMass<dim,tvec> xm_a = posm[prange.x + a_write];
+    LocalExp<dim,tvec> gloc_a = gloc[prange.x + a_write];
 
     __shared__ int2 segments[32];
     SegmentManager seg_mgr(
@@ -304,13 +304,13 @@ __global__ void BwdGroupedForceAndPot(
         32
     );
 
-    PosMass<dim,float> gxm_a = zero_pos_mass<dim>();
-    PosMass<dim,float> gxm_a_kahan = zero_pos_mass<dim>();
+    PosMass<dim,tvec> gxm_a = zero_pos_mass<dim,tvec>();
+    PosMass<dim,tvec> gxm_a_kahan = zero_pos_mass<dim,tvec>();
 
     extern __shared__ unsigned char bwd_grouped_force_smem[];
-    PosMass<dim,float>* xm_b = reinterpret_cast<PosMass<dim,float>*>(bwd_grouped_force_smem);
-    LocalExp<dim,float>* gloc_b = reinterpret_cast<LocalExp<dim,float>*>(
-        bwd_grouped_force_smem + blockDim.x * sizeof(PosMass<dim,float>)
+    PosMass<dim,tvec>* xm_b = reinterpret_cast<PosMass<dim,tvec>*>(bwd_grouped_force_smem);
+    LocalExp<dim,tvec>* gloc_b = reinterpret_cast<LocalExp<dim,tvec>*>(
+        bwd_grouped_force_smem + blockDim.x * sizeof(PosMass<dim,tvec>)
     );
 
     while(!seg_mgr.finished()) {
@@ -323,19 +323,19 @@ __global__ void BwdGroupedForceAndPot(
         __syncthreads();
 
         for(int ib=read_b_offset; ib < seg_mgr.num_loaded; ib += n_write) {
-            PosMass<dim,float> gxm_inc = VJP_GFPhiToGXM<radial_kernel_kind,dim>(xm_a, xm_b[ib], gloc_a, gloc_b[ib], radial_kernel);
+            PosMass<dim,tvec> gxm_inc = VJP_GFPhiToGXM<radial_kernel_kind,dim,tvec>(xm_a, xm_b[ib], gloc_a, gloc_b[ib], radial_kernel);
             kahan_add_vec(gxm_a.asvec, gxm_inc.asvec, gxm_a_kahan.asvec);
         }
         __syncthreads();
     }
 
     // Now sum over all contributions to the same write position in shared memory
-    PosMass<dim,float>* gxm_shared = reinterpret_cast<PosMass<dim,float>*>(bwd_grouped_force_smem);
+    PosMass<dim,tvec>* gxm_shared = reinterpret_cast<PosMass<dim,tvec>*>(bwd_grouped_force_smem);
     gxm_shared[threadIdx.x] = gxm_a;
     __syncthreads();
 
     if(read_b_offset == 0) {
-        PosMass<dim,float> gxm_cum = zero_pos_mass<dim>();
+        PosMass<dim,tvec> gxm_cum = zero_pos_mass<dim,tvec>();
         
         for(int i=0; i < n_write; i++)
             kahan_add_vec(gxm_cum.asvec, gxm_shared[i*num + a_write].asvec, gxm_a_kahan.asvec);

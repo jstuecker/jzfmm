@@ -44,6 +44,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     int p
 ) {
     int dim = children.dimensions()[1] - 1;
+    DT tvec = children.element_type();
     dim3 blockDim(32);
     dim3 gridDim(spl_nodes.element_count() - 1);
     size_t smem = 0;
@@ -78,40 +79,40 @@ ffi::Error CountInteractionsAndM2LFFIHost(
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<int, int, int>;
+    using TTuple = std::tuple<int, int, int, DT>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {0, 1, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 2>) },
-        { {0, 1, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 3>) },
-        { {0, 2, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 2>) },
-        { {0, 2, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 3>) },
-        { {0, 3, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 2>) },
-        { {0, 3, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 3>) },
-        { {0, 4, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 2>) },
-        { {0, 4, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 3>) },
-        { {0, 5, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 2>) },
-        { {0, 5, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 3>) },
-        { {1, 1, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 1, 2>) },
-        { {1, 1, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 1, 3>) },
-        { {1, 2, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2, 2>) },
-        { {1, 2, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2, 3>) },
-        { {1, 3, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3, 2>) },
-        { {1, 3, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3, 3>) },
-        { {1, 4, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 4, 2>) },
-        { {1, 4, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 4, 3>) },
-        { {1, 5, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 5, 2>) },
-        { {1, 5, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 5, 3>) }
+        { {0, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 2, float>) },
+        { {0, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 3, float>) },
+        { {0, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 2, float>) },
+        { {0, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 3, float>) },
+        { {0, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 2, float>) },
+        { {0, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 3, float>) },
+        { {0, 4, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 2, float>) },
+        { {0, 4, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 3, float>) },
+        { {0, 5, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 2, float>) },
+        { {0, 5, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 3, float>) },
+        { {1, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 1, 2, float>) },
+        { {1, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 1, 3, float>) },
+        { {1, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2, 2, float>) },
+        { {1, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2, 3, float>) },
+        { {1, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3, 2, float>) },
+        { {1, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3, 3, float>) },
+        { {1, 4, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 4, 2, float>) },
+        { {1, 4, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 4, 3, float>) },
+        { {1, 5, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 5, 2, float>) },
+        { {1, 5, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 5, 3, float>) }
     };
 
-    const TTuple key = TTuple(radial_kernel_kind, p, dim);
+    const TTuple key = TTuple(radial_kernel_kind, p, dim, tvec);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (radial_kernel_kind, p, dim)"\
+            "\nUnsupported template parameter combination for (radial_kernel_kind, p, dim, tvec)"\
             " in CountInteractionsAndM2LFFIHost -- Only supporting:\n"\
-            "(0, 1, 2), (0, 1, 3), (0, 2, 2), (0, 2, 3), (0, 3, 2), (0, 3, 3), (0, 4, 2), (0, 4, 3), (0, 5, 2), (0, 5, 3), (1, 1, 2), (1, 1, 3), (1, 2, 2), (1, 2, 3), (1, 3, 2), (1, 3, 3), (1, 4, 2), (1, 4, 3), (1, 5, 2), (1, 5, 3)"
+            "(0, 1, 2, float), (0, 1, 3, float), (0, 2, 2, float), (0, 2, 3, float), (0, 3, 2, float), (0, 3, 3, float), (0, 4, 2, float), (0, 4, 3, float), (0, 5, 2, float), (0, 5, 3, float), (1, 1, 2, float), (1, 1, 3, float), (1, 2, 2, float), (1, 2, 3, float), (1, 3, 2, float), (1, 3, 3, float), (1, 4, 2, float), (1, 4, 3, float), (1, 5, 2, float), (1, 5, 3, float)"
         );
     }
     const void* instance = it->second;
@@ -168,6 +169,7 @@ ffi::Error InsertInteractionsFFIHost(
     float opening_angle
 ) {
     int dim = children.dimensions()[1] - 1;
+    DT tvec = children.element_type();
     dim3 blockDim(32);
     dim3 gridDim(spl_nodes.element_count() - 1);
     size_t smem = 0;
@@ -194,22 +196,22 @@ ffi::Error InsertInteractionsFFIHost(
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<int>;
+    using TTuple = std::tuple<int, DT>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {2}, reinterpret_cast<TFunc>(&InsertInteractions<2>) },
-        { {3}, reinterpret_cast<TFunc>(&InsertInteractions<3>) }
+        { {2, DT::F32}, reinterpret_cast<TFunc>(&InsertInteractions<2, float>) },
+        { {3, DT::F32}, reinterpret_cast<TFunc>(&InsertInteractions<3, float>) }
     };
 
-    const TTuple key = TTuple(dim);
+    const TTuple key = TTuple(dim, tvec);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (dim)"\
+            "\nUnsupported template parameter combination for (dim, tvec)"\
             " in InsertInteractionsFFIHost -- Only supporting:\n"\
-            "(2), (3)"
+            "(2, float), (3, float)"
         );
     }
     const void* instance = it->second;

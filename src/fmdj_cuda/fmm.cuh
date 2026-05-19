@@ -10,22 +10,23 @@
 /*                                       Opening Criterion                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int dim>
+template<int dim, typename tvec>
 __device__ __forceinline__ bool OpeningCriterion(
-    NodeWithExt<dim,float> nodeA,
-    NodeWithExt<dim,float> nodeB,
+    NodeWithExt<dim,tvec> nodeA,
+    NodeWithExt<dim,tvec> nodeB,
     float opening_angle
 ) {
-    float r2 = (nodeA.center - nodeB.center).norm2();
-    Vec<dim,float> Ltot = nodeA.extent + nodeB.extent;
-    float Lmax = Ltot[0];
+    tvec r2 = (nodeA.center - nodeB.center).norm2();
+    Vec<dim,tvec> Ltot = nodeA.extent + nodeB.extent;
+    tvec Lmax = Ltot[0];
     #pragma unroll
     for(int d = 1; d < dim; d++) {
-        Lmax = fmaxf(Lmax, Ltot[d]);
+        Lmax = Ltot[d] > Lmax ? Ltot[d] : Lmax;
     }
-    float L2 = Lmax * Lmax;
+    tvec L2 = Lmax * Lmax;
 
-    bool need_open = L2 >= opening_angle * opening_angle * r2;
+    tvec theta = tvec(opening_angle);
+    bool need_open = L2 >= theta * theta * r2;
     // also open if L2 had an overflow (and r2 is valid)
     need_open = need_open || ((isnan(L2) || isinf(L2)) && !isnan(r2));
     return need_open;
@@ -50,24 +51,24 @@ __device__ __forceinline__ bool OpeningCriterion(
 
 #define ALLTHREADS 0xFFFFFFFF
 
-template<int radial_kernel_kind, int p, int dim>
+template<int radial_kernel_kind, int p, int dim, typename tvec>
 __global__ void CountInteractionsAndM2L(
     // inputs:
     const int2* node_range,
     const int* spl_nodes,
     const int* spl_ilist,
     const int* ilist_nodes,
-    const Node<dim,float>* children,
-    const float* mp_values,
-    const float* radial_kernel_params,
+    const Node<dim,tvec>* children,
+    const tvec* mp_values,
+    const tvec* radial_kernel_params,
     // outputs:
-    float* loc_out,
+    tvec* loc_out,
     int* ilist_child_count_out,
     // attributes:
     float opening_angle
 ) {
     constexpr int ncomb = NCOMB(p, dim);
-    auto radial_kernel = RadialKernel<radial_kernel_kind>::make_params(radial_kernel_params);
+    auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
 
     // Node A info:
     int2 nrange = node_range[0];
@@ -85,10 +86,10 @@ __global__ void CountInteractionsAndM2L(
         int num_childrenA = min(MAX_NUMA, child_range.y - offsetA);
 
         // childA info
-        __shared__ NodeWithExt<dim,float> childA[MAX_NUMA];
+        __shared__ NodeWithExt<dim,tvec> childA[MAX_NUMA];
         if(threadIdx.x < num_childrenA) {
-            Node<dim,float> child = children[offsetA + threadIdx.x];
-            childA[threadIdx.x] = {child.center, LvlToExt<dim,float>(child.level)};
+            Node<dim,tvec> child = children[offsetA + threadIdx.x];
+            childA[threadIdx.x] = {child.center, LvlToExt<dim,tvec>(child.level)};
         }
 
         int num_open[MAX_NUMA];
@@ -97,17 +98,17 @@ __global__ void CountInteractionsAndM2L(
             num_open[i] = 0;
         }
 
-        Vec<ncomb,float> LocA;
+        Vec<ncomb,tvec> LocA;
         #pragma unroll
         for(int i = 0; i < ncomb; i++) {
-            LocA[i] = 0.0f;
+            LocA[i] = tvec(0);
         }
 
         // Child B info. This is transposed to reduce smem bank conflicts
         // Todo: BLOCKSIZE does not need to be a compile time constant here.
         //       Make it more flexible! (Need to adapt the warp communication scheme below though!)
-        __shared__ Vec<dim,float> posB[BLOCKSIZE];
-        __shared__ Vec<ncomb,float> mpB[BLOCKSIZE];
+        __shared__ Vec<dim,tvec> posB[BLOCKSIZE];
+        __shared__ Vec<ncomb,tvec> mpB[BLOCKSIZE];
         
         // Interaction list info:
         int2 ilist_range = {spl_ilist[nodeid], spl_ilist[nodeid + 1]};
@@ -136,16 +137,16 @@ __global__ void CountInteractionsAndM2L(
         int residual_threads = blockDim.x % num_childrenA; 
         // Number of threads that write to the same childA as me:
         int n_write_a = blockDim.x / num_childrenA + (a_write < residual_threads);
-        Vec<dim,float> xaWrite = childA[a_write].center;
+        Vec<dim,tvec> xaWrite = childA[a_write].center;
 
         while(!seg_mgr.finished()) {
             int id = seg_mgr.next();
 
             // Each thread loads one other child B to check the opening criterion
-            NodeWithExt<dim,float> childB_ext;
+            NodeWithExt<dim,tvec> childB_ext;
             if(id >= 0) {
-                Node<dim,float> childB = children[id];
-                childB_ext = {childB.center, LvlToExt<dim,float>(childB.level)};
+                Node<dim,tvec> childB = children[id];
+                childB_ext = {childB.center, LvlToExt<dim,tvec>(childB.level)};
             }
 
             // For each child A, we count the cumulative number of opens and we 
@@ -159,7 +160,7 @@ __global__ void CountInteractionsAndM2L(
                 if(i >= num_childrenA)
                     continue;
 
-                bool need_open = (id >= 0) && OpeningCriterion<dim>(childA[i], childB_ext, opening_angle);
+                bool need_open = (id >= 0) && OpeningCriterion<dim,tvec>(childA[i], childB_ext, opening_angle);
                 bool actually_open = need_open && (id >= 0);
                 bool interact_now = !need_open && (id >= 0);
                 any_interacts = any_interacts || interact_now;
@@ -207,9 +208,9 @@ __global__ void CountInteractionsAndM2L(
                     continue;
                 }
 
-                Vec<dim,float> dx = posB[b_read] - xaWrite;
+                Vec<dim,tvec> dx = posB[b_read] - xaWrite;
 
-                m2l_translator<radial_kernel_kind,p,dim>(dx, mpB[b_read], LocA, radial_kernel);
+                m2l_translator<radial_kernel_kind,p,dim,tvec>(dx, mpB[b_read], LocA, radial_kernel);
             }
         }
 
@@ -245,14 +246,14 @@ __device__ __forceinline__ int nbits_set_before(unsigned mask, int bit)
     return __popc(mask & lower_mask);
 }
 
-template<int dim>
+template<int dim, typename tvec>
 __global__ void InsertInteractions(
     // inputs:
     const int2* node_range,
     const int* spl_nodes,
     const int* spl_ilist,
     const int* ilist_nodes,
-    const Node<dim,float>* children,
+    const Node<dim,tvec>* children,
     const int* spl_ilist_child,
     // outputs:
     int* child_ilist_out,
@@ -275,11 +276,11 @@ __global__ void InsertInteractions(
         int num_childrenA = min(MAX_NUMA, child_range.y - offsetA);
 
         // childA info
-        __shared__ NodeWithExt<dim,float> childA[MAX_NUMA];
+        __shared__ NodeWithExt<dim,tvec> childA[MAX_NUMA];
         __shared__ int ilist_offsets[MAX_NUMA];
         if(threadIdx.x < num_childrenA) {
-            Node<dim,float> child = children[offsetA + threadIdx.x];
-            childA[threadIdx.x] = {child.center, LvlToExt<dim,float>(child.level)};
+            Node<dim,tvec> child = children[offsetA + threadIdx.x];
+            childA[threadIdx.x] = {child.center, LvlToExt<dim,tvec>(child.level)};
             ilist_offsets[threadIdx.x] = spl_ilist_child[offsetA + threadIdx.x];
         }
 
@@ -307,10 +308,10 @@ __global__ void InsertInteractions(
             int id = seg_mgr.next();
 
             // Each thread loads one other child B to check the opening criterion
-            NodeWithExt<dim,float> childB_ext;
+            NodeWithExt<dim,tvec> childB_ext;
             if(id >= 0) {
-                Node<dim,float> childB = children[id];
-                childB_ext = {childB.center, LvlToExt<dim,float>(childB.level)};
+                Node<dim,tvec> childB = children[id];
+                childB_ext = {childB.center, LvlToExt<dim,tvec>(childB.level)};
             }
 
             #pragma unroll
@@ -318,7 +319,7 @@ __global__ void InsertInteractions(
                 if(i >= num_childrenA)
                     continue;
 
-                bool need_open = (id >= 0) && OpeningCriterion<dim>(childA[i], childB_ext, opening_angle);
+                bool need_open = (id >= 0) && OpeningCriterion<dim,tvec>(childA[i], childB_ext, opening_angle);
 
                 unsigned open_mask = __ballot_sync(ALLTHREADS, need_open);
 

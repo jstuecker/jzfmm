@@ -119,12 +119,12 @@ __device__ __forceinline__ void copy_multiindex(const int (&src)[dim], int (&dst
     }
 }
 
-template<int dim>
-__device__ __forceinline__ float multiindex_factorial(const int (&k)[dim]) {
-    float f = 1.f;
+template<int dim, typename tvec>
+__device__ __forceinline__ tvec multiindex_factorial(const int (&k)[dim]) {
+    tvec f = tvec(1);
     #pragma unroll
     for(int d = 0; d < dim; d++) {
-        f *= fact_upto6f(k[d]);
+        f *= tvec(fact_upto6f(k[d]));
     }
     return f;
 }
@@ -133,17 +133,17 @@ __device__ __forceinline__ float multiindex_factorial(const int (&k)[dim]) {
 /*                                  Derivatives of Radial Kernel                                  */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int radial_kernel_kind, int p, int dim=3>
+template<int radial_kernel_kind, int p, int dim=3, typename tvec>
 __device__ __forceinline__ void setupDnG(
-    Vec<dim,float> dx,
-    typename RadialKernel<radial_kernel_kind>::Params radial_kernel,
-    Vec<NCOMB(p, dim),float>& Dn
+    Vec<dim,tvec> dx,
+    typename RadialKernel<radial_kernel_kind>::template Params<tvec> radial_kernel,
+    Vec<NCOMB(p, dim),tvec>& Dn
 ) {
     // Recurrence formula by Tausch (2003)
-    float r2 = dx.norm2();
+    tvec r2 = dx.norm2();
 
-    Vec<p+1,float> G;
-    RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<p>(r2, radial_kernel, G);
+    Vec<p+1,tvec> G;
+    RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<p,tvec>(r2, radial_kernel, G);
     Dn[0] = G[p];
 
     #pragma unroll
@@ -163,7 +163,7 @@ __device__ __forceinline__ void setupDnG(
                 }
 
                 const int na = n[ax];
-                const float xa = dx[ax];
+                const tvec xa = dx[ax];
 
                 int ilast_k[dim];
                 int ilast2_k[dim];
@@ -185,15 +185,15 @@ __device__ __forceinline__ void setupDnG(
 /*                                         M2M Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int p, int dim=3>
-__device__ __forceinline__ void shift_multipoles(Vec<NCOMB(p, dim),float>& mp, Vec<NCOMB(p, dim),float>& mp_out, const Vec<dim,float> dpos) {
+template<int p, int dim=3, typename tvec>
+__device__ __forceinline__ void shift_multipoles(Vec<NCOMB(p, dim),tvec>& mp, Vec<NCOMB(p, dim),tvec>& mp_out, const Vec<dim,tvec> dpos) {
     constexpr int ncomb = NCOMB(p, dim);
     // Shift in x
     #pragma unroll
     for(int ax=0; ax<dim; ax++) {
         // shift dimension by dimension
         for_each_multiindex<p,dim>([&](int iflat, int, int (&k)[dim]) {
-            float mnew = 0.f;
+            tvec mnew = tvec(0);
             #pragma unroll
             for(int i = 0; i <= p; i++) {
                 if(i <= k[ax]) { // not in loop boundaries to avoid dynamic indexing / local memory
@@ -201,7 +201,7 @@ __device__ __forceinline__ void shift_multipoles(Vec<NCOMB(p, dim),float>& mp, V
                     copy_multiindex<dim>(k, kfrom);
                     kfrom[ax] = i;
 
-                    float coeff = binomial(k[ax], i);
+                    tvec coeff = tvec(binomial(k[ax], i));
                     mnew += coeff * powi_upto6(dpos[ax], k[ax] - i) * mp[multi_to_flat<dim>(kfrom)];
                 }
             }
@@ -217,13 +217,13 @@ __device__ __forceinline__ void shift_multipoles(Vec<NCOMB(p, dim),float>& mp, V
     }
 }
 
-template<int p, int dim>
+template<int p, int dim, typename tvec>
 __global__ void SummarizeMultipoles(
     const int* __restrict__ isplit,
-    const float* __restrict__ mp_in,
-    const Vec<dim,float>* __restrict__ xnode,
-    const Vec<dim,float>* __restrict__ xchild,
-    float* __restrict__ mp_out,
+    const tvec* __restrict__ mp_in,
+    const Vec<dim,tvec>* __restrict__ xnode,
+    const Vec<dim,tvec>* __restrict__ xchild,
+    tvec* __restrict__ mp_out,
     int nnodes,
     int p_in,
     bool kahan
@@ -240,35 +240,35 @@ __global__ void SummarizeMultipoles(
 
     if(istart >= iend) {
         for(int iM=0; iM < ncomb; iM++) {
-            mp_out[inode * ncomb + iM] = 0.f;
+            mp_out[inode * ncomb + iM] = tvec(0);
         }
         return;
     }
     
-    Vec<ncomb,float> mp_sum;
-    Vec<ncomb,float> mp_kahan;
+    Vec<ncomb,tvec> mp_sum;
+    Vec<ncomb,tvec> mp_kahan;
 
     #pragma unroll
     for(int iM=0; iM < ncomb; iM++) {
-        mp_sum[iM] = 0.f;
-        mp_kahan[iM] = 0.f;
+        mp_sum[iM] = tvec(0);
+        mp_kahan[iM] = tvec(0);
     }
 
     for(int ip = istart; ip < iend; ip++) {
-        Vec<ncomb,float> mp_new_in;
+        Vec<ncomb,tvec> mp_new_in;
         for(int iM=0; iM < ncomb; iM++) {
             if(iM < ncomb_in)
                 mp_new_in[iM] = mp_in[ip * ncomb_in + iM];
             else
-                mp_new_in[iM] = 0.f;
+                mp_new_in[iM] = tvec(0);
         }
 
-        Vec<ncomb,float> mp_new_out;
+        Vec<ncomb,tvec> mp_new_out;
 
-        shift_multipoles<p,dim>(mp_new_in, mp_new_out, xchild[ip] - xnode[inode]);
+        shift_multipoles<p,dim,tvec>(mp_new_in, mp_new_out, xchild[ip] - xnode[inode]);
 
         if(kahan)
-            kahan_add_vec<ncomb,float>(mp_sum, mp_new_out, mp_kahan);
+            kahan_add_vec<ncomb,tvec>(mp_sum, mp_new_out, mp_kahan);
         else {
             #pragma unroll
             for(int iM=0; iM < ncomb; iM++) {
@@ -287,18 +287,18 @@ __global__ void SummarizeMultipoles(
 /* ---------------------------------------------------------------------------------------------- */
 
 
-template<int p, int dim=3>
-__device__ __forceinline__ void shift_local_to_local(Vec<NCOMB(p, dim),float>& loc, Vec<NCOMB(p, dim),float>& loc_out, Vec<dim,float> dpos) {
+template<int p, int dim=3, typename tvec>
+__device__ __forceinline__ void shift_local_to_local(Vec<NCOMB(p, dim),tvec>& loc, Vec<NCOMB(p, dim),tvec>& loc_out, Vec<dim,tvec> dpos) {
     constexpr int ncomb = NCOMB(p, dim);
     #pragma unroll
     for(int ax=0; ax<dim; ax++) {
         // Shift dimension by dimension
         for_each_multiindex<p,dim>([&](int iflat, int ksum, int (&k)[dim]) {
-            float lnew = 0.f;
+            tvec lnew = tvec(0);
             #pragma unroll
             for(int i = k[ax]; i <= p; i++) {
                 if(i <= p - ksum + k[ax]) { // not in loop boundaries to avoid dynamic indexing / local memory
-                    float coeff = binomial(i, k[ax]);
+                    tvec coeff = tvec(binomial(i, k[ax]));
                     int kfrom[dim];
                     copy_multiindex<dim>(k, kfrom);
                     kfrom[ax] = i;
@@ -316,13 +316,13 @@ __device__ __forceinline__ void shift_local_to_local(Vec<NCOMB(p, dim),float>& l
     }
 }
 
-template<int p, int dim>
+template<int p, int dim, typename tvec>
 __global__ void TranslateLocalToLocal(
     const int* __restrict__ isplit,
-    const float* __restrict__ loc_node,
-    const Vec<dim,float>* __restrict__ xnode,
-    const Vec<dim,float>* __restrict__ xchild,
-    float* __restrict__ loc_child,
+    const tvec* __restrict__ loc_node,
+    const Vec<dim,tvec>* __restrict__ xnode,
+    const Vec<dim,tvec>* __restrict__ xchild,
+    tvec* __restrict__ loc_child,
     const int nnodes,
     const int pout
 ) {
@@ -336,25 +336,25 @@ __global__ void TranslateLocalToLocal(
     if (istart >= iend)
         return;
     
-    Vec<dim,float> xn = xnode[inode];
-    Vec<ncomb,float> loc_in;
+    Vec<dim,tvec> xn = xnode[inode];
+    Vec<ncomb,tvec> loc_in;
     #pragma unroll
     for (int iM = 0; iM < ncomb; iM++) {
         loc_in[iM] = loc_node[inode * ncomb + iM];
     }
     
     for(int ichild = istart; ichild < iend; ichild++) {
-        Vec<dim,float> dpos = xchild[ichild] - xn;
+        Vec<dim,tvec> dpos = xchild[ichild] - xn;
 
-        Vec<ncomb,float> loc_out;
+        Vec<ncomb,tvec> loc_out;
 
-        Vec<ncomb,float> loc_src;
+        Vec<ncomb,tvec> loc_src;
         #pragma unroll
         for (int i = 0; i < ncomb; i++) {
             loc_src[i] = loc_in[i];
         }
 
-        shift_local_to_local<p,dim>(loc_src, loc_out, dpos);
+        shift_local_to_local<p,dim,tvec>(loc_src, loc_out, dpos);
 
         #pragma unroll
         for (int iM = 0; iM < min(ncomb, NCOMB(pout, dim)); iM++) {
@@ -363,14 +363,14 @@ __global__ void TranslateLocalToLocal(
     }
 }
 
-template<int p, int dim>
+template<int p, int dim, typename tvec>
 __global__ void TranslateLocalToLocal_XVJP(
     const int* __restrict__ isplit,
-    const float* __restrict__ loc_node,
-    const Vec<dim,float>* __restrict__ xnode,
-    const Vec<dim,float>* __restrict__ xchild,
-    const float* __restrict__ g_loc_child,
-    Vec<dim,float>* __restrict__ g_xchild,
+    const tvec* __restrict__ loc_node,
+    const Vec<dim,tvec>* __restrict__ xnode,
+    const Vec<dim,tvec>* __restrict__ xchild,
+    const tvec* __restrict__ g_loc_child,
+    Vec<dim,tvec>* __restrict__ g_xchild,
     const int nnodes,
     const int pout
 ) {
@@ -384,27 +384,27 @@ __global__ void TranslateLocalToLocal_XVJP(
     if (istart >= iend)
         return;
     
-    Vec<dim,float> xn = xnode[inode];
-    Vec<ncomb,float> loc_in;
+    Vec<dim,tvec> xn = xnode[inode];
+    Vec<ncomb,tvec> loc_in;
     #pragma unroll
     for (int iM = 0; iM < ncomb; iM++) {
         loc_in[iM] = loc_node[inode * ncomb + iM];
     }
     
     for(int ichild = istart; ichild < iend; ichild++) {
-        Vec<dim,float> dpos = xchild[ichild] - xn;
+        Vec<dim,tvec> dpos = xchild[ichild] - xn;
 
-        Vec<ncomb,float> loc_child;
+        Vec<ncomb,tvec> loc_child;
 
-        Vec<ncomb,float> loc_src;
+        Vec<ncomb,tvec> loc_src;
         #pragma unroll
         for (int i = 0; i < ncomb; i++) {
             loc_src[i] = loc_in[i];
         }
 
-        shift_local_to_local<p,dim>(loc_src, loc_child, dpos);
+        shift_local_to_local<p,dim,tvec>(loc_src, loc_child, dpos);
 
-        Vec<ncomb,float> gloc_child;
+        Vec<ncomb,tvec> gloc_child;
         #pragma unroll
         for (int iM = 0; iM < NCOMB(pout, dim); iM++) {
             gloc_child[iM] = g_loc_child[ichild * NCOMB(pout, dim) + iM];
@@ -412,7 +412,7 @@ __global__ void TranslateLocalToLocal_XVJP(
 
         #pragma unroll
         for (int a=0; a < dim; a++) {
-            float gxa = 0.f;
+            tvec gxa = tvec(0);
             for_each_multiindex<p,dim>([&](int im, int msum, int (&m)[dim]) {
                 const int ma = m[a];
 
@@ -439,20 +439,20 @@ __global__ void TranslateLocalToLocal_XVJP(
 /*                                         M2L Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int radial_kernel_kind, int p, int dim>
+template<int radial_kernel_kind, int p, int dim, typename tvec>
 __device__ __forceinline__ void m2l_translator(
-    Vec<dim,float> dx,
-    const Vec<NCOMB(p, dim),float>& Mp,
-    Vec<NCOMB(p, dim),float>& loc,
-    typename RadialKernel<radial_kernel_kind>::Params radial_kernel
+    Vec<dim,tvec> dx,
+    const Vec<NCOMB(p, dim),tvec>& Mp,
+    Vec<NCOMB(p, dim),tvec>& loc,
+    typename RadialKernel<radial_kernel_kind>::template Params<tvec> radial_kernel
 ) {
     constexpr int ncomb = NCOMB(p, dim);
 
-    Vec<ncomb,float> Dn;
-    setupDnG<radial_kernel_kind,p,dim>(dx, radial_kernel, Dn);
+    Vec<ncomb,tvec> Dn;
+    setupDnG<radial_kernel_kind,p,dim,tvec>(dx, radial_kernel, Dn);
 
     for_each_multiindex<p,dim>([&](int kflat, int ksum, int (&k)[dim]) {
-        float Lnew = 0.f;
+        tvec Lnew = tvec(0);
 
         int nflat = 0;
         for_each_multiindex<p,dim>([&](int, int nsum, int (&n)[dim]) {
@@ -462,9 +462,9 @@ __device__ __forceinline__ void m2l_translator(
                     // for dim = 3 and p = 5. Why? I don't know. For that case it makes
                     // a 40x performance difference
                     const int dn[3] = {k[0] + n[0], k[1] + n[1], k[2] + n[2]};
-                    const float Dnk = Dn[multi_to_flat<3>(dn)];
-                    const float Mpn = Mp[nflat];
-                    const float infvac = 1.f / fact3f(n[0], n[1], n[2]);
+                    const tvec Dnk = Dn[multi_to_flat<3>(dn)];
+                    const tvec Mpn = Mp[nflat];
+                    const tvec infvac = tvec(1) / tvec(fact3f(n[0], n[1], n[2]));
                     Lnew += Dnk * Mpn * infvac;
                 } else {
                     // General case, stays in registers for most setups
@@ -473,22 +473,22 @@ __device__ __forceinline__ void m2l_translator(
                     for(int d = 0; d < dim; d++) {
                         dn[d] = k[d] + n[d];
                     }
-                    float Dnk = Dn[multi_to_flat<dim>(dn)];
-                    float Mpn = Mp[nflat];
+                    tvec Dnk = Dn[multi_to_flat<dim>(dn)];
+                    tvec Mpn = Mp[nflat];
 
-                    const float infvac = 1.f / multiindex_factorial<dim>(n);
+                    const tvec infvac = tvec(1) / multiindex_factorial<dim,tvec>(n);
                     Lnew += Dnk * Mpn * infvac;
                 }
                 nflat += 1;
             }
         });
 
-        const float sign = ksum % 2 == 0 ? -1.f : 1.f;
-        float fac;
+        const tvec sign = ksum % 2 == 0 ? tvec(-1) : tvec(1);
+        tvec fac;
         if constexpr (dim == 3)
-            fac = sign / fact3f(k[0], k[1], k[2]);
+            fac = sign / tvec(fact3f(k[0], k[1], k[2]));
         else
-            fac = sign / multiindex_factorial<dim>(k);
+            fac = sign / multiindex_factorial<dim,tvec>(k);
 
         loc[kflat] += Lnew * fac;
     });

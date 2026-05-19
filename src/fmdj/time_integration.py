@@ -144,14 +144,15 @@ def simulate_with_outputs(
 
     tp0 = time.perf_counter()
     log("Compiling jitted simulation...", level=1, cfg_log=cfg.logging)
-    simulate.jit.lower(p, tend=jnp.float32(0.1), nsteps=steps_per_output, cfg=cfg, tstart=jnp.float32(0.1)).compile()
+    time_dtype = p.pos.dtype
+    simulate.jit.lower(p, tend=jnp.asarray(0.1, dtype=time_dtype), nsteps=steps_per_output, cfg=cfg, tstart=jnp.asarray(0.1, dtype=time_dtype)).compile()
     log("Compilation done after {:.2f}s", time.perf_counter()-tp0, level=1, cfg_log=cfg.logging)
 
     yield tstart, p
 
     for isnap in range(nout):
-        t0 = jnp.float32(tstart + isnap * (tend/nout))
-        t1 = jnp.float32(tstart + (isnap+1) * (tend/nout))
+        t0 = jnp.asarray(tstart + isnap * (tend/nout), dtype=time_dtype)
+        t1 = jnp.asarray(tstart + (isnap+1) * (tend/nout), dtype=time_dtype)
         tpa = time.perf_counter()
         p = simulate.jit(p, tend=t1, nsteps=steps_per_output, cfg=cfg, tstart=t0)
         log("Reached output {} ({:.2f}s for {} steps)",

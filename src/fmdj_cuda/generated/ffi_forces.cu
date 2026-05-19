@@ -39,9 +39,10 @@ ffi::Error ForceAndPotentialFFIHost(
 ) {
     int n = xm.dimensions()[0];
     int dim = xm.dimensions()[1] - 1;
+    DT tvec = xm.element_type();
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(xm.dimensions()[0], block_size));
-    size_t smem = blockDim.x * (dim + 1) * sizeof(float);
+    size_t smem = blockDim.x * (dim + 1) * (xm.element_type() == DT::F64 ? sizeof(double) : sizeof(float));
     
     // Build a bundled argument list for cudaLaunchKernel
     void* xm_arg = xm.untyped_data();
@@ -57,28 +58,28 @@ ffi::Error ForceAndPotentialFFIHost(
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<bool, int, int>;
+    using TTuple = std::tuple<bool, int, int, DT>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {true, 0, 2}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 0, 2>) },
-        { {true, 0, 3}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 0, 3>) },
-        { {true, 1, 2}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 1, 2>) },
-        { {true, 1, 3}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 1, 3>) },
-        { {false, 0, 2}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 0, 2>) },
-        { {false, 0, 3}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 0, 3>) },
-        { {false, 1, 2}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 1, 2>) },
-        { {false, 1, 3}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 1, 3>) }
+        { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 0, 2, float>) },
+        { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 0, 3, float>) },
+        { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 1, 2, float>) },
+        { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 1, 3, float>) },
+        { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 0, 2, float>) },
+        { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 0, 3, float>) },
+        { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 1, 2, float>) },
+        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 1, 3, float>) }
     };
 
-    const TTuple key = TTuple(kahan, radial_kernel_kind, dim);
+    const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim)"\
+            "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in ForceAndPotentialFFIHost -- Only supporting:\n"\
-            "(true, 0, 2), (true, 0, 3), (true, 1, 2), (true, 1, 3), (false, 0, 2), (false, 0, 3), (false, 1, 2), (false, 1, 3)"
+            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float)"
         );
     }
     const void* instance = it->second;
@@ -129,9 +130,10 @@ ffi::Error BwdForceAndPotentialFFIHost(
 ) {
     int n = xm.dimensions()[0];
     int dim = xm.dimensions()[1] - 1;
+    DT tvec = xm.element_type();
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(xm.dimensions()[0], block_size));
-    size_t smem = 2 * blockDim.x * (dim + 1) * sizeof(float);
+    size_t smem = 2 * blockDim.x * (dim + 1) * (xm.element_type() == DT::F64 ? sizeof(double) : sizeof(float));
     
     // Build a bundled argument list for cudaLaunchKernel
     void* gloc_arg = gloc.untyped_data();
@@ -149,28 +151,28 @@ ffi::Error BwdForceAndPotentialFFIHost(
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<bool, int, int>;
+    using TTuple = std::tuple<bool, int, int, DT>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {true, 0, 2}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 0, 2>) },
-        { {true, 0, 3}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 0, 3>) },
-        { {true, 1, 2}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 1, 2>) },
-        { {true, 1, 3}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 1, 3>) },
-        { {false, 0, 2}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 0, 2>) },
-        { {false, 0, 3}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 0, 3>) },
-        { {false, 1, 2}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 1, 2>) },
-        { {false, 1, 3}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 1, 3>) }
+        { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 0, 2, float>) },
+        { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 0, 3, float>) },
+        { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 1, 2, float>) },
+        { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 1, 3, float>) },
+        { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 0, 2, float>) },
+        { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 0, 3, float>) },
+        { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 1, 2, float>) },
+        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 1, 3, float>) }
     };
 
-    const TTuple key = TTuple(kahan, radial_kernel_kind, dim);
+    const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim)"\
+            "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in BwdForceAndPotentialFFIHost -- Only supporting:\n"\
-            "(true, 0, 2), (true, 0, 3), (true, 1, 2), (true, 1, 3), (false, 0, 2), (false, 0, 3), (false, 1, 2), (false, 1, 3)"
+            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float)"
         );
     }
     const void* instance = it->second;
@@ -224,9 +226,10 @@ ffi::Error GroupedForceAndPotFFIHost(
     size_t block_size
 ) {
     int dim = posm.dimensions()[1] - 1;
+    DT tvec = posm.element_type();
     dim3 blockDim(block_size);
     dim3 gridDim(spl_nodes.element_count() - 1);
-    size_t smem = blockDim.x * (dim + 1) * sizeof(float);
+    size_t smem = blockDim.x * (dim + 1) * (posm.element_type() == DT::F64 ? sizeof(double) : sizeof(float));
     
     // Build a bundled argument list for cudaLaunchKernel
     void* node_range_arg = node_range.untyped_data();
@@ -249,28 +252,28 @@ ffi::Error GroupedForceAndPotFFIHost(
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<bool, int, int>;
+    using TTuple = std::tuple<bool, int, int, DT>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {true, 0, 2}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 0, 2>) },
-        { {true, 0, 3}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 0, 3>) },
-        { {true, 1, 2}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 1, 2>) },
-        { {true, 1, 3}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 1, 3>) },
-        { {false, 0, 2}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 0, 2>) },
-        { {false, 0, 3}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 0, 3>) },
-        { {false, 1, 2}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 1, 2>) },
-        { {false, 1, 3}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 1, 3>) }
+        { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 0, 2, float>) },
+        { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 0, 3, float>) },
+        { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 1, 2, float>) },
+        { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 1, 3, float>) },
+        { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 0, 2, float>) },
+        { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 0, 3, float>) },
+        { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 1, 2, float>) },
+        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 1, 3, float>) }
     };
 
-    const TTuple key = TTuple(kahan, radial_kernel_kind, dim);
+    const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim)"\
+            "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in GroupedForceAndPotFFIHost -- Only supporting:\n"\
-            "(true, 0, 2), (true, 0, 3), (true, 1, 2), (true, 1, 3), (false, 0, 2), (false, 0, 3), (false, 1, 2), (false, 1, 3)"
+            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float)"
         );
     }
     const void* instance = it->second;
@@ -328,9 +331,10 @@ ffi::Error BwdGroupedForceAndPotFFIHost(
     size_t block_size
 ) {
     int dim = posm.dimensions()[1] - 1;
+    DT tvec = posm.element_type();
     dim3 blockDim(block_size);
     dim3 gridDim(spl_nodes.element_count() - 1);
-    size_t smem = 2 * blockDim.x * (dim + 1) * sizeof(float);
+    size_t smem = 2 * blockDim.x * (dim + 1) * (posm.element_type() == DT::F64 ? sizeof(double) : sizeof(float));
     
     // Build a bundled argument list for cudaLaunchKernel
     void* node_range_arg = node_range.untyped_data();
@@ -355,28 +359,28 @@ ffi::Error BwdGroupedForceAndPotFFIHost(
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<bool, int, int>;
+    using TTuple = std::tuple<bool, int, int, DT>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {true, 0, 2}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 0, 2>) },
-        { {true, 0, 3}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 0, 3>) },
-        { {true, 1, 2}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 1, 2>) },
-        { {true, 1, 3}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 1, 3>) },
-        { {false, 0, 2}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 0, 2>) },
-        { {false, 0, 3}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 0, 3>) },
-        { {false, 1, 2}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 1, 2>) },
-        { {false, 1, 3}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 1, 3>) }
+        { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 0, 2, float>) },
+        { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 0, 3, float>) },
+        { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 1, 2, float>) },
+        { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 1, 3, float>) },
+        { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 0, 2, float>) },
+        { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 0, 3, float>) },
+        { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 1, 2, float>) },
+        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 1, 3, float>) }
     };
 
-    const TTuple key = TTuple(kahan, radial_kernel_kind, dim);
+    const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim)"\
+            "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in BwdGroupedForceAndPotFFIHost -- Only supporting:\n"\
-            "(true, 0, 2), (true, 0, 3), (true, 1, 2), (true, 1, 3), (false, 0, 2), (false, 0, 3), (false, 1, 2), (false, 1, 3)"
+            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float)"
         );
     }
     const void* instance = it->second;
