@@ -7,7 +7,7 @@ HERE = Path(__file__).resolve().parent
 
 dimensions = (2,3)
 p_instance_values = (1, 2, 3, 4, 5)
-radial_kernel_instance_values = (0,)
+radial_kernel_instance_values = (0, 1)
 default_includes = ["../common/math.cuh"]
 
 # ------------------------------------------------------------------------------------------------ #

@@ -6,7 +6,7 @@ import jax
 import pytest
 from jztree_utils import ics
 
-from fmdj.config import Config, FMMConfig, PlummerKernel
+from fmdj.config import Config, FMMConfig, PlummerKernel, QuarticPlummerKernel
 from fmdj.data import PosMass, LocalExpansion
 from fmdj.fmm import direct_force_and_potential, fast_multipole_method
 
@@ -46,3 +46,24 @@ def test_dim(dim):
     # print(p, jnp.median(ferr_rel) / 10**(-p-1), jnp.max(ferr_rel) / 10**(1-p))
     assert jnp.median(ferr_rel) <= 2.*10**-(p+1)
     assert jnp.max(ferr_rel) <= 5.*10**-(p-1)
+
+def test_softening_kernels():
+    cfg_plummer = Config(
+        kernel=PlummerKernel(softening=1e-3),
+        fmm=FMMConfig(p=3, opening_angle=0.4, kahan_summation=True),
+    )
+    cfg_quartic = Config(
+        kernel=QuarticPlummerKernel(softening=1e-3),
+        fmm=cfg_plummer.fmm,
+    )
+
+    part = ics.uniform_particles(int(2048))
+
+    f_plummer = fast_multipole_method.jit(part, cfg=cfg_plummer).force()
+    f_quartic = fast_multipole_method.jit(part, cfg=cfg_quartic).force()
+
+    ferr = jnp.linalg.norm(f_quartic - f_plummer, axis=-1)
+    ferr_rel = ferr / jnp.linalg.norm(0.5*(f_quartic + f_plummer), axis=-1)
+
+    assert jnp.median(ferr_rel) <= 1e-3
+    assert jnp.max(ferr_rel) <= 5e-2

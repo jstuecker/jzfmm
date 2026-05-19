@@ -91,7 +91,17 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         { {0, 4, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 2>) },
         { {0, 4, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 3>) },
         { {0, 5, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 2>) },
-        { {0, 5, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 3>) }
+        { {0, 5, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 3>) },
+        { {1, 1, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 1, 2>) },
+        { {1, 1, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 1, 3>) },
+        { {1, 2, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2, 2>) },
+        { {1, 2, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2, 3>) },
+        { {1, 3, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3, 2>) },
+        { {1, 3, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3, 3>) },
+        { {1, 4, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 4, 2>) },
+        { {1, 4, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 4, 3>) },
+        { {1, 5, 2}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 5, 2>) },
+        { {1, 5, 3}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 5, 3>) }
     };
 
     const TTuple key = TTuple(radial_kernel_kind, p, dim);
@@ -101,7 +111,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (radial_kernel_kind, p, dim)"\
             " in CountInteractionsAndM2LFFIHost -- Only supporting:\n"\
-            "(0, 1, 2), (0, 1, 3), (0, 2, 2), (0, 2, 3), (0, 3, 2), (0, 3, 3), (0, 4, 2), (0, 4, 3), (0, 5, 2), (0, 5, 3)"
+            "(0, 1, 2), (0, 1, 3), (0, 2, 2), (0, 2, 3), (0, 3, 2), (0, 3, 3), (0, 4, 2), (0, 4, 3), (0, 5, 2), (0, 5, 3), (1, 1, 2), (1, 1, 3), (1, 2, 2), (1, 2, 3), (1, 3, 2), (1, 3, 3), (1, 4, 2), (1, 4, 3), (1, 5, 2), (1, 5, 3)"
         );
     }
     const void* instance = it->second;

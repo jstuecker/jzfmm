@@ -27,6 +27,19 @@ class PlummerKernel(KernelConfig):
         return 1.0 / self.softening
 
 @dataclass(unsafe_hash=True)
+class QuarticPlummerKernel(KernelConfig):
+    softening : float = 1e-3
+
+    def kind_id(self) -> int:
+        return 1
+
+    def params(self) -> jax.Array:
+        return jnp.asarray([self.softening], dtype=jnp.float32)
+
+    def self_value(self) -> float:
+        return 1.0 / self.softening
+
+@dataclass(unsafe_hash=True)
 class PotentialField:
     def potential(self, x, t=0., cfg=None):
         """External potential field"""
