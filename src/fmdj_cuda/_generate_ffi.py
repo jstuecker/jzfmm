@@ -10,6 +10,7 @@ dimensions = (2,3)
 float_types = ("float",) # by default don't compile double for now... doubles compilation time...
 p_instance_values = (1, 2, 3, 4, 5)
 radial_kernel_instance_values = (0, 1)
+opening_criterion_instance_values = (0,)
 default_includes = ["../common/math.cuh"]
 
 def add_dtype_template(func, buf_from, pos_types=float_types):
@@ -73,6 +74,7 @@ kernels["CountInteractionsAndM2L"].grid_size_expression = "spl_nodes.element_cou
 kernels["CountInteractionsAndM2L"].init_outputs_zero = True
 kernels["CountInteractionsAndM2L"].block_size_expression = 32
 kernels["CountInteractionsAndM2L"].template_par["p"].instances = p_instance_values
+kernels["CountInteractionsAndM2L"].template_par["opening_criterion_kind"].instances = opening_criterion_instance_values
 kernels["CountInteractionsAndM2L"].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values
 kernels["CountInteractionsAndM2L"].template_par["dim"].instances = dimensions
 kernels["CountInteractionsAndM2L"].template_par["dim"].expression = "children.dimensions()[1] - 1"
@@ -81,6 +83,7 @@ add_dtype_template(kernels["CountInteractionsAndM2L"], "children")
 kernels["InsertInteractions"].grid_size_expression = "spl_nodes.element_count() - 1"
 # kernels["InsertInteractions"].init_outputs_zero = True # this is actually expensive and not needed
 kernels["InsertInteractions"].block_size_expression = 32
+kernels["InsertInteractions"].template_par["opening_criterion_kind"].instances = opening_criterion_instance_values
 kernels["InsertInteractions"].template_par["dim"].instances = dimensions
 kernels["InsertInteractions"].template_par["dim"].expression = "children.dimensions()[1] - 1"
 add_dtype_template(kernels["InsertInteractions"], "children")

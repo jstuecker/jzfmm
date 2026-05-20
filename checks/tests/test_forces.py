@@ -6,12 +6,12 @@ import jax
 import pytest
 from jztree_utils import ics
 
-from fmdj.config import Config, FMMConfig, PlummerKernel, QuarticPlummerKernel
+from fmdj.config import Config, FMMConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel
 from fmdj.fmm import direct_summation, fast_multipole_method
 
 @pytest.mark.parametrize("p", [2,3,4])
 def test_fmm_uniform(p):
-    cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=FMMConfig(p=p, opening_angle=0.4, kahan_summation=True))
+    cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=FMMConfig(p=p, opening=OpeningByAngle(theta=0.4), kahan_summation=True))
 
     part = ics.uniform_particles(int(1e4))
 
@@ -29,7 +29,7 @@ def test_fmm_uniform(p):
 @pytest.mark.parametrize("dim", [2,3])
 def test_dim(dim):
     p = 3
-    cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=FMMConfig(p=p, opening_angle=0.4, kahan_summation=True))
+    cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=FMMConfig(p=p, opening=OpeningByAngle(theta=0.4), kahan_summation=True))
 
     part = ics.uniform_particles(int(1e4), dim=dim)
 
@@ -46,7 +46,7 @@ def test_dim(dim):
 def test_softening_kernels():
     cfg_plummer = Config(
         kernel=PlummerKernel(softening=1e-3),
-        fmm=FMMConfig(p=3, opening_angle=0.4, kahan_summation=True),
+        fmm=FMMConfig(p=3, opening=OpeningByAngle(theta=0.4), kahan_summation=True),
     )
     cfg_quartic = Config(
         kernel=QuarticPlummerKernel(softening=1e-3),

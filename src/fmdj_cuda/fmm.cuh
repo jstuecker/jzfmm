@@ -5,32 +5,7 @@
 #include "common/math.cuh"
 #include "common/data.cuh"
 #include "common/iterators.cuh"
-
-/* ---------------------------------------------------------------------------------------------- */
-/*                                       Opening Criterion                                        */
-/* ---------------------------------------------------------------------------------------------- */
-
-template<int dim, typename tvec>
-__device__ __forceinline__ bool OpeningCriterion(
-    NodeWithExt<dim,tvec> nodeA,
-    NodeWithExt<dim,tvec> nodeB,
-    float opening_angle
-) {
-    tvec r2 = (nodeA.center - nodeB.center).norm2();
-    Vec<dim,tvec> Ltot = nodeA.extent + nodeB.extent;
-    tvec Lmax = Ltot[0];
-    #pragma unroll
-    for(int d = 1; d < dim; d++) {
-        Lmax = Ltot[d] > Lmax ? Ltot[d] : Lmax;
-    }
-    tvec L2 = Lmax * Lmax;
-
-    tvec theta = tvec(opening_angle);
-    bool need_open = L2 >= theta * theta * r2;
-    // also open if L2 had an overflow (and r2 is valid)
-    need_open = need_open || ((isnan(L2) || isinf(L2)) && !isnan(r2));
-    return need_open;
-}
+#include "opening.cuh"
 
 /* ---------------------------------------------------------------------------------------------- */
 /*                                     CountInteractionsAndM2L                                    */
@@ -51,7 +26,7 @@ __device__ __forceinline__ bool OpeningCriterion(
 
 #define ALLTHREADS 0xFFFFFFFF
 
-template<int radial_kernel_kind, int p, int dim, typename tvec>
+template<int opening_criterion_kind, int radial_kernel_kind, int p, int dim, typename tvec>
 __global__ void CountInteractionsAndM2L(
     // inputs:
     const int2* node_range,
@@ -61,14 +36,14 @@ __global__ void CountInteractionsAndM2L(
     const Node<dim,tvec>* children,
     const tvec* mp_values,
     const tvec* radial_kernel_params,
+    const tvec* opening_criterion_params,
     // outputs:
     tvec* loc_out,
-    int* ilist_child_count_out,
-    // attributes:
-    float opening_angle
+    int* ilist_child_count_out
 ) {
     constexpr int ncomb = NCOMB(p, dim);
     auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
+    auto opening_criterion = OpeningCriterion<opening_criterion_kind>::template make_params<tvec>(opening_criterion_params);
 
     // Node A info:
     int2 nrange = node_range[0];
@@ -160,7 +135,9 @@ __global__ void CountInteractionsAndM2L(
                 if(i >= num_childrenA)
                     continue;
 
-                bool need_open = (id >= 0) && OpeningCriterion<dim,tvec>(childA[i], childB_ext, opening_angle);
+                bool need_open = (id >= 0) && OpeningCriterion<opening_criterion_kind>::template should_open<dim,tvec>(
+                    childA[i], childB_ext, opening_criterion
+                );
                 bool actually_open = need_open && (id >= 0);
                 bool interact_now = !need_open && (id >= 0);
                 any_interacts = any_interacts || interact_now;
@@ -246,7 +223,7 @@ __device__ __forceinline__ int nbits_set_before(unsigned mask, int bit)
     return __popc(mask & lower_mask);
 }
 
-template<int dim, typename tvec>
+template<int opening_criterion_kind, int dim, typename tvec>
 __global__ void InsertInteractions(
     // inputs:
     const int2* node_range,
@@ -255,11 +232,12 @@ __global__ void InsertInteractions(
     const int* ilist_nodes,
     const Node<dim,tvec>* children,
     const int* spl_ilist_child,
+    const tvec* opening_criterion_params,
     // outputs:
-    int* child_ilist_out,
-    // attributes:
-    float opening_angle
+    int* child_ilist_out
 ) {
+    auto opening_criterion = OpeningCriterion<opening_criterion_kind>::template make_params<tvec>(opening_criterion_params);
+
     // Node A info:
     int2 nrange = node_range[0];
     int nodeid = nrange.x + blockIdx.x;
@@ -319,7 +297,9 @@ __global__ void InsertInteractions(
                 if(i >= num_childrenA)
                     continue;
 
-                bool need_open = (id >= 0) && OpeningCriterion<dim,tvec>(childA[i], childB_ext, opening_angle);
+                bool need_open = (id >= 0) && OpeningCriterion<opening_criterion_kind>::template should_open<dim,tvec>(
+                    childA[i], childB_ext, opening_criterion
+                );
 
                 unsigned open_mask = __ballot_sync(ALLTHREADS, need_open);
 

@@ -40,6 +40,23 @@ class QuarticPlummerKernel(KernelConfig):
         return 1.0 / self.softening
 
 @dataclass(unsafe_hash=True)
+class OpeningCriterionConfig:
+    def kind_id(self) -> int:
+        raise NotImplementedError
+    def params(self, dtype=jnp.float32) -> jax.Array:
+        raise NotImplementedError
+
+@dataclass(unsafe_hash=True)
+class OpeningByAngle(OpeningCriterionConfig):
+    theta : float = 0.85
+
+    def kind_id(self) -> int:
+        return 0
+
+    def params(self, dtype=jnp.float32) -> jax.Array:
+        return jnp.asarray([self.theta], dtype=dtype)
+
+@dataclass(unsafe_hash=True)
 class PotentialField:
     def potential(self, x, t=0., cfg=None):
         """External potential field"""
@@ -53,8 +70,8 @@ class FMMConfig():
     # Multipole order:
     p : int = 3
 
-    # important
-    opening_angle : float = 0.85
+    # Opening criterion
+    opening : OpeningCriterionConfig = field(default_factory=OpeningByAngle)
 
     # Memory
     ilist_alloc_fac : int = 256

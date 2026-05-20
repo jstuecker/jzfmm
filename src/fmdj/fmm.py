@@ -67,6 +67,8 @@ def _fmm_node_to_node(
     # Determine output shapes
     dtype = child_data.mp.dtype
     kernel_params = kernel.params(dtype=dtype)
+    opening = cfg.fmm.opening
+    opening_params = opening.params(dtype=dtype)
     out_loc = jax.ShapeDtypeStruct(child_data.mp.shape, dtype)
     out_interaction_count = jax.ShapeDtypeStruct((size,), jnp.int32)
     
@@ -75,10 +77,10 @@ def _fmm_node_to_node(
         "CountInteractionsAndM2L",
         (out_loc, out_interaction_count, )
     )(
-        node_range, spl, node_ilist.ispl, node_ilist.isrc, children, child_data.mp, kernel_params,
+        node_range, spl, node_ilist.ispl, node_ilist.isrc, children, child_data.mp, kernel_params, opening_params,
         p=np.int32(cfg.fmm.p),
         radial_kernel_kind=np.int32(kernel.kind_id()),
-        opening_angle=np.float32(cfg.fmm.opening_angle)
+        opening_criterion_kind=np.int32(opening.kind_id()),
     )
 
     # Insert interactions
@@ -89,8 +91,8 @@ def _fmm_node_to_node(
         "InsertInteractions",
         (out_child_ilist,)
     )(
-        node_range, spl, node_ilist.ispl, node_ilist.isrc, children, ispl_child,
-        opening_angle=np.float32(cfg.fmm.opening_angle)
+        node_range, spl, node_ilist.ispl, node_ilist.isrc, children, ispl_child, opening_params,
+        opening_criterion_kind=np.int32(opening.kind_id()),
     )[0]
 
     # Create interaction list from outputs

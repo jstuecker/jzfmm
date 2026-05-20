@@ -10,7 +10,7 @@ from jax.test_util import check_grads
 from jztree.tree import _dense_interaction_list
 from jztree_utils import ics
 
-from fmdj.config import Config, FMMConfig, PlummerKernel
+from fmdj.config import Config, FMMConfig, OpeningByAngle, PlummerKernel
 from fmdj.data import PosMass
 from fmdj.multipoles import summarize_multipoles, build_multipole_hierarchy, _fmm_node_to_child
 from fmdj.fmm import _fmm_dual_walk, evaluate_node_node_fmm
@@ -119,7 +119,7 @@ def test_force_gradients(dim):
     part.num = None # currently causes some problems with gradients
     part.num_total = None # currently causes some problems with gradients
     part.mass = part.mass * jnp.ones(part.pos.shape[0], dtype=jnp.float32)
-    fmmcfg = FMMConfig(p=4, kahan_summation=True, opening_angle=0.8)
+    fmmcfg = FMMConfig(p=4, kahan_summation=True, opening=OpeningByAngle(theta=0.8))
     cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=fmmcfg)
     
     ispl = jnp.arange(part.pos.shape[0]//32 + 1, dtype=jnp.int32) * 32

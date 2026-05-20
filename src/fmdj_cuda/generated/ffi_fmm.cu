@@ -37,9 +37,10 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     ffi::AnyBuffer children,
     ffi::AnyBuffer mp_values,
     ffi::AnyBuffer radial_kernel_params,
+    ffi::AnyBuffer opening_criterion_params,
     ffi::Result<ffi::AnyBuffer> loc_out,
     ffi::Result<ffi::AnyBuffer> ilist_child_count_out,
-    float opening_angle,
+    int opening_criterion_kind,
     int radial_kernel_kind,
     int p
 ) {
@@ -61,6 +62,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     void* children_arg = children.untyped_data();
     void* mp_values_arg = mp_values.untyped_data();
     void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
+    void* opening_criterion_params_arg = opening_criterion_params.untyped_data();
     void* loc_out_arg = loc_out->untyped_data();
     void* ilist_child_count_out_arg = ilist_child_count_out->untyped_data();
     void* args[] = {
@@ -71,48 +73,48 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         &children_arg,
         &mp_values_arg,
         &radial_kernel_params_arg,
+        &opening_criterion_params_arg,
         &loc_out_arg,
-        &ilist_child_count_out_arg,
-        &opening_angle
+        &ilist_child_count_out_arg
     };
     
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<int, int, int, DT>;
+    using TTuple = std::tuple<int, int, int, int, DT>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {0, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 2, float>) },
-        { {0, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 3, float>) },
-        { {0, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 2, float>) },
-        { {0, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 3, float>) },
-        { {0, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 2, float>) },
-        { {0, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 3, float>) },
-        { {0, 4, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 2, float>) },
-        { {0, 4, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 3, float>) },
-        { {0, 5, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 2, float>) },
-        { {0, 5, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 3, float>) },
-        { {1, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 1, 2, float>) },
-        { {1, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 1, 3, float>) },
-        { {1, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2, 2, float>) },
-        { {1, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2, 3, float>) },
-        { {1, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3, 2, float>) },
-        { {1, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3, 3, float>) },
-        { {1, 4, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 4, 2, float>) },
-        { {1, 4, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 4, 3, float>) },
-        { {1, 5, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 5, 2, float>) },
-        { {1, 5, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 5, 3, float>) }
+        { {0, 0, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 0, 1, 2, float>) },
+        { {0, 0, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 0, 1, 3, float>) },
+        { {0, 0, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 0, 2, 2, float>) },
+        { {0, 0, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 0, 2, 3, float>) },
+        { {0, 0, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 0, 3, 2, float>) },
+        { {0, 0, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 0, 3, 3, float>) },
+        { {0, 0, 4, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 0, 4, 2, float>) },
+        { {0, 0, 4, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 0, 4, 3, float>) },
+        { {0, 0, 5, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 0, 5, 2, float>) },
+        { {0, 0, 5, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 0, 5, 3, float>) },
+        { {0, 1, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 1, 2, float>) },
+        { {0, 1, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 1, 3, float>) },
+        { {0, 1, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 2, 2, float>) },
+        { {0, 1, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 2, 3, float>) },
+        { {0, 1, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 3, 2, float>) },
+        { {0, 1, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 3, 3, float>) },
+        { {0, 1, 4, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 4, 2, float>) },
+        { {0, 1, 4, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 4, 3, float>) },
+        { {0, 1, 5, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 5, 2, float>) },
+        { {0, 1, 5, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 5, 3, float>) }
     };
 
-    const TTuple key = TTuple(radial_kernel_kind, p, dim, tvec);
+    const TTuple key = TTuple(opening_criterion_kind, radial_kernel_kind, p, dim, tvec);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (radial_kernel_kind, p, dim, tvec)"\
+            "\nUnsupported template parameter combination for (opening_criterion_kind, radial_kernel_kind, p, dim, tvec)"\
             " in CountInteractionsAndM2LFFIHost -- Only supporting:\n"\
-            "(0, 1, 2, float), (0, 1, 3, float), (0, 2, 2, float), (0, 2, 3, float), (0, 3, 2, float), (0, 3, 3, float), (0, 4, 2, float), (0, 4, 3, float), (0, 5, 2, float), (0, 5, 3, float), (1, 1, 2, float), (1, 1, 3, float), (1, 2, 2, float), (1, 2, 3, float), (1, 3, 2, float), (1, 3, 3, float), (1, 4, 2, float), (1, 4, 3, float), (1, 5, 2, float), (1, 5, 3, float)"
+            "(0, 0, 1, 2, float), (0, 0, 1, 3, float), (0, 0, 2, 2, float), (0, 0, 2, 3, float), (0, 0, 3, 2, float), (0, 0, 3, 3, float), (0, 0, 4, 2, float), (0, 0, 4, 3, float), (0, 0, 5, 2, float), (0, 0, 5, 3, float), (0, 1, 1, 2, float), (0, 1, 1, 3, float), (0, 1, 2, 2, float), (0, 1, 2, 3, float), (0, 1, 3, 2, float), (0, 1, 3, 3, float), (0, 1, 4, 2, float), (0, 1, 4, 3, float), (0, 1, 5, 2, float), (0, 1, 5, 3, float)"
         );
     }
     const void* instance = it->second;
@@ -144,9 +146,10 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // children
         .Arg<ffi::AnyBuffer>() // mp_values
         .Arg<ffi::AnyBuffer>() // radial_kernel_params
+        .Arg<ffi::AnyBuffer>() // opening_criterion_params
         .Ret<ffi::AnyBuffer>() // loc_out
         .Ret<ffi::AnyBuffer>() // ilist_child_count_out
-        .Attr<float>("opening_angle")
+        .Attr<int>("opening_criterion_kind")
         .Attr<int>("radial_kernel_kind")
         .Attr<int>("p"),
     {xla::ffi::Traits::kCmdBufferCompatible}
@@ -165,8 +168,9 @@ ffi::Error InsertInteractionsFFIHost(
     ffi::AnyBuffer ilist_nodes,
     ffi::AnyBuffer children,
     ffi::AnyBuffer spl_ilist_child,
+    ffi::AnyBuffer opening_criterion_params,
     ffi::Result<ffi::AnyBuffer> child_ilist_out,
-    float opening_angle
+    int opening_criterion_kind
 ) {
     int dim = children.dimensions()[1] - 1;
     DT tvec = children.element_type();
@@ -181,6 +185,7 @@ ffi::Error InsertInteractionsFFIHost(
     void* ilist_nodes_arg = ilist_nodes.untyped_data();
     void* children_arg = children.untyped_data();
     void* spl_ilist_child_arg = spl_ilist_child.untyped_data();
+    void* opening_criterion_params_arg = opening_criterion_params.untyped_data();
     void* child_ilist_out_arg = child_ilist_out->untyped_data();
     void* args[] = {
         &node_range_arg,
@@ -189,29 +194,29 @@ ffi::Error InsertInteractionsFFIHost(
         &ilist_nodes_arg,
         &children_arg,
         &spl_ilist_child_arg,
-        &child_ilist_out_arg,
-        &opening_angle
+        &opening_criterion_params_arg,
+        &child_ilist_out_arg
     };
     
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<int, DT>;
+    using TTuple = std::tuple<int, int, DT>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {2, DT::F32}, reinterpret_cast<TFunc>(&InsertInteractions<2, float>) },
-        { {3, DT::F32}, reinterpret_cast<TFunc>(&InsertInteractions<3, float>) }
+        { {0, 2, DT::F32}, reinterpret_cast<TFunc>(&InsertInteractions<0, 2, float>) },
+        { {0, 3, DT::F32}, reinterpret_cast<TFunc>(&InsertInteractions<0, 3, float>) }
     };
 
-    const TTuple key = TTuple(dim, tvec);
+    const TTuple key = TTuple(opening_criterion_kind, dim, tvec);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (dim, tvec)"\
+            "\nUnsupported template parameter combination for (opening_criterion_kind, dim, tvec)"\
             " in InsertInteractionsFFIHost -- Only supporting:\n"\
-            "(2, float), (3, float)"
+            "(0, 2, float), (0, 3, float)"
         );
     }
     const void* instance = it->second;
@@ -242,8 +247,9 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // ilist_nodes
         .Arg<ffi::AnyBuffer>() // children
         .Arg<ffi::AnyBuffer>() // spl_ilist_child
+        .Arg<ffi::AnyBuffer>() // opening_criterion_params
         .Ret<ffi::AnyBuffer>() // child_ilist_out
-        .Attr<float>("opening_angle"),
+        .Attr<int>("opening_criterion_kind"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );
 
