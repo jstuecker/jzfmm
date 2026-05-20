@@ -28,27 +28,27 @@ kernels = parse.get_functions_from_file(
     only_kernels=True
 )
 
-kernels["GroupedForceAndPot"].grid_size_expression = "spl_nodes.element_count() - 1"
-kernels["GroupedForceAndPot"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('posm')}"
+kernels["LeafLeafSummation"].grid_size_expression = "spl_nodes.element_count() - 1"
+kernels["LeafLeafSummation"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('posm')}"
 
-kernels["BwdGroupedForceAndPot"].grid_size_expression = "spl_nodes.element_count() - 1"
-kernels["BwdGroupedForceAndPot"].smem_size_expression = f"2 * blockDim.x * (dim + 1) * {dtype_size_expression('posm')}"
+kernels["BwdLeafLeafSummation"].grid_size_expression = "spl_nodes.element_count() - 1"
+kernels["BwdLeafLeafSummation"].smem_size_expression = f"2 * blockDim.x * (dim + 1) * {dtype_size_expression('posm')}"
 
-kernels["ForceAndPotential"].grid_size_expression = "div_ceil(xm.dimensions()[0], block_size)"
-kernels["ForceAndPotential"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('xm')}"
-kernels["ForceAndPotential"].par["n"].expression = "xm.dimensions()[0]"
+kernels["DirectSummation"].grid_size_expression = "div_ceil(xm.dimensions()[0], block_size)"
+kernels["DirectSummation"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('xm')}"
+kernels["DirectSummation"].par["n"].expression = "xm.dimensions()[0]"
 
-kernels["BwdForceAndPotential"].grid_size_expression = "div_ceil(xm.dimensions()[0], block_size)"
-kernels["BwdForceAndPotential"].smem_size_expression = f"2 * blockDim.x * (dim + 1) * {dtype_size_expression('xm')}"
-kernels["BwdForceAndPotential"].par["n"].expression = "xm.dimensions()[0]"
+kernels["BwdDirectSummation"].grid_size_expression = "div_ceil(xm.dimensions()[0], block_size)"
+kernels["BwdDirectSummation"].smem_size_expression = f"2 * blockDim.x * (dim + 1) * {dtype_size_expression('xm')}"
+kernels["BwdDirectSummation"].par["n"].expression = "xm.dimensions()[0]"
 
-for kname in ("ForceAndPotential", "BwdForceAndPotential"):
+for kname in ("DirectSummation", "BwdDirectSummation"):
     kernels[kname].template_par["dim"].instances = dimensions
     kernels[kname].template_par["dim"].expression = "xm.dimensions()[1] - 1"
     kernels[kname].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values
     add_dtype_template(kernels[kname], "xm")
 
-for kname in ("GroupedForceAndPot", "BwdGroupedForceAndPot"):
+for kname in ("LeafLeafSummation", "BwdLeafLeafSummation"):
     kernels[kname].template_par["dim"].instances = dimensions
     kernels[kname].template_par["dim"].expression = "posm.dimensions()[1] - 1"
     kernels[kname].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values

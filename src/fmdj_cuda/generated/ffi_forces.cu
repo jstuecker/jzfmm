@@ -24,11 +24,11 @@ namespace ffi = xla::ffi;
 using DT = ffi::DataType;
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                             FFI call to CUDA kernel: ForceAndPotential                         */
+/*                             FFI call to CUDA kernel: DirectSummation                           */
 /* ---------------------------------------------------------------------------------------------- */
 
 
-ffi::Error ForceAndPotentialFFIHost(
+ffi::Error DirectSummationFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer xm,
     ffi::AnyBuffer radial_kernel_params,
@@ -62,14 +62,14 @@ ffi::Error ForceAndPotentialFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 0, 2, float>) },
-        { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 0, 3, float>) },
-        { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 1, 2, float>) },
-        { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<true, 1, 3, float>) },
-        { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 0, 2, float>) },
-        { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 0, 3, float>) },
-        { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 1, 2, float>) },
-        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&ForceAndPotential<false, 1, 3, float>) }
+        { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 0, 2, float>) },
+        { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 0, 3, float>) },
+        { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 1, 2, float>) },
+        { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 1, 3, float>) },
+        { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 0, 2, float>) },
+        { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 0, 3, float>) },
+        { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 1, 2, float>) },
+        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 1, 3, float>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -78,7 +78,7 @@ ffi::Error ForceAndPotentialFFIHost(
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
-            " in ForceAndPotentialFFIHost -- Only supporting:\n"\
+            " in DirectSummationFFIHost -- Only supporting:\n"\
             "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float)"
         );
     }
@@ -101,7 +101,7 @@ ffi::Error ForceAndPotentialFFIHost(
 }
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    ForceAndPotentialFFI, ForceAndPotentialFFIHost,
+    DirectSummationFFI, DirectSummationFFIHost,
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // xm
@@ -114,11 +114,11 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                             FFI call to CUDA kernel: BwdForceAndPotential                      */
+/*                             FFI call to CUDA kernel: BwdDirectSummation                        */
 /* ---------------------------------------------------------------------------------------------- */
 
 
-ffi::Error BwdForceAndPotentialFFIHost(
+ffi::Error BwdDirectSummationFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer gloc,
     ffi::AnyBuffer xm,
@@ -155,14 +155,14 @@ ffi::Error BwdForceAndPotentialFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 0, 2, float>) },
-        { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 0, 3, float>) },
-        { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 1, 2, float>) },
-        { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<true, 1, 3, float>) },
-        { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 0, 2, float>) },
-        { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 0, 3, float>) },
-        { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 1, 2, float>) },
-        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdForceAndPotential<false, 1, 3, float>) }
+        { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 0, 2, float>) },
+        { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 0, 3, float>) },
+        { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 1, 2, float>) },
+        { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 1, 3, float>) },
+        { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 0, 2, float>) },
+        { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 0, 3, float>) },
+        { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 1, 2, float>) },
+        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 1, 3, float>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -171,7 +171,7 @@ ffi::Error BwdForceAndPotentialFFIHost(
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
-            " in BwdForceAndPotentialFFIHost -- Only supporting:\n"\
+            " in BwdDirectSummationFFIHost -- Only supporting:\n"\
             "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float)"
         );
     }
@@ -194,7 +194,7 @@ ffi::Error BwdForceAndPotentialFFIHost(
 }
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    BwdForceAndPotentialFFI, BwdForceAndPotentialFFIHost,
+    BwdDirectSummationFFI, BwdDirectSummationFFIHost,
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // gloc
@@ -208,11 +208,11 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                             FFI call to CUDA kernel: GroupedForceAndPot                        */
+/*                             FFI call to CUDA kernel: LeafLeafSummation                         */
 /* ---------------------------------------------------------------------------------------------- */
 
 
-ffi::Error GroupedForceAndPotFFIHost(
+ffi::Error LeafLeafSummationFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer node_range,
     ffi::AnyBuffer spl_nodes,
@@ -256,14 +256,14 @@ ffi::Error GroupedForceAndPotFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 0, 2, float>) },
-        { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 0, 3, float>) },
-        { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 1, 2, float>) },
-        { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<true, 1, 3, float>) },
-        { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 0, 2, float>) },
-        { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 0, 3, float>) },
-        { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 1, 2, float>) },
-        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&GroupedForceAndPot<false, 1, 3, float>) }
+        { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<true, 0, 2, float>) },
+        { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<true, 0, 3, float>) },
+        { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<true, 1, 2, float>) },
+        { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<true, 1, 3, float>) },
+        { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<false, 0, 2, float>) },
+        { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<false, 0, 3, float>) },
+        { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<false, 1, 2, float>) },
+        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<false, 1, 3, float>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -272,7 +272,7 @@ ffi::Error GroupedForceAndPotFFIHost(
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
-            " in GroupedForceAndPotFFIHost -- Only supporting:\n"\
+            " in LeafLeafSummationFFIHost -- Only supporting:\n"\
             "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float)"
         );
     }
@@ -295,7 +295,7 @@ ffi::Error GroupedForceAndPotFFIHost(
 }
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    GroupedForceAndPotFFI, GroupedForceAndPotFFIHost,
+    LeafLeafSummationFFI, LeafLeafSummationFFIHost,
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // node_range
@@ -312,11 +312,11 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 );
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                             FFI call to CUDA kernel: BwdGroupedForceAndPot                     */
+/*                             FFI call to CUDA kernel: BwdLeafLeafSummation                      */
 /* ---------------------------------------------------------------------------------------------- */
 
 
-ffi::Error BwdGroupedForceAndPotFFIHost(
+ffi::Error BwdLeafLeafSummationFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer node_range,
     ffi::AnyBuffer spl_nodes,
@@ -363,14 +363,14 @@ ffi::Error BwdGroupedForceAndPotFFIHost(
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 0, 2, float>) },
-        { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 0, 3, float>) },
-        { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 1, 2, float>) },
-        { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<true, 1, 3, float>) },
-        { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 0, 2, float>) },
-        { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 0, 3, float>) },
-        { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 1, 2, float>) },
-        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdGroupedForceAndPot<false, 1, 3, float>) }
+        { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<true, 0, 2, float>) },
+        { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<true, 0, 3, float>) },
+        { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<true, 1, 2, float>) },
+        { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<true, 1, 3, float>) },
+        { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<false, 0, 2, float>) },
+        { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<false, 0, 3, float>) },
+        { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<false, 1, 2, float>) },
+        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<false, 1, 3, float>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -379,7 +379,7 @@ ffi::Error BwdGroupedForceAndPotFFIHost(
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
-            " in BwdGroupedForceAndPotFFIHost -- Only supporting:\n"\
+            " in BwdLeafLeafSummationFFIHost -- Only supporting:\n"\
             "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float)"
         );
     }
@@ -402,7 +402,7 @@ ffi::Error BwdGroupedForceAndPotFFIHost(
 }
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
-    BwdGroupedForceAndPotFFI, BwdGroupedForceAndPotFFIHost,
+    BwdLeafLeafSummationFFI, BwdLeafLeafSummationFFIHost,
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // node_range
@@ -424,8 +424,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 /* ---------------------------------------------------------------------------------------------- */
 
 NB_MODULE(ffi_forces, m) {
-    m.def("ForceAndPotential", []() { return EncapsulateFfiCall(&ForceAndPotentialFFI); });
-    m.def("BwdForceAndPotential", []() { return EncapsulateFfiCall(&BwdForceAndPotentialFFI); });
-    m.def("GroupedForceAndPot", []() { return EncapsulateFfiCall(&GroupedForceAndPotFFI); });
-    m.def("BwdGroupedForceAndPot", []() { return EncapsulateFfiCall(&BwdGroupedForceAndPotFFI); });
+    m.def("DirectSummation", []() { return EncapsulateFfiCall(&DirectSummationFFI); });
+    m.def("BwdDirectSummation", []() { return EncapsulateFfiCall(&BwdDirectSummationFFI); });
+    m.def("LeafLeafSummation", []() { return EncapsulateFfiCall(&LeafLeafSummationFFI); });
+    m.def("BwdLeafLeafSummation", []() { return EncapsulateFfiCall(&BwdLeafLeafSummationFFI); });
 }

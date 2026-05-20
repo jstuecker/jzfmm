@@ -7,8 +7,7 @@ import pytest
 from jztree_utils import ics
 
 from fmdj.config import Config, FMMConfig, PlummerKernel, QuarticPlummerKernel
-from fmdj.data import PosMass, LocalExpansion
-from fmdj.fmm import direct_force_and_potential, fast_multipole_method
+from fmdj.fmm import direct_summation, fast_multipole_method
 
 @pytest.mark.parametrize("p", [2,3,4])
 def test_fmm_uniform(p):
@@ -16,7 +15,7 @@ def test_fmm_uniform(p):
 
     part = ics.uniform_particles(int(1e4))
 
-    fref = LocalExpansion(direct_force_and_potential.jit(part, kernel=cfg.kernel, kahan=True) * cfg.G()).force()
+    fref = direct_summation.jit(part, kernel=cfg.kernel, kahan=True, G=cfg.G()).force()
     ffmm = fast_multipole_method.jit(part, cfg=cfg).force()
 
     ferr = jnp.linalg.norm(fref - ffmm, axis=-1)
@@ -34,10 +33,7 @@ def test_dim(dim):
 
     part = ics.uniform_particles(int(1e4), dim=dim)
 
-    fref = LocalExpansion(
-        values=direct_force_and_potential.jit(part, kernel=cfg.kernel, kahan=True) * cfg.G(),
-        dim = dim
-    ).force()
+    fref = direct_summation.jit(part, kernel=cfg.kernel, kahan=True, G=cfg.G()).force()
     ffmm = fast_multipole_method.jit(part, cfg=cfg).force()
 
     ferr = jnp.linalg.norm(fref - ffmm, axis=-1)

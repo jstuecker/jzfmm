@@ -14,7 +14,7 @@ from fmdj.config import Config, FMMConfig, PlummerKernel
 from fmdj.data import PosMass
 from fmdj.multipoles import summarize_multipoles, build_multipole_hierarchy, _fmm_node_to_child
 from fmdj.fmm import _fmm_dual_walk, evaluate_node_node_fmm
-from fmdj.fmm import direct_force_and_potential, grouped_force_and_pot, fast_multipole_method
+from fmdj.fmm import direct_summation, leaf_leaf_summation, fast_multipole_method
 from fmdj.external_potential import UniformAcceleration
 from fmdj.time_integration import simulate
     
@@ -125,8 +125,8 @@ def test_force_gradients(dim):
     ispl = jnp.arange(part.pos.shape[0]//32 + 1, dtype=jnp.int32) * 32
     ilist = _dense_interaction_list.jit(len(ispl)-1, len(ispl)-1, (len(ispl)-1)**2)
 
-    fphi1 = direct_force_and_potential.jit(part, kernel=cfg.kernel, kahan=True)
-    fphi2 = grouped_force_and_pot.jit(part, ispl, ilist, cfg)
+    fphi1 = direct_summation.jit(part, kernel=cfg.kernel, kahan=True).values
+    fphi2 = leaf_leaf_summation.jit(part, ispl, ilist, cfg)
     fphi3 = fast_multipole_method.jit(part, cfg=cfg).values / cfg.G()
 
     abstol = float(jnp.std(fphi1) * 1e-2)
@@ -134,8 +134,8 @@ def test_force_gradients(dim):
     assert fphi2 == pytest.approx(fphi1, abs=abstol*1e-2)
     assert fphi3 == pytest.approx(fphi1, abs=abstol)
 
-    def f1(part): return grouped_force_and_pot(part, ispl, ilist, cfg=cfg).sum()
-    def f2(part): return direct_force_and_potential(part, kernel=cfg.kernel, kahan=True).sum()
+    def f1(part): return leaf_leaf_summation(part, ispl, ilist, cfg=cfg).sum()
+    def f2(part): return direct_summation(part, kernel=cfg.kernel, kahan=True).values.sum()
     def f3(part): return fast_multipole_method(part, cfg=cfg).values.sum() / cfg.G()
     
     gposm1 = jax.jit(jax.grad(f1, allow_int=True))(part)

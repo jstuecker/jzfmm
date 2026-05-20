@@ -18,10 +18,10 @@ import fmdj_cuda.ffi_fmm as ffi_fmm
 import fmdj_cuda.ffi_forces as ffi_forces
 jax.ffi.register_ffi_target("CountInteractionsAndM2L", ffi_fmm.CountInteractionsAndM2L(), platform="CUDA")
 jax.ffi.register_ffi_target("InsertInteractions", ffi_fmm.InsertInteractions(), platform="CUDA")
-jax.ffi.register_ffi_target("GroupedForceAndPot", ffi_forces.GroupedForceAndPot(), platform="CUDA")
-jax.ffi.register_ffi_target("BwdGroupedForceAndPot", ffi_forces.BwdGroupedForceAndPot(), platform="CUDA")
-jax.ffi.register_ffi_target("ForceAndPotential", ffi_forces.ForceAndPotential(), platform="CUDA")
-jax.ffi.register_ffi_target("BwdForceAndPotential", ffi_forces.BwdForceAndPotential(), platform="CUDA")
+jax.ffi.register_ffi_target("LeafLeafSummation", ffi_forces.LeafLeafSummation(), platform="CUDA")
+jax.ffi.register_ffi_target("BwdLeafLeafSummation", ffi_forces.BwdLeafLeafSummation(), platform="CUDA")
+jax.ffi.register_ffi_target("DirectSummation", ffi_forces.DirectSummation(), platform="CUDA")
+jax.ffi.register_ffi_target("BwdDirectSummation", ffi_forces.BwdDirectSummation(), platform="CUDA")
 
 # ------------------------------------------------------------------------------------------------ #
 #                                          M2L Evaluation                                          #
@@ -154,8 +154,8 @@ _fmm_dual_walk.jit = jax.jit(_fmm_dual_walk, static_argnames=['cfg'])
 #                           Leaf-Leaf (Particle to Particle) Interactions                          #
 # ------------------------------------------------------------------------------------------------ #
 
-def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: InteractionList,
-                          cfg: Config = None) -> jax.Array:
+def leaf_leaf_summation(particles: PosMass, ispl: jax.Array, ilist: InteractionList,
+                        cfg: Config = None) -> jax.Array:
     block_size = 128
     assert cfg.tree.max_leaf_size <= block_size
     assert len(ispl) == len(ilist.ispl)
@@ -169,7 +169,7 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
 
     @jax.custom_vjp
     def eval(particles, ispl, ilist):
-        loc = jax.ffi.ffi_call("GroupedForceAndPot", (out_type,))(
+        loc = jax.ffi.ffi_call("LeafLeafSummation", (out_type,))(
             node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), kernel_params,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
@@ -182,7 +182,7 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
     
     def eval_bwd(res, gloc):
         particles, ispl, ilist = res
-        gposm = jax.ffi.ffi_call("BwdGroupedForceAndPot", (out_type,))(
+        gposm = jax.ffi.ffi_call("BwdLeafLeafSummation", (out_type,))(
             node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), kernel_params, gloc,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
@@ -192,16 +192,16 @@ def grouped_force_and_pot(particles: PosMass, ispl: jax.Array, ilist: Interactio
     eval.defvjp(eval_fwd, eval_bwd)
 
     return eval(particles, ispl, ilist)
-grouped_force_and_pot.jit = jax.jit(grouped_force_and_pot, static_argnames=['cfg'])
+leaf_leaf_summation.jit = jax.jit(leaf_leaf_summation, static_argnames=['cfg'])
 
 
 # ------------------------------------------------------------------------------------------------ #
 #                                      Direct Summation Forces                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def direct_force_and_potential(part: PosMass, kahan: bool = False,
-                               kernel = None
-                               ) -> jax.Array:
+def direct_summation(part: PosMass, kahan: bool = False,
+                     kernel = None, G = 1
+                     ) -> LocalExpansion:
     block_size = 64
     posm = get_pos_mass(part)
     out_type = jax.ShapeDtypeStruct(posm.shape, posm.dtype)
@@ -212,14 +212,14 @@ def direct_force_and_potential(part: PosMass, kahan: bool = False,
     
     @jax.custom_vjp
     def eval(xm):
-        loc = jax.ffi.ffi_call("ForceAndPotential", (out_type,))(
+        loc = jax.ffi.ffi_call("DirectSummation", (out_type,))(
         xm, kernel_params, block_size=np.uint64(block_size),
         radial_kernel_kind=np.int32(kernel.kind_id()), kahan=kahan)[0]
         return loc
     def eval_fwd(xm):
         return eval(xm), xm
     def eval_bwd(xm, gloc):
-        gxm = jax.ffi.ffi_call("BwdForceAndPotential", (out_type,))(
+        gxm = jax.ffi.ffi_call("BwdDirectSummation", (out_type,))(
             gloc, xm, kernel_params, block_size=np.uint64(block_size),
             radial_kernel_kind=np.int32(kernel.kind_id()), kahan=kahan
         )[0]
@@ -227,8 +227,8 @@ def direct_force_and_potential(part: PosMass, kahan: bool = False,
     
     eval.defvjp(eval_fwd, eval_bwd)
 
-    return eval(posm)
-direct_force_and_potential.jit = jax.jit(direct_force_and_potential, static_argnames=['kahan', 'kernel'])
+    return LocalExpansion(eval(posm) * G, dim=part.pos.shape[-1])
+direct_summation.jit = jax.jit(direct_summation, static_argnames=['kahan', 'kernel'])
 
 def direct_potential_jax(x, m=1., softening=1e-2):
     rij2 = jnp.sum((x[:, None, :] - x[None, :, :]) ** 2, axis=-1)
@@ -325,7 +325,7 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jax.Array | None = None, cfg
     loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg=cfg)
     spl = th.splits_leaf_to_part()
 
-    loc_leaf_leaf = grouped_force_and_pot(partz, spl, jax.lax.stop_gradient(ilist), cfg=cfg)
+    loc_leaf_leaf = leaf_leaf_summation(partz, spl, jax.lax.stop_gradient(ilist), cfg=cfg)
     loc = loc_leaf_leaf + loc_node_node
 
     return LocalExpansion(loc * cfg.G(), dim=partz.pos.shape[-1])
@@ -345,8 +345,7 @@ fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg
 
 def force_and_potential(p: PosMass, cfg : Config) -> LocalExpansion:
     if cfg.fmm is None:
-        loc = direct_force_and_potential(p, kernel=cfg.kernel, kahan=True) * cfg.G()
-        return LocalExpansion(loc, dim=p.pos.shape[-1])
+        return direct_summation(p, kernel=cfg.kernel, kahan=True, G=cfg.G())
     else:
         return fast_multipole_method(p, cfg=cfg, pout=1)
 force_and_potential.jit = jax.jit(force_and_potential, static_argnames=("cfg",))

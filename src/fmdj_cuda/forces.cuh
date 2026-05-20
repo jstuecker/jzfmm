@@ -76,11 +76,11 @@ __forceinline__ __device__ PosMass<dim,tvec> VJP_GFPhiToGXM(
 }
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                                       Simple Force Kernel                                      */
+/*                                      Direct Summation Kernel                                   */
 /* ---------------------------------------------------------------------------------------------- */
 
 template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
-__global__ void ForceAndPotential(
+__global__ void DirectSummation(
     const PosMass<dim,tvec> *xm,
     const tvec* radial_kernel_params,
     LocalExp<dim,tvec> *loc_out,
@@ -121,7 +121,7 @@ __global__ void ForceAndPotential(
 }
 
 template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
-__global__ void BwdForceAndPotential(
+__global__ void BwdDirectSummation(
     const LocalExp<dim,tvec> *gloc,
     const PosMass<dim,tvec> *xm,
     const tvec* radial_kernel_params,
@@ -174,11 +174,11 @@ __global__ void BwdForceAndPotential(
 }
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                                     Grouped force kernel                                       */
+/*                                    Leaf-Leaf Summation Kernel                                  */
 /* ---------------------------------------------------------------------------------------------- */
 
 template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
-__global__ void GroupedForceAndPot(
+__global__ void LeafLeafSummation(
     // inputs:
     const int2* node_range,
     const int* spl_nodes,
@@ -262,7 +262,7 @@ __global__ void GroupedForceAndPot(
 }
 
 template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
-__global__ void BwdGroupedForceAndPot(
+__global__ void BwdLeafLeafSummation(
     // inputs:
     const int2* node_range,
     const int* spl_nodes,
@@ -285,7 +285,7 @@ __global__ void BwdGroupedForceAndPot(
 
     int num = prange.y-prange.x;
 
-    // See comment in GroupedForceAndPot for explanation
+    // See comment in LeafLeafSummation for explanation
     int n_write = blockDim.x / num;
     int a_write = threadIdx.x % num;   
     int read_b_offset = threadIdx.x / num;

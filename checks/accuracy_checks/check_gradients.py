@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import time
 from dataclasses import replace
 from fmdj_utils.ics import gaussian_blob
-from fmdj.data import PosMass, LocalExpansion
-from fmdj.fmm import direct_force_and_potential, fast_multipole_method
+from fmdj.data import PosMass
+from fmdj.fmm import direct_summation, fast_multipole_method
 from fmdj.config import Config, PlummerKernel
 
 part = gaussian_blob(N=int(512*1024), scale=1.0, mass=1.)
@@ -21,8 +21,7 @@ def rerr_mass(a: PosMass, b: PosMass):
     return jnp.abs((a.mass - b.mass)/b.mass)
 
 def direct(part):
-    loc = direct_force_and_potential(part, kernel=cfg.kernel, kahan=True) * cfg.G()
-    return LocalExpansion(loc)
+    return direct_summation(part, kernel=cfg.kernel, kahan=True, G=cfg.G())
 def fmm(part, p):
     return fast_multipole_method(part, cfg=replace(cfg, fmm=replace(cfg.fmm, p=p)))
 
