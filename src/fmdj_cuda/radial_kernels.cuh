@@ -148,4 +148,30 @@ struct RadialKernel<RADIAL_KERNEL_QUARTIC_PLUMMER> {
     }
 };
 
+template<int p, typename tvec>
+__device__ __forceinline__ void evaluate_radial_kernel_derivatives(
+    int radial_kernel_kind,
+    tvec r2,
+    const tvec* params,
+    Vec<p+1,tvec>& coeffs
+) {
+    switch(radial_kernel_kind) {
+        case RADIAL_KERNEL_QUARTIC_PLUMMER: {
+            auto kernel_params = RadialKernel<RADIAL_KERNEL_QUARTIC_PLUMMER>::template make_params<tvec>(params);
+            RadialKernel<RADIAL_KERNEL_QUARTIC_PLUMMER>::template r2_derivative_coeffs<p,tvec>(
+                r2, kernel_params, coeffs
+            );
+            break;
+        }
+        case RADIAL_KERNEL_PLUMMER:
+        default: {
+            auto kernel_params = RadialKernel<RADIAL_KERNEL_PLUMMER>::template make_params<tvec>(params);
+            RadialKernel<RADIAL_KERNEL_PLUMMER>::template r2_derivative_coeffs<p,tvec>(
+                r2, kernel_params, coeffs
+            );
+            break;
+        }
+    }
+}
+
 #endif // RADIAL_KERNELS_H

@@ -26,7 +26,7 @@
 
 #define ALLTHREADS 0xFFFFFFFF
 
-template<int opening_criterion_kind, int radial_kernel_kind, int p, int dim, typename tvec>
+template<int opening_criterion_kind, int p, int dim, typename tvec>
 __global__ void CountInteractionsAndM2L(
     // inputs:
     const int2* node_range,
@@ -39,10 +39,11 @@ __global__ void CountInteractionsAndM2L(
     const tvec* opening_criterion_params,
     // outputs:
     tvec* loc_out,
-    int* ilist_child_count_out
+    int* ilist_child_count_out,
+    // attributes:
+    int radial_kernel_kind
 ) {
     constexpr int ncomb = NCOMB(p, dim);
-    auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
     auto opening_criterion = OpeningCriterion<opening_criterion_kind>::template make_params<tvec>(opening_criterion_params);
 
     // Node A info:
@@ -187,7 +188,7 @@ __global__ void CountInteractionsAndM2L(
 
                 Vec<dim,tvec> dx = posB[b_read] - xaWrite;
 
-                m2l_translator<radial_kernel_kind,p,dim,tvec>(dx, mpB[b_read], LocA, radial_kernel);
+                m2l_translator<p,dim,tvec>(dx, mpB[b_read], LocA, radial_kernel_kind, radial_kernel_params);
             }
         }
 

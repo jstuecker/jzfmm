@@ -133,17 +133,18 @@ __device__ __forceinline__ tvec multiindex_factorial(const int (&k)[dim]) {
 /*                                  Derivatives of Radial Kernel                                  */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int radial_kernel_kind, int p, int dim=3, typename tvec>
+template<int p, int dim=3, typename tvec>
 __device__ __forceinline__ void setupDnG(
     Vec<dim,tvec> dx,
-    typename RadialKernel<radial_kernel_kind>::template Params<tvec> radial_kernel,
+    int radial_kernel_kind,
+    const tvec* radial_kernel_params,
     Vec<NCOMB(p, dim),tvec>& Dn
 ) {
     // Recurrence formula by Tausch (2003)
     tvec r2 = dx.norm2();
 
     Vec<p+1,tvec> G;
-    RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<p,tvec>(r2, radial_kernel, G);
+    evaluate_radial_kernel_derivatives<p,tvec>(radial_kernel_kind, r2, radial_kernel_params, G);
     Dn[0] = G[p];
 
     #pragma unroll
@@ -439,17 +440,18 @@ __global__ void TranslateLocalToLocal_XVJP(
 /*                                         M2L Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int radial_kernel_kind, int p, int dim, typename tvec>
+template<int p, int dim, typename tvec>
 __device__ __forceinline__ void m2l_translator(
     Vec<dim,tvec> dx,
     const Vec<NCOMB(p, dim),tvec>& Mp,
     Vec<NCOMB(p, dim),tvec>& loc,
-    typename RadialKernel<radial_kernel_kind>::template Params<tvec> radial_kernel
+    int radial_kernel_kind,
+    const tvec* radial_kernel_params
 ) {
     constexpr int ncomb = NCOMB(p, dim);
 
     Vec<ncomb,tvec> Dn;
-    setupDnG<radial_kernel_kind,p,dim,tvec>(dx, radial_kernel, Dn);
+    setupDnG<p,dim,tvec>(dx, radial_kernel_kind, radial_kernel_params, Dn);
 
     for_each_multiindex<p,dim>([&](int kflat, int ksum, int (&k)[dim]) {
         tvec Lnew = tvec(0);

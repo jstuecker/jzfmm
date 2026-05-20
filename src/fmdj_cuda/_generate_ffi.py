@@ -75,7 +75,6 @@ kernels["CountInteractionsAndM2L"].init_outputs_zero = True
 kernels["CountInteractionsAndM2L"].block_size_expression = 32
 kernels["CountInteractionsAndM2L"].template_par["p"].instances = p_instance_values
 kernels["CountInteractionsAndM2L"].template_par["opening_criterion_kind"].instances = opening_criterion_instance_values
-kernels["CountInteractionsAndM2L"].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values
 kernels["CountInteractionsAndM2L"].template_par["dim"].instances = dimensions
 kernels["CountInteractionsAndM2L"].template_par["dim"].expression = "children.dimensions()[1] - 1"
 add_dtype_template(kernels["CountInteractionsAndM2L"], "children")
