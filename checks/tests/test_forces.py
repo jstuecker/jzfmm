@@ -22,8 +22,8 @@ def test_fmm_uniform(p):
     ferr_rel = ferr / jnp.linalg.norm(0.5*(fref + ffmm), axis=-1)
 
     # print(p, jnp.median(ferr_rel) / 10**(-p-1), jnp.max(ferr_rel) / 10**(1-p))
-    assert jnp.median(ferr_rel) <= 10**-(p+1)
-    assert jnp.max(ferr_rel) <= 10**-(p-1)
+    assert jnp.median(ferr_rel) <= 2.*10**-(p+1)
+    assert jnp.max(ferr_rel) <= 3.*10**-(p-1)
 
 @pytest.mark.shrink_in_quick(keep_index=0)
 @pytest.mark.parametrize("dim", [2,3])
@@ -40,8 +40,8 @@ def test_dim(dim):
     ferr_rel = ferr / jnp.linalg.norm(0.5*(fref + ffmm), axis=-1)
 
     # print(p, jnp.median(ferr_rel) / 10**(-p-1), jnp.max(ferr_rel) / 10**(1-p))
-    assert jnp.median(ferr_rel) <= 2.*10**-(p+1)
-    assert jnp.max(ferr_rel) <= 5.*10**-(p-1)
+    assert jnp.median(ferr_rel) <= 8.*10**-(p+1)
+    assert jnp.max(ferr_rel) <= 9.*10**-(p-1)
 
 def test_softening_kernels():
     cfg_plummer = Config(

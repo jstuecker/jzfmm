@@ -18,7 +18,8 @@ from fmdj.fmm import direct_summation, fast_multipole_method
 
 N_PARTICLES = int(1e6)
 P_VALUES = (2, 3, 4, 5)
-THETAS = np.array([0.5, 0.6, 0.7, 0.8, 0.9, 1.0], dtype=np.float32)
+THETAS = np.array([0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2], dtype=np.float32)
+# THETAS = np.array([0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2], dtype=np.float32)
 SETUP = "hernquist"  # "hernquist" or "gaus"
 REFERENCE = "direct"  # "direct" or "analytic"
 
@@ -160,10 +161,11 @@ def run_benchmark(setup: str, reference: str, recompute_direct: bool = False) ->
     part = make_particles(setup)
     cfg_base = Config(
         kernel=PlummerKernel(softening=SOFTENING),
-        fmm=FMMConfig(kahan_summation=True, ilist_alloc_fac=1024),
+        fmm=FMMConfig(kahan_summation=False, ilist_alloc_fac=1024),
     )
-    cfg_base.tree.mass_centered = True
+    cfg_base.tree.mass_centered = False
     cfg_base.tree.alloc_fac_nodes = 2.0
+    cfg_base.fmm.opening = OpeningByAngle()
 
     force_ref = get_force_reference(setup, reference, part, cfg_base, recompute_direct=recompute_direct)
 

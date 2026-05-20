@@ -28,14 +28,8 @@ struct OpeningCriterion<OPENING_BY_ANGLE> {
         Params<tvec> params
     ) {
         tvec r2 = (nodeA.center - nodeB.center).norm2();
-        Vec<dim,tvec> Ltot = nodeA.extent + nodeB.extent;
-        tvec Lmax = Ltot[0];
-        #pragma unroll
-        for(int d = 1; d < dim; d++) {
-            Lmax = Ltot[d] > Lmax ? Ltot[d] : Lmax;
-        }
-        tvec L2 = Lmax * Lmax;
-
+        tvec L2 = 0.25f * (nodeA.extent + nodeB.extent).norm2();
+        
         bool need_open = L2 >= params.theta * params.theta * r2;
         // also open if L2 had an overflow (and r2 is valid)
         need_open = need_open || ((isnan(L2) || isinf(L2)) && !isnan(r2));

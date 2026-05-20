@@ -48,7 +48,7 @@ class OpeningCriterionConfig:
 
 @dataclass(unsafe_hash=True)
 class OpeningByAngle(OpeningCriterionConfig):
-    theta : float = 0.85
+    theta : float = 0.8
 
     def kind_id(self) -> int:
         return 0
@@ -68,7 +68,7 @@ class PotentialField:
 @dataclass(unsafe_hash=True)
 class FMMConfig():
     # Multipole order:
-    p : int = 3
+    p : int = 4
 
     # Opening criterion
     opening : OpeningCriterionConfig = field(default_factory=OpeningByAngle)
@@ -90,7 +90,7 @@ class OldConfig():
 @dataclass(unsafe_hash=True)
 class Config():
     # Sub config objects
-    tree : TreeConfig | None = TreeConfig(mass_centered=True)
+    tree : TreeConfig | None = TreeConfig(mass_centered=False)
     fmm : FMMConfig | None = FMMConfig()
     logging : LoggingConfig = LoggingConfig()
     old : OldConfig = OldConfig()

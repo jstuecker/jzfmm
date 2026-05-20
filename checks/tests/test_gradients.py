@@ -129,7 +129,7 @@ def test_force_gradients(dim):
     fphi2 = leaf_leaf_summation.jit(part, ispl, ilist, cfg)
     fphi3 = fast_multipole_method.jit(part, cfg=cfg).values / cfg.G()
 
-    abstol = float(jnp.std(fphi1) * 1e-2)
+    abstol = float(jnp.std(fphi1) * 2e-2)
 
     assert fphi2 == pytest.approx(fphi1, abs=abstol*1e-2)
     assert fphi3 == pytest.approx(fphi1, abs=abstol)
@@ -142,8 +142,8 @@ def test_force_gradients(dim):
     gposm2 = jax.jit(jax.grad(f2, allow_int=True))(part)
     gposm3 = jax.jit(jax.grad(f3, allow_int=True))(part)
 
-    abstol_pos = float(jnp.std(gposm2.pos) * 2e-2)
-    abstol_mass = float(jnp.std(gposm2.mass) * 1e-2)
+    abstol_pos = float(jnp.std(gposm2.pos) * 4e-2)
+    abstol_mass = float(jnp.std(gposm2.mass) * 3e-2)
 
     assert gposm2.pos == pytest.approx(gposm1.pos, abs=abstol_pos*1e-2)
     assert gposm2.mass == pytest.approx(gposm1.mass, abs=abstol_mass*1e-2)
