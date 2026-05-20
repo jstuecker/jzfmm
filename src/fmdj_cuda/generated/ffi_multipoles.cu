@@ -185,7 +185,9 @@ ffi::Error TranslateLocalToLocalFFIHost(
         { {4, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<4, 2, float>) },
         { {4, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<4, 3, float>) },
         { {5, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<5, 2, float>) },
-        { {5, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<5, 3, float>) }
+        { {5, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<5, 3, float>) },
+        { {6, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<6, 2, float>) },
+        { {6, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<6, 3, float>) }
     };
 
     const TTuple key = TTuple(p, dim, tvec);
@@ -195,7 +197,7 @@ ffi::Error TranslateLocalToLocalFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p, dim, tvec)"\
             " in TranslateLocalToLocalFFIHost -- Only supporting:\n"\
-            "(1, 2, float), (1, 3, float), (2, 2, float), (2, 3, float), (3, 2, float), (3, 3, float), (4, 2, float), (4, 3, float), (5, 2, float), (5, 3, float)"
+            "(1, 2, float), (1, 3, float), (2, 2, float), (2, 3, float), (3, 2, float), (3, 3, float), (4, 2, float), (4, 3, float), (5, 2, float), (5, 3, float), (6, 2, float), (6, 3, float)"
         );
     }
     const void* instance = it->second;
@@ -289,7 +291,9 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
         { {4, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<4, 2, float>) },
         { {4, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<4, 3, float>) },
         { {5, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<5, 2, float>) },
-        { {5, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<5, 3, float>) }
+        { {5, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<5, 3, float>) },
+        { {6, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<6, 2, float>) },
+        { {6, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<6, 3, float>) }
     };
 
     const TTuple key = TTuple(p, dim, tvec);
@@ -299,7 +303,7 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p, dim, tvec)"\
             " in TranslateLocalToLocal_XVJPFFIHost -- Only supporting:\n"\
-            "(1, 2, float), (1, 3, float), (2, 2, float), (2, 3, float), (3, 2, float), (3, 3, float), (4, 2, float), (4, 3, float), (5, 2, float), (5, 3, float)"
+            "(1, 2, float), (1, 3, float), (2, 2, float), (2, 3, float), (3, 2, float), (3, 3, float), (4, 2, float), (4, 3, float), (5, 2, float), (5, 3, float), (6, 2, float), (6, 3, float)"
         );
     }
     const void* instance = it->second;

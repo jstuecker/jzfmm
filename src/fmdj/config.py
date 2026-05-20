@@ -69,6 +69,7 @@ class PotentialField:
 class FMMConfig():
     # Multipole order:
     p : int = 4
+    p_extra_m2l : int = 0
 
     # Opening criterion
     opening : OpeningCriterionConfig = field(default_factory=OpeningByAngle)

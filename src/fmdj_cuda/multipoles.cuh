@@ -440,25 +440,27 @@ __global__ void TranslateLocalToLocal_XVJP(
 /*                                         M2L Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int p, int dim, typename tvec>
+template<int p, int p_extra_m2l, int dim, typename tvec>
 __device__ __forceinline__ void m2l_translator(
     Vec<dim,tvec> dx,
     const Vec<NCOMB(p, dim),tvec>& Mp,
-    Vec<NCOMB(p, dim),tvec>& loc,
+    Vec<NCOMB(p + p_extra_m2l, dim),tvec>& loc,
     int radial_kernel_kind,
     const tvec* radial_kernel_params
 ) {
-    constexpr int ncomb = NCOMB(p, dim);
+    constexpr int p_local = p + p_extra_m2l;
+    static_assert(p_local >= 0, "p + p_extra_m2l must be non-negative");
+    constexpr int pD = p > p_local ? p : p_local;
+    constexpr int ncombD = NCOMB(pD, dim);
 
-    Vec<ncomb,tvec> Dn;
-    setupDnG<p,dim,tvec>(dx, radial_kernel_kind, radial_kernel_params, Dn);
+    Vec<ncombD,tvec> Dn;
+    setupDnG<pD,dim,tvec>(dx, radial_kernel_kind, radial_kernel_params, Dn);
 
-    for_each_multiindex<p,dim>([&](int kflat, int ksum, int (&k)[dim]) {
+    for_each_multiindex<p_local,dim>([&](int kflat, int ksum, int (&k)[dim]) {
         tvec Lnew = tvec(0);
 
-        int nflat = 0;
-        for_each_multiindex<p,dim>([&](int, int nsum, int (&n)[dim]) {
-            if(nsum <= p - ksum) {
+        for_each_multiindex<p,dim>([&](int nflat, int nsum, int (&n)[dim]) {
+            if(ksum + nsum <= pD) {
                 if constexpr (dim == 3) {
                     // This specialization helps with keeping the arrays in registers
                     // for dim = 3 and p = 5. Why? I don't know. For that case it makes
@@ -481,7 +483,6 @@ __device__ __forceinline__ void m2l_translator(
                     const tvec infvac = tvec(1) / multiindex_factorial<dim,tvec>(n);
                     Lnew += Dnk * Mpn * infvac;
                 }
-                nflat += 1;
             }
         });
 

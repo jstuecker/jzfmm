@@ -166,6 +166,7 @@ def run_benchmark(setup: str, reference: str, recompute_direct: bool = False) ->
     cfg_base.tree.mass_centered = False
     cfg_base.tree.alloc_fac_nodes = 2.0
     cfg_base.fmm.opening = OpeningByAngle()
+    cfg_base.fmm.p_extra_m2l = 1
 
     force_ref = get_force_reference(setup, reference, part, cfg_base, recompute_direct=recompute_direct)
 
@@ -182,6 +183,7 @@ def run_benchmark(setup: str, reference: str, recompute_direct: bool = False) ->
                     cfg_base.fmm,
                     p=p,
                     opening=OpeningByAngle(theta=float(theta)),
+                    p_extra_m2l=1 if p<5 else 0
                 ),
             )
             dt, force = time_fmm(part, cfg)
@@ -247,7 +249,7 @@ def plot_results(results: dict[str, np.ndarray]) -> None:
             1e3 * results["times"][ip],
             results["err_p90"][ip],
             "o-",
-            label=f"p={p}",
+            label=f"p={p}{'+1' if p < 5 else ''}",
         )
         for x, y, theta in zip(1e3 * results["times"][ip], results["err_p90"][ip], results["thetas"]):
             ax.annotate(f"{theta:.1f}", (x, y), xytext=(4, 3), textcoords="offset points", fontsize=8)

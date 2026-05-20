@@ -26,7 +26,7 @@
 
 #define ALLTHREADS 0xFFFFFFFF
 
-template<int opening_criterion_kind, int p, int dim, typename tvec>
+template<int opening_criterion_kind, int p, int p_extra_m2l, int dim, typename tvec>
 __global__ void CountInteractionsAndM2L(
     // inputs:
     const int2* node_range,
@@ -43,7 +43,10 @@ __global__ void CountInteractionsAndM2L(
     // attributes:
     int radial_kernel_kind
 ) {
-    constexpr int ncomb = NCOMB(p, dim);
+    constexpr int p_local = p + p_extra_m2l;
+    static_assert(p_local >= 0, "p + p_extra_m2l must be non-negative");
+    constexpr int ncomb_mp = NCOMB(p, dim);
+    constexpr int ncomb_loc = NCOMB(p_local, dim);
     auto opening_criterion = OpeningCriterion<opening_criterion_kind>::template make_params<tvec>(opening_criterion_params);
 
     // Node A info:
@@ -74,9 +77,9 @@ __global__ void CountInteractionsAndM2L(
             num_open[i] = 0;
         }
 
-        Vec<ncomb,tvec> LocA;
+        Vec<ncomb_loc,tvec> LocA;
         #pragma unroll
-        for(int i = 0; i < ncomb; i++) {
+        for(int i = 0; i < ncomb_loc; i++) {
             LocA[i] = tvec(0);
         }
 
@@ -84,7 +87,7 @@ __global__ void CountInteractionsAndM2L(
         // Todo: BLOCKSIZE does not need to be a compile time constant here.
         //       Make it more flexible! (Need to adapt the warp communication scheme below though!)
         __shared__ Vec<dim,tvec> posB[BLOCKSIZE];
-        __shared__ Vec<ncomb,tvec> mpB[BLOCKSIZE];
+        __shared__ Vec<ncomb_mp,tvec> mpB[BLOCKSIZE];
         
         // Interaction list info:
         int2 ilist_range = {spl_ilist[nodeid], spl_ilist[nodeid + 1]};
@@ -156,8 +159,8 @@ __global__ void CountInteractionsAndM2L(
             // only read the multipoles if at least one interaction happens with this childB
             if(any_interacts) {
                 posB[threadIdx.x] = childB_ext.center;
-                for(int k=0; k<ncomb; k++) {
-                    mpB[threadIdx.x][k] = mp_values[id * ncomb + k];
+                for(int k=0; k<ncomb_mp; k++) {
+                    mpB[threadIdx.x][k] = mp_values[id * ncomb_mp + k];
                 }
             }
 
@@ -179,7 +182,7 @@ __global__ void CountInteractionsAndM2L(
                     // To be sure about this, for now invalidate multipoles
                     // later I can delete this part of the code
                     #pragma unroll
-                    for(int k = 0; k < ncomb; k++) {
+                    for(int k = 0; k < ncomb_loc; k++) {
                         LocA[k] = NAN;
                     }
 
@@ -188,7 +191,7 @@ __global__ void CountInteractionsAndM2L(
 
                 Vec<dim,tvec> dx = posB[b_read] - xaWrite;
 
-                m2l_translator<p,dim,tvec>(dx, mpB[b_read], LocA, radial_kernel_kind, radial_kernel_params);
+                m2l_translator<p,p_extra_m2l,dim,tvec>(dx, mpB[b_read], LocA, radial_kernel_kind, radial_kernel_params);
             }
         }
 
@@ -204,10 +207,10 @@ __global__ void CountInteractionsAndM2L(
         }
 
         #pragma unroll
-        for(int i = 0; i < ncomb; i++) {
+        for(int i = 0; i < ncomb_loc; i++) {
             // now atomically add the results
             // note: we can easily avoid the atomic here -- change that later!
-            int iout = (offsetA + a_write) * ncomb + i;
+            int iout = (offsetA + a_write) * ncomb_loc + i;
             atomicAdd(&loc_out[iout], LocA[i]);
         }
         __syncthreads();

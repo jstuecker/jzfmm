@@ -9,6 +9,8 @@ dimensions = (2,3)
 # float_types = ("float", "double")
 float_types = ("float",) # by default don't compile double for now... doubles compilation time...
 p_instance_values = (1, 2, 3, 4, 5)
+p_l2l_instance_values = (1, 2, 3, 4, 5, 6)
+p_extra_m2l_instance_values = (0, 1)
 radial_kernel_instance_values = (0, 1)
 opening_criterion_instance_values = (0,)
 default_includes = ["../common/math.cuh"]
@@ -74,6 +76,7 @@ kernels["CountInteractionsAndM2L"].grid_size_expression = "spl_nodes.element_cou
 kernels["CountInteractionsAndM2L"].init_outputs_zero = True
 kernels["CountInteractionsAndM2L"].block_size_expression = 32
 kernels["CountInteractionsAndM2L"].template_par["p"].instances = p_instance_values
+kernels["CountInteractionsAndM2L"].template_par["p_extra_m2l"].instances = p_extra_m2l_instance_values
 kernels["CountInteractionsAndM2L"].template_par["opening_criterion_kind"].instances = opening_criterion_instance_values
 kernels["CountInteractionsAndM2L"].template_par["dim"].instances = dimensions
 kernels["CountInteractionsAndM2L"].template_par["dim"].expression = "children.dimensions()[1] - 1"
@@ -102,8 +105,9 @@ kernels = parse.get_functions_from_file(
     only_kernels=True
 )
 
-for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
-    kernels[kname].template_par["p"].instances = p_instance_values
+kernels["SummarizeMultipoles"].template_par["p"].instances = p_instance_values
+for kname in ("TranslateLocalToLocal", "TranslateLocalToLocal_XVJP"):
+    kernels[kname].template_par["p"].instances = p_l2l_instance_values
 
 for kname in ("TranslateLocalToLocal",):
     kernels[kname].init_outputs_zero = True

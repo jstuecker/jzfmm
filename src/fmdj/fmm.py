@@ -3,6 +3,7 @@ from functools import partial
 import numpy as np
 import jax
 import jax.numpy as jnp
+import warnings
 from dataclasses import dataclass, field
 
 
@@ -12,7 +13,7 @@ from jztree.jax_ext import raise_if
 
 from .config import Config
 from .data import LocalExpansion
-from .multipoles import _fmm_node_to_child, build_multipole_hierarchy, local_readout_pos_vjp, p_of_num_multi, shift_local_to_children_vjp_x
+from .multipoles import _fmm_node_to_child, build_multipole_hierarchy, local_readout_pos_vjp, num_multi, p_of_num_multi, shift_local_to_children_vjp_x
 
 import fmdj_cuda.ffi_fmm as ffi_fmm
 import fmdj_cuda.ffi_forces as ffi_forces
@@ -57,6 +58,15 @@ def _fmm_node_to_node(
     size = len(child_data.poslvl.pos)
     ilist_alloc_size = cfg.fmm.ilist_alloc_fac * size
     kernel = cfg.kernel
+    dim = child_data.poslvl.pos.shape[-1]
+
+    if cfg.fmm.p == 5 and cfg.fmm.p_extra_m2l == 1 and dim == 3:
+        warnings.warn(
+            "FMMConfig(p=5, p_extra_m2l=1) currently makes the CUDA M2L kernel use local memory "
+            "for large per-thread work arrays and can be much slower than nearby configurations.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     assert ilist_alloc_size < 2**31, "So far only int32 supported {ilist_alloc_size/2**31}"
     assert len(spl) == len(node_ilist.ispl)
@@ -69,7 +79,9 @@ def _fmm_node_to_node(
     kernel_params = kernel.params(dtype=dtype)
     opening = cfg.fmm.opening
     opening_params = opening.params(dtype=dtype)
-    out_loc = jax.ShapeDtypeStruct(child_data.mp.shape, dtype)
+    p_local = cfg.fmm.p + cfg.fmm.p_extra_m2l
+    assert p_local >= 0, "p + p_extra_m2l must be non-negative"
+    out_loc = jax.ShapeDtypeStruct((size, num_multi(p_local, dim=dim)), dtype)
     out_interaction_count = jax.ShapeDtypeStruct((size,), jnp.int32)
     
     # Count opened interactions and evaluate M2L
@@ -79,6 +91,7 @@ def _fmm_node_to_node(
     )(
         node_range, spl, node_ilist.ispl, node_ilist.isrc, children, child_data.mp, kernel_params, opening_params,
         p=np.int32(cfg.fmm.p),
+        p_extra_m2l=np.int32(cfg.fmm.p_extra_m2l),
         radial_kernel_kind=np.int32(kernel.kind_id()),
         opening_criterion_kind=np.int32(opening.kind_id()),
     )
@@ -116,7 +129,9 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
         th.num(th.num_planes()-1), size_ilist=int(size*cfg.fmm.ilist_alloc_fac), ngroup=32, size_super=size
     )
 
-    loc = jnp.zeros((size, mph.data.shape[-1]), dtype=mph.data.dtype)
+    p_local = cfg.fmm.p + cfg.fmm.p_extra_m2l
+    assert p_local >= 0, "p + p_extra_m2l must be non-negative"
+    loc = jnp.zeros((size, num_multi(p_local, dim=dim)), dtype=mph.data.dtype)
 
     # Add super node data into tree information
     spl_n2n = th.ispl_n2n.append(spl, nsup+1, fill_value=spl[-1], resize=True)
@@ -292,6 +307,10 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg: Config) ->
         return (loc_part, ilist), (pos, mp, ispl, xnode, loc_node)
     
     def eval_bwd(pout, res, grads):
+        assert cfg.fmm.p_extra_m2l == 0, (
+            "Differentiating through p_extra_m2l != 0 is not supported yet. "
+            "The forward pass supports boosted M2L locals, but the rectangular M2L adjoint still needs to be added."
+        )
         pos, mp, ispl, xnode, loc_node = res
         gloc = grads[0]
 

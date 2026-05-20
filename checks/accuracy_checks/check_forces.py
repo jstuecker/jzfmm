@@ -13,7 +13,8 @@ part = gaussian_blob(N=int(512*1024), scale=1.0, mass=1.)
 
 cfg = Config(kernel=PlummerKernel(softening=1e-2))
 cfg.fmm.kahan_summation = True
-cfg.tree.mass_centered = True
+cfg.fmm.p_extra_m2l = 1
+# cfg.tree.mass_centered = True
 
 def rerr_force(a: LocalExpansion, b: LocalExpansion):
     return jnp.linalg.norm(a.force() - b.force(), axis=-1)/jnp.linalg.norm(b.force(), axis=-1)
