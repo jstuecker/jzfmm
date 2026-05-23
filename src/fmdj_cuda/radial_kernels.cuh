@@ -45,7 +45,7 @@ struct RadialKernel<RADIAL_KERNEL_PLUMMER> {
 
     template<typename tvec>
     __device__ __forceinline__ static tvec self_value(Params<tvec> params) {
-        return tvec(1) / params.softening;
+        return -tvec(1) / params.softening;
     }
 
     template<int p, typename tvec>
@@ -55,10 +55,10 @@ struct RadialKernel<RADIAL_KERNEL_PLUMMER> {
         Vec<p+1,tvec>& coeffs
     ) {
         // coeffs[n] = ((1/r) d/dr)^n K(r) = 2^n d^n K / d(r^2)^n
-        // for the Plummer-softened radial kernel K(r) = 1 / sqrt(r^2 + eps^2).
+        // for the Plummer-softened radial kernel K(r) = -1 / sqrt(r^2 + eps^2).
         tvec rinv = radial_kernel_rsqrt(r2 + params.softening2);
         tvec rinv2 = rinv * rinv;
-        coeffs[0] = rinv;
+        coeffs[0] = -rinv;
 
         #pragma unroll
         for(int n = 1; n <= p; n++) {
@@ -84,7 +84,7 @@ struct RadialKernel<RADIAL_KERNEL_QUARTIC_PLUMMER> {
 
     template<typename tvec>
     __device__ __forceinline__ static tvec self_value(Params<tvec> params) {
-        return tvec(1) / params.softening;
+        return -tvec(1) / params.softening;
     }
 
     template<int p, typename tvec>
@@ -94,7 +94,7 @@ struct RadialKernel<RADIAL_KERNEL_QUARTIC_PLUMMER> {
         Vec<p+1,tvec>& coeffs
     ) {
         // coeffs[n] = ((1/r) d/dr)^n K(r) = 2^n d^n K / d(r^2)^n
-        // for the quartic Plummer kernel K(r) = 1 / (r^4 + eps^4)^(1/4).
+        // for the quartic Plummer kernel K(r) = -1 / (r^4 + eps^4)^(1/4).
         const tvec q = r2*r2 + params.softening4;
         const tvec qinv = tvec(1) / q;
 
@@ -119,7 +119,7 @@ struct RadialKernel<RADIAL_KERNEL_QUARTIC_PLUMMER> {
                 }
                 r2pow *= r2;
             }
-            coeffs[n] = pval * scale;
+            coeffs[n] = -pval * scale;
 
             if(n < p) {
                 tvec next[p + 2];

@@ -27,7 +27,7 @@ __forceinline__ __device__ PosMass<dim,tvec> zero_pos_mass() {
 }
 
 template<int radial_kernel_kind, int dim, typename tvec>
-__forceinline__ __device__ LocalExp<dim,tvec> GetForceAndPot(
+__forceinline__ __device__ LocalExp<dim,tvec> EvaluatePairInteraction(
     PosMass<dim,tvec> xmi,
     PosMass<dim,tvec> xmj,
     typename RadialKernel<radial_kernel_kind>::template Params<tvec> radial_kernel
@@ -39,8 +39,8 @@ __forceinline__ __device__ LocalExp<dim,tvec> GetForceAndPot(
     RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<1,tvec>(r2, radial_kernel, coeffs);
 
     LocalExp<dim,tvec> loc;
-    loc.pot = -xmj.mass * coeffs[0];
-    loc.grad = (xmj.mass * coeffs[1]) * dx;
+    loc.pot = xmj.mass * coeffs[0];
+    loc.grad = -(xmj.mass * coeffs[1]) * dx;
 
     return loc;
 }
@@ -69,8 +69,8 @@ __forceinline__ __device__ PosMass<dim,tvec> VJP_GFPhiToGXM(
 
     PosMass<dim,tvec> gxmi;
 
-    gxmi.pos = f1 * gm_diff + fgdiff * dx;
-    gxmi.mass = - f1 * dx.dot(gj.grad) - K * gj.pot;
+    gxmi.pos = tvec(-1) * (f1 * gm_diff + fgdiff * dx);
+    gxmi.mass = f1 * dx.dot(gj.grad) + K * gj.pot;
 
     return gxmi;
 }
@@ -109,12 +109,12 @@ __global__ void DirectSummation(
         __syncthreads();
 
         for (int j = 0; j < num; j++) {
-            LocalExp<dim,tvec> loc_new = GetForceAndPot<radial_kernel_kind,dim,tvec>(xmi, xmj_shared[j], radial_kernel);
+            LocalExp<dim,tvec> loc_new = EvaluatePairInteraction<radial_kernel_kind,dim,tvec>(xmi, xmj_shared[j], radial_kernel);
             kahan_add_vec(loc_i.asvec, loc_new.asvec, loc_kahan.asvec);
         }
     }
 
-    loc_i.pot += xmi.mass * RadialKernel<radial_kernel_kind>::self_value(radial_kernel); // remove self-interaction from potential
+    loc_i.pot -= xmi.mass * RadialKernel<radial_kernel_kind>::self_value(radial_kernel); // remove self-interaction from potential
 
     if(ipart < n)
         loc_out[blockIdx.x * blockDim.x + threadIdx.x] = loc_i;
@@ -239,7 +239,7 @@ __global__ void LeafLeafSummation(
 
         // Now compute interactions
         for(int ib=read_b_offset; ib < seg_mgr.num_loaded; ib += n_write) {
-            LocalExp<dim,tvec> loc_new = GetForceAndPot<radial_kernel_kind,dim,tvec>(xaWrite, xm_b[ib], radial_kernel);
+            LocalExp<dim,tvec> loc_new = EvaluatePairInteraction<radial_kernel_kind,dim,tvec>(xaWrite, xm_b[ib], radial_kernel);
             add_vec<kahan>(loc_a.asvec, loc_new.asvec, loc_a_kahan.asvec);
         }
         __syncthreads();

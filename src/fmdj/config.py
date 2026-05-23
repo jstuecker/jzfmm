@@ -24,7 +24,7 @@ class PlummerKernel(KernelConfig):
         return jnp.asarray([self.softening], dtype=dtype)
 
     def self_value(self) -> float:
-        return 1.0 / self.softening
+        return -1.0 / self.softening
 
 @dataclass(unsafe_hash=True)
 class QuarticPlummerKernel(KernelConfig):
@@ -37,7 +37,7 @@ class QuarticPlummerKernel(KernelConfig):
         return jnp.asarray([self.softening], dtype=dtype)
 
     def self_value(self) -> float:
-        return 1.0 / self.softening
+        return -1.0 / self.softening
 
 @dataclass(unsafe_hash=True)
 class OpeningCriterionConfig:

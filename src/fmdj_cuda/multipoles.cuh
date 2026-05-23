@@ -486,7 +486,7 @@ __device__ __forceinline__ void m2l_translator(
             }
         });
 
-        const tvec sign = ksum % 2 == 0 ? tvec(-1) : tvec(1);
+        const tvec sign = ksum % 2 == 0 ? tvec(1) : tvec(-1);
         tvec fac;
         if constexpr (dim == 3)
             fac = sign / tvec(fact3f(k[0], k[1], k[2]));

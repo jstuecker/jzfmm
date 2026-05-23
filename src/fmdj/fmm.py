@@ -191,7 +191,7 @@ def leaf_leaf_summation(particles: PosMass, ispl: jax.Array, ilist: InteractionL
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
-        loc = loc.at[...,0].add(particles.mass*kernel.self_value()) # Remove self-interaction from potential
+        loc = loc.at[...,0].add(-particles.mass*kernel.self_value()) # Remove self-interaction from potential
         return loc
     
     def eval_fwd(particles, ispl, ilist):
