@@ -8,6 +8,7 @@
 static constexpr int RADIAL_KERNEL_PLUMMER = 0;
 static constexpr int RADIAL_KERNEL_QUARTIC_PLUMMER = 1;
 static constexpr int RADIAL_KERNEL_PLUMMER_2D = 2;
+static constexpr int RADIAL_KERNEL_SOFTENED_DISTANCE = 3;
 
 template<int radial_kernel_kind>
 struct RadialKernel;
@@ -199,6 +200,49 @@ struct RadialKernel<RADIAL_KERNEL_PLUMMER_2D> {
     }
 };
 
+template<>
+struct RadialKernel<RADIAL_KERNEL_SOFTENED_DISTANCE> {
+    template<typename tvec>
+    struct Params {
+        tvec softening;
+        tvec softening2;
+    };
+
+    template<typename tvec>
+    __device__ __forceinline__ static Params<tvec> make_params(const tvec* params) {
+        const tvec softening = params[0];
+        return Params<tvec>{softening, softening * softening};
+    }
+
+    template<typename tvec>
+    __device__ __forceinline__ static tvec self_value(Params<tvec> params) {
+        return params.softening;
+    }
+
+    template<int p, typename tvec>
+    __device__ __forceinline__ static void r2_derivative_coeffs(
+        tvec r2,
+        Params<tvec> params,
+        Vec<p+1,tvec>& coeffs
+    ) {
+        // Softened distance kernel K(r) = sqrt(r^2 + eps^2).
+        // coeffs[n] = ((1/r) d/dr)^n K(r) = 2^n d^n K / d(r^2)^n.
+        const tvec rsoft = radial_kernel_sqrt(r2 + params.softening2);
+        coeffs[0] = rsoft;
+
+        if constexpr (p >= 1) {
+            const tvec rinv = tvec(1) / rsoft;
+            const tvec rinv2 = rinv * rinv;
+            coeffs[1] = rinv;
+
+            #pragma unroll
+            for(int n = 2; n <= p; n++) {
+                coeffs[n] = -tvec(2*n - 3) * coeffs[n - 1] * rinv2;
+            }
+        }
+    }
+};
+
 template<int p, typename tvec>
 __device__ __forceinline__ void evaluate_radial_kernel_derivatives(
     int radial_kernel_kind,
@@ -207,6 +251,13 @@ __device__ __forceinline__ void evaluate_radial_kernel_derivatives(
     Vec<p+1,tvec>& coeffs
 ) {
     switch(radial_kernel_kind) {
+        case RADIAL_KERNEL_SOFTENED_DISTANCE: {
+            auto kernel_params = RadialKernel<RADIAL_KERNEL_SOFTENED_DISTANCE>::template make_params<tvec>(params);
+            RadialKernel<RADIAL_KERNEL_SOFTENED_DISTANCE>::template r2_derivative_coeffs<p,tvec>(
+                r2, kernel_params, coeffs
+            );
+            break;
+        }
         case RADIAL_KERNEL_PLUMMER_2D: {
             auto kernel_params = RadialKernel<RADIAL_KERNEL_PLUMMER_2D>::template make_params<tvec>(params);
             RadialKernel<RADIAL_KERNEL_PLUMMER_2D>::template r2_derivative_coeffs<p,tvec>(

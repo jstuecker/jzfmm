@@ -5,6 +5,10 @@ import jax.numpy as jnp
 
 from jztree.config import TreeConfig, LoggingConfig
 
+# ------------------------------------------------------------------------------------------------ #
+#                                              Kernels                                             #
+# ------------------------------------------------------------------------------------------------ #
+
 @dataclass(unsafe_hash=True)
 class KernelConfig:
     def kind_id(self) -> int:
@@ -16,6 +20,8 @@ class KernelConfig:
 
 @dataclass(unsafe_hash=True)
 class PlummerKernel(KernelConfig):
+    """K(r) = -1 / sqrt(r^2 + eps^2)."""
+
     softening : float = 1e-3
 
     def kind_id(self) -> int:
@@ -29,6 +35,8 @@ class PlummerKernel(KernelConfig):
 
 @dataclass(unsafe_hash=True)
 class QuarticPlummerKernel(KernelConfig):
+    """K(r) = -1 / (r^4 + eps^4)^(1/4)."""
+
     softening : float = 1e-3
 
     def kind_id(self) -> int:
@@ -42,6 +50,8 @@ class QuarticPlummerKernel(KernelConfig):
 
 @dataclass(unsafe_hash=True)
 class Plummer2DKernel(KernelConfig):
+    """K(r) = 0.5 * log(r^2 + eps^2)."""
+
     softening : float = 1e-3
 
     def kind_id(self) -> int:
@@ -52,6 +62,25 @@ class Plummer2DKernel(KernelConfig):
 
     def self_value(self) -> float:
         return math.log(self.softening)
+
+@dataclass(unsafe_hash=True)
+class SoftenedDistanceKernel(KernelConfig):
+    """K(r) = sqrt(r^2 + eps^2)."""
+
+    softening : float = 1e-3
+
+    def kind_id(self) -> int:
+        return 3
+
+    def params(self, dtype=jnp.float32) -> jax.Array:
+        return jnp.asarray([self.softening], dtype=dtype)
+
+    def self_value(self) -> float:
+        return self.softening
+
+# ------------------------------------------------------------------------------------------------ #
+#                                              Opening                                             #
+# ------------------------------------------------------------------------------------------------ #
 
 @dataclass(unsafe_hash=True)
 class OpeningCriterionConfig:
@@ -78,6 +107,10 @@ class PotentialField:
     def acceleration(self, x, t=0., cfg=None):
         """External acceleration field, calculated through autodiff"""
         return -jax.grad(lambda x: jnp.sum(self.potential(x, t=t, cfg=cfg)))(x)
+
+# ------------------------------------------------------------------------------------------------ #
+#                                                FMM                                               #
+# ------------------------------------------------------------------------------------------------ #
 
 @dataclass(unsafe_hash=True)
 class FMMConfig():

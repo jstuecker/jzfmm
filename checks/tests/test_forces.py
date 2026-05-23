@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from jztree_utils import ics
 
-from fmdj.config import Config, FMMConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel, Plummer2DKernel
+from fmdj.config import Config, FMMConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel, Plummer2DKernel, SoftenedDistanceKernel
 from fmdj.fmm import direct_summation, fast_multipole_method
 
 
@@ -48,7 +48,7 @@ def test_dim(dim):
     assert jnp.median(ferr_rel) <= 8.*10**-(p+1)
     assert jnp.max(ferr_rel) <= 9.*10**-(p-1)
 
-def test_softening_kernels():
+def test_gravity3d_kernels():
     cfg_plummer = Config(
         kernel=PlummerKernel(softening=1e-3),
         fmm=FMMConfig(p=3, opening=OpeningByAngle(theta=0.4), kahan_summation=True),
@@ -70,9 +70,13 @@ def test_softening_kernels():
     assert jnp.max(ferr_rel) <= 5e-2
 
 
-def test_plummer_2d_kernel():
+@pytest.mark.parametrize("kernel", [
+    Plummer2DKernel(softening=0.05),
+    SoftenedDistanceKernel(softening=0.05),
+])
+def test_other_kernels(kernel):
     cfg = Config(
-        kernel=Plummer2DKernel(softening=0.05),
+        kernel=kernel,
         fmm=FMMConfig(p=4, opening=OpeningByAngle(theta=0.4), kahan_summation=True),
     )
 
