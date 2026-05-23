@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import math
 import numpy as np
 from jztree.data import PackedArray, TreeHierarchy
+from jztree.jax_ext import pcast_like
 from .config import Config
 
 import fmdj_cuda.ffi_multipoles as ffi_multipoles
@@ -159,7 +160,7 @@ def _shift_local_to_children_impl(
         ispl, loc, xnode, xchild,
         p=np.int32(p), pout=np.int32(pout), block_size=np.uint64(block_size)
     )[0]
-    return locnew
+    return pcast_like(locnew, xchild)
 
 def shift_local_to_children_vjp_x(
         ispl: jnp.array,
@@ -185,7 +186,7 @@ def shift_local_to_children_vjp_x(
         ispl, loc, xnode, xchild, gloc_child,
         p=np.int32(p), pout=np.int32(pout), block_size=np.uint64(block_size)
     )[0]
-    return locnew
+    return pcast_like(locnew, xchild)
 
 def _fmm_node_to_child(
         ispl: jnp.array,

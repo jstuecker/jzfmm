@@ -293,8 +293,16 @@ def leaf_leaf_summation(
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
-        gposm = pcast_like(gposm, spl_recv)
-        return PosMass(pos=gposm[:,:dim], mass=gposm[:,dim]), None, None
+        gpos = pcast_like(gposm[:,:dim], particles_recv.pos)
+        gmass = pcast_like(gposm[:,dim], particles_recv.mass)
+        gnum = None
+        if particles_recv.num is not None:
+            gnum = jnp.zeros_like(particles_recv.num, dtype=jax.dtypes.float0)
+
+        gposm = PosMass(
+            pos=gpos, mass=gmass, num=gnum, num_total=particles_recv.num_total
+        )
+        return gposm, None, None
     
     eval.defvjp(eval_fwd, eval_bwd)
 
