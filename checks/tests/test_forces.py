@@ -91,6 +91,24 @@ def test_other_kernels(kernel):
     assert jnp.median(ferr_rel) <= 2e-4
     assert jnp.max(ferr_rel) <= 5e-2
 
+def test_fmm_result_keys():
+    cfg = Config(
+        kernel=PlummerKernel(softening=0.05),
+        fmm=FMMConfig(p=3, opening=OpeningByAngle(theta=0.4), kahan_summation=True),
+    )
+    part = ics.uniform_particles(2048)
+
+    loc, partz, locz, th = fast_multipole_method.jit(
+        part, cfg=cfg, result="loc_partz_locz_tree"
+    )
+    locz_from_tree = fast_multipole_method.jit(partz, cfg=cfg, th=th, result="locz")
+
+    assert locz_from_tree.values == pytest.approx(locz.values)
+    assert sorted(loc.potential().tolist()) == pytest.approx(sorted(locz.potential().tolist()))
+
+    with pytest.raises(ValueError, match="result='loc'"):
+        fast_multipole_method(partz, cfg=cfg, th=th, result="loc")
+
 
 def test_fmm_reproducibility():
     cfg = Config()

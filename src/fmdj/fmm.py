@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 
 from jztree.data import PosMass, InteractionList, get_pos_mass, TreeHierarchy, PosLvl, PackedArray
-from jztree.tree import zsort, build_tree_hierarchy, grouped_dense_interaction_list
+from jztree.tree import grouped_dense_interaction_list, zsort_and_tree
 from jztree.jax_ext import raise_if
 
 from .config import Config
@@ -335,13 +335,8 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg: Config) ->
     return eval(partz.pos, jnp.reshape(partz.mass, jnp.shape(partz.mass) + (1,)))
 evaluate_node_node_fmm.jit = jax.jit(evaluate_node_node_fmm, static_argnames=['cfg', ])
 
-def fast_multipole_method_z(partz: PosMass, *, mpz: jax.Array | None = None, cfg: Config, pout: int = 1) -> LocalExpansion:
+def _fast_multipole_method_z(partz: PosMass, th: TreeHierarchy, *, cfg: Config, pout: int = 1) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
-
-    if mpz is None:
-        mpz = partz.mass
-
-    th = build_tree_hierarchy(jax.lax.stop_gradient(partz), cfg.tree)
 
     loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg=cfg)
     spl = th.splits_leaf_to_part()
@@ -350,19 +345,63 @@ def fast_multipole_method_z(partz: PosMass, *, mpz: jax.Array | None = None, cfg
     loc = loc_leaf_leaf + loc_node_node
 
     return LocalExpansion(loc * cfg.G(), dim=partz.pos.shape[-1])
-fast_multipole_method_z.jit = jax.jit(fast_multipole_method_z, static_argnames=("cfg", "pout"))
+_fast_multipole_method_z.jit = jax.jit(_fast_multipole_method_z, static_argnames=("cfg", "pout"))
 
-def fast_multipole_method(part: PosMass, *, cfg: Config, pout: int = 1) -> LocalExpansion:
+def _parse_fmm_result(result: str) -> Tuple[str, ...]:
+    keys = tuple(result.split("_"))
+    valid = {"loc", "locz", "partz", "tree"}
+    unknown = set(keys) - valid
+    if unknown:
+        raise ValueError(f"Unknown FMM result key(s): {sorted(unknown)}. Valid keys are {sorted(valid)}.")
+    return keys
+
+def _as_posmass(part) -> PosMass:
+    return PosMass(
+        pos=part.pos, mass=part.mass,
+        num=getattr(part, "num", None),
+        num_total=getattr(part, "num_total", None)
+    )
+
+def fast_multipole_method(
+        part: PosMass, *, cfg: Config, th: TreeHierarchy | None = None,
+        result: str = "loc", pout: int = 1
+    ) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
+    keys = _parse_fmm_result(result)
 
-    partz, isortz = zsort(PosMass(pos=part.pos, mass=part.mass))
+    if th is None:
+        ids = jnp.arange(part.pos.shape[0], dtype=jnp.int32)
+        partz, dataz, th = zsort_and_tree(
+            part, cfg.tree, data=ids
+        )
+        ids_z = dataz
+    elif "loc" in keys:
+        raise ValueError(
+            "result='loc' is only available when fast_multipole_method builds the tree. "
+            "Use result='locz' when providing a tree."
+        )
+    else:
+        partz = part
+        ids_z = None
 
-    locz = fast_multipole_method_z(partz, cfg=cfg, pout=pout)
+    locz = None
+    if ("loc" in keys) or ("locz" in keys):
+        locz = _fast_multipole_method_z(_as_posmass(partz), th, cfg=cfg, pout=pout)
 
-    inv_sort = jnp.zeros_like(isortz).at[isortz].set(jnp.arange(len(isortz), dtype=isortz.dtype))
+    loc = None
+    if "loc" in keys:
+        inv_sort = jnp.zeros_like(ids_z).at[ids_z].set(jnp.arange(len(ids_z), dtype=ids_z.dtype))
+        loc = LocalExpansion(locz.values[inv_sort], dim=part.pos.shape[-1])
 
-    return LocalExpansion(locz.values[inv_sort], dim=part.pos.shape[-1])
-fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg", "pout"))
+    out = {
+        "loc": loc,
+        "locz": locz,
+        "partz": partz,
+        "tree": th,
+    }
+    res = tuple(out[key] for key in keys)
+    return res[0] if len(res) == 1 else res
+fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg", "result", "pout"))
 
 def force_and_potential(p: PosMass, cfg : Config) -> LocalExpansion:
     if cfg.fmm is None:
