@@ -128,20 +128,12 @@ class FMMConfig():
     kahan_summation : bool = False
 
 
-class OldConfig():
-    interact_unroll: int | bool = False
-
-    # Memory parameters
-    ilist_chunk_fac : float = 4.0  # For ilist evaluation. Will improve this parameter later
-    ilist_max_mb : int = 1024      # Maximum memory for ilist evaluation in MB
-
 @dataclass(unsafe_hash=True)
 class Config():
     # Sub config objects
     tree : TreeConfig | None = TreeConfig(mass_centered=False)
     fmm : FMMConfig | None = FMMConfig()
     logging : LoggingConfig = LoggingConfig()
-    old : OldConfig = OldConfig()
 
     # flexible objects
     external_potential : PotentialField | None = None
