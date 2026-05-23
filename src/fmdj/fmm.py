@@ -223,62 +223,81 @@ def leaf_leaf_summation(
         ispl: jax.Array,
         ilist: InteractionList,
         cfg: Config = None,
-        particles_src: PosMass | None = None,
-        spl_src: jax.Array | None = None,
     ) -> jax.Array:
     particles_recv = particles
     spl_recv = ispl
-    if particles_src is None:
-        particles_src = particles_recv
-    if spl_src is None:
-        spl_src = spl_recv
+    in_smap = in_shard_map_context()
+    if in_smap:
+        rank, _, axis_name = get_rank_info()
 
     block_size = 128
     assert cfg.tree.max_leaf_size <= block_size
-    assert len(spl_recv) == len(ilist.ispl)
     dim = particles_recv.pos.shape[-1]
 
     node_range = jnp.array([0, spl_recv.size-1], dtype=jnp.int32)
     posm_recv = get_pos_mass(particles_recv)
-    posm_src = get_pos_mass(particles_src)
     out_type = jax.ShapeDtypeStruct((particles_recv.pos.shape[0], dim + 1), posm_recv.dtype)
     kernel = cfg.kernel
     kernel_params = kernel.params(dtype=posm_recv.dtype)
 
-    @jax.custom_vjp
-    def eval(particles_recv, spl_recv, ilist, particles_src, spl_src):
+    def eval_fwd(particles_recv, spl_recv, ilist):
+        if in_smap:
+            particles_src, spl_src, _dev_spl_src = all_to_all_request_children(
+                ilist.dev_spl, ilist.ids, spl_recv, particles_recv,
+                axis_name=axis_name,
+                err_hint_parent="\nHint: increase alloc_fac_nodes.",
+                err_hint_child="\nHint: increase padding."
+            )
+            ilist = ilist.without_remote_query_points(rank)
+        else:
+            particles_src, spl_src = particles_recv, spl_recv
+
         loc = jax.ffi.ffi_call("LeafLeafPairSummation", (out_type,))(
             node_range, spl_recv, spl_src, ilist.ispl, ilist.isrc,
             get_pos_mass(particles_recv), get_pos_mass(particles_src), kernel_params,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
+        loc = pcast_like(loc, spl_recv)
         loc = loc.at[...,0].add(-particles_recv.mass*kernel.self_value()) # Remove self-interaction from potential
         num = getattr(particles_recv, "num", None)
         if num is not None:
             valid = jnp.arange(loc.shape[0]) < num
             loc = jnp.where(valid[:, None], loc, jnp.nan)
-        return loc
-    
-    def eval_fwd(particles_recv, spl_recv, ilist, particles_src, spl_src):
-        return eval(particles_recv, spl_recv, ilist, particles_src, spl_src), (
-            particles_recv, spl_recv, ilist, particles_src, spl_src
-        )
+        return loc, (particles_recv, spl_recv, ilist, particles_src, spl_src)
+
+    @jax.custom_vjp
+    def eval(particles_recv, spl_recv, ilist):
+        return eval_fwd(particles_recv, spl_recv, ilist)[0]
     
     def eval_bwd(res, gloc):
         particles_recv, spl_recv, ilist, particles_src, spl_src = res
+        if in_smap:
+            gloc_src, _, _ = all_to_all_request_children(
+                ilist.dev_spl, ilist.ids, spl_recv, gloc,
+                output=jnp.zeros((particles_src.pos.shape[0], gloc.shape[1]), dtype=gloc.dtype),
+                axis_name=axis_name,
+                err_hint_parent="\nHint: increase alloc_fac_nodes",
+                err_hint_child="\nHint: increase padding."
+            )
+        else:
+            gloc_src = gloc
+
+        # The globally symmetric leaf interaction list lets each owner compute its particle
+        # gradients in one pass by requesting source particles and source cotangents.
         gposm = jax.ffi.ffi_call("BwdLeafLeafPairSummation", (out_type,))(
             node_range, spl_recv, spl_src, ilist.ispl, ilist.isrc,
             get_pos_mass(particles_recv), get_pos_mass(particles_src),
-            kernel_params, gloc, gloc,
+            kernel_params, gloc, gloc_src,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
-        return PosMass(pos=gposm[:,:dim], mass=gposm[:,dim]), None, None, None, None
+        gposm = pcast_like(gposm, spl_recv)
+        return PosMass(pos=gposm[:,:dim], mass=gposm[:,dim]), None, None
     
     eval.defvjp(eval_fwd, eval_bwd)
 
-    return eval(particles_recv, spl_recv, ilist, particles_src, spl_src)
+    return eval(particles_recv, spl_recv, ilist)
 leaf_leaf_summation.jit = jax.jit(leaf_leaf_summation, static_argnames=['cfg'])
 
 
