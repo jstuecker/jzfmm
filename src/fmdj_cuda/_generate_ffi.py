@@ -24,44 +24,44 @@ def dtype_size_expression(buf_from):
     return f"({buf_from}.element_type() == DT::F64 ? sizeof(double) : sizeof(float))"
 
 # ------------------------------------------------------------------------------------------------ #
-#                                            forces.cuh                                            #
+#                                        pair_summation.cuh                                       #
 # ------------------------------------------------------------------------------------------------ #
 
 kernels = parse.get_functions_from_file(
-    str(HERE / "forces.cuh"), 
+    str(HERE / "pair_summation.cuh"), 
     only_kernels=True
 )
 
-kernels["LeafLeafSummation"].grid_size_expression = "spl_nodes.element_count() - 1"
-kernels["LeafLeafSummation"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('posm')}"
+kernels["LeafLeafPairSummation"].grid_size_expression = "spl_nodes.element_count() - 1"
+kernels["LeafLeafPairSummation"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('posm')}"
 
-kernels["BwdLeafLeafSummation"].grid_size_expression = "spl_nodes.element_count() - 1"
-kernels["BwdLeafLeafSummation"].smem_size_expression = f"2 * blockDim.x * (dim + 1) * {dtype_size_expression('posm')}"
+kernels["BwdLeafLeafPairSummation"].grid_size_expression = "spl_nodes.element_count() - 1"
+kernels["BwdLeafLeafPairSummation"].smem_size_expression = f"2 * blockDim.x * (dim + 1) * {dtype_size_expression('posm')}"
 
-kernels["DirectSummation"].grid_size_expression = "div_ceil(xm.dimensions()[0], block_size)"
-kernels["DirectSummation"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('xm')}"
-kernels["DirectSummation"].par["n"].expression = "xm.dimensions()[0]"
+kernels["DirectPairSummation"].grid_size_expression = "div_ceil(xm.dimensions()[0], block_size)"
+kernels["DirectPairSummation"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('xm')}"
+kernels["DirectPairSummation"].par["n"].expression = "xm.dimensions()[0]"
 
-kernels["BwdDirectSummation"].grid_size_expression = "div_ceil(xm.dimensions()[0], block_size)"
-kernels["BwdDirectSummation"].smem_size_expression = f"2 * blockDim.x * (dim + 1) * {dtype_size_expression('xm')}"
-kernels["BwdDirectSummation"].par["n"].expression = "xm.dimensions()[0]"
+kernels["BwdDirectPairSummation"].grid_size_expression = "div_ceil(xm.dimensions()[0], block_size)"
+kernels["BwdDirectPairSummation"].smem_size_expression = f"2 * blockDim.x * (dim + 1) * {dtype_size_expression('xm')}"
+kernels["BwdDirectPairSummation"].par["n"].expression = "xm.dimensions()[0]"
 
-for kname in ("DirectSummation", "BwdDirectSummation"):
+for kname in ("DirectPairSummation", "BwdDirectPairSummation"):
     kernels[kname].template_par["dim"].instances = direct_summation_dimensions
     kernels[kname].template_par["dim"].expression = "xm.dimensions()[1] - 1"
     kernels[kname].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values
     add_dtype_template(kernels[kname], "xm")
 
-for kname in ("LeafLeafSummation", "BwdLeafLeafSummation"):
+for kname in ("LeafLeafPairSummation", "BwdLeafLeafPairSummation"):
     kernels[kname].template_par["dim"].instances = dimensions
     kernels[kname].template_par["dim"].expression = "posm.dimensions()[1] - 1"
     kernels[kname].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values
     add_dtype_template(kernels[kname], "posm")
 
 gen.generate_ffi_module_file(
-    output_file = str(HERE / "generated/ffi_forces.cu"), 
+    output_file = str(HERE / "generated/ffi_pair_summation.cu"), 
     functions = kernels, 
-    includes = default_includes + ["../forces.cuh"]
+    includes = default_includes + ["../pair_summation.cuh"]
 )
 
 # ------------------------------------------------------------------------------------------------ #

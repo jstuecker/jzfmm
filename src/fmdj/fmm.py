@@ -16,13 +16,13 @@ from .data import LocalExpansion
 from .multipoles import _fmm_node_to_child, build_multipole_hierarchy, local_readout_pos_vjp, num_multi, p_of_num_multi, shift_local_to_children_vjp_x
 
 import fmdj_cuda.ffi_fmm as ffi_fmm
-import fmdj_cuda.ffi_forces as ffi_forces
+import fmdj_cuda.ffi_pair_summation as ffi_pair_summation
 jax.ffi.register_ffi_target("CountInteractionsAndM2L", ffi_fmm.CountInteractionsAndM2L(), platform="CUDA")
 jax.ffi.register_ffi_target("InsertInteractions", ffi_fmm.InsertInteractions(), platform="CUDA")
-jax.ffi.register_ffi_target("LeafLeafSummation", ffi_forces.LeafLeafSummation(), platform="CUDA")
-jax.ffi.register_ffi_target("BwdLeafLeafSummation", ffi_forces.BwdLeafLeafSummation(), platform="CUDA")
-jax.ffi.register_ffi_target("DirectSummation", ffi_forces.DirectSummation(), platform="CUDA")
-jax.ffi.register_ffi_target("BwdDirectSummation", ffi_forces.BwdDirectSummation(), platform="CUDA")
+jax.ffi.register_ffi_target("LeafLeafPairSummation", ffi_pair_summation.LeafLeafPairSummation(), platform="CUDA")
+jax.ffi.register_ffi_target("BwdLeafLeafPairSummation", ffi_pair_summation.BwdLeafLeafPairSummation(), platform="CUDA")
+jax.ffi.register_ffi_target("DirectPairSummation", ffi_pair_summation.DirectPairSummation(), platform="CUDA")
+jax.ffi.register_ffi_target("BwdDirectPairSummation", ffi_pair_summation.BwdDirectPairSummation(), platform="CUDA")
 
 # ------------------------------------------------------------------------------------------------ #
 #                                          M2L Evaluation                                          #
@@ -186,7 +186,7 @@ def leaf_leaf_summation(particles: PosMass, ispl: jax.Array, ilist: InteractionL
 
     @jax.custom_vjp
     def eval(particles, ispl, ilist):
-        loc = jax.ffi.ffi_call("LeafLeafSummation", (out_type,))(
+        loc = jax.ffi.ffi_call("LeafLeafPairSummation", (out_type,))(
             node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), kernel_params,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
@@ -199,7 +199,7 @@ def leaf_leaf_summation(particles: PosMass, ispl: jax.Array, ilist: InteractionL
     
     def eval_bwd(res, gloc):
         particles, ispl, ilist = res
-        gposm = jax.ffi.ffi_call("BwdLeafLeafSummation", (out_type,))(
+        gposm = jax.ffi.ffi_call("BwdLeafLeafPairSummation", (out_type,))(
             node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), kernel_params, gloc,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
@@ -229,14 +229,14 @@ def direct_summation(part: PosMass, kahan: bool = False,
     
     @jax.custom_vjp
     def eval(xm):
-        loc = jax.ffi.ffi_call("DirectSummation", (out_type,))(
+        loc = jax.ffi.ffi_call("DirectPairSummation", (out_type,))(
         xm, kernel_params, block_size=np.uint64(block_size),
         radial_kernel_kind=np.int32(kernel.kind_id()), kahan=kahan)[0]
         return loc
     def eval_fwd(xm):
         return eval(xm), xm
     def eval_bwd(xm, gloc):
-        gxm = jax.ffi.ffi_call("BwdDirectSummation", (out_type,))(
+        gxm = jax.ffi.ffi_call("BwdDirectPairSummation", (out_type,))(
             gloc, xm, kernel_params, block_size=np.uint64(block_size),
             radial_kernel_kind=np.int32(kernel.kind_id()), kahan=kahan
         )[0]

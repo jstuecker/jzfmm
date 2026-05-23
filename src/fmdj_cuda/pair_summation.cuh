@@ -76,11 +76,11 @@ __forceinline__ __device__ PosMass<dim,tvec> VJP_GFPhiToGXM(
 }
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                                      Direct Summation Kernel                                   */
+/*                                  Direct Pair Summation Kernel                                  */
 /* ---------------------------------------------------------------------------------------------- */
 
 template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
-__global__ void DirectSummation(
+__global__ void DirectPairSummation(
     const PosMass<dim,tvec> *xm,
     const tvec* radial_kernel_params,
     LocalExp<dim,tvec> *loc_out,
@@ -121,7 +121,7 @@ __global__ void DirectSummation(
 }
 
 template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
-__global__ void BwdDirectSummation(
+__global__ void BwdDirectPairSummation(
     const LocalExp<dim,tvec> *gloc,
     const PosMass<dim,tvec> *xm,
     const tvec* radial_kernel_params,
@@ -174,11 +174,11 @@ __global__ void BwdDirectSummation(
 }
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                                    Leaf-Leaf Summation Kernel                                  */
+/*                                Leaf-Leaf Pair Summation Kernel                                 */
 /* ---------------------------------------------------------------------------------------------- */
 
 template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
-__global__ void LeafLeafSummation(
+__global__ void LeafLeafPairSummation(
     // inputs:
     const int2* node_range,
     const int* spl_nodes,
@@ -262,7 +262,7 @@ __global__ void LeafLeafSummation(
 }
 
 template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
-__global__ void BwdLeafLeafSummation(
+__global__ void BwdLeafLeafPairSummation(
     // inputs:
     const int2* node_range,
     const int* spl_nodes,
@@ -285,7 +285,7 @@ __global__ void BwdLeafLeafSummation(
 
     int num = prange.y-prange.x;
 
-    // See comment in LeafLeafSummation for explanation
+    // See comment in LeafLeafPairSummation for explanation
     int n_write = blockDim.x / num;
     int a_write = threadIdx.x % num;   
     int read_b_offset = threadIdx.x / num;
