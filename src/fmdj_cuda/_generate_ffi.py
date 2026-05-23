@@ -32,11 +32,11 @@ kernels = parse.get_functions_from_file(
     only_kernels=True
 )
 
-kernels["LeafLeafPairSummation"].grid_size_expression = "spl_nodes.element_count() - 1"
-kernels["LeafLeafPairSummation"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('posm')}"
+kernels["LeafLeafPairSummation"].grid_size_expression = "spl_recv.element_count() - 1"
+kernels["LeafLeafPairSummation"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('posm_src')}"
 
-kernels["BwdLeafLeafPairSummation"].grid_size_expression = "spl_nodes.element_count() - 1"
-kernels["BwdLeafLeafPairSummation"].smem_size_expression = f"2 * blockDim.x * (dim + 1) * {dtype_size_expression('posm')}"
+kernels["BwdLeafLeafPairSummation"].grid_size_expression = "spl_recv.element_count() - 1"
+kernels["BwdLeafLeafPairSummation"].smem_size_expression = f"2 * blockDim.x * (dim + 1) * {dtype_size_expression('posm_src')}"
 
 kernels["DirectPairSummation"].grid_size_expression = "div_ceil(xm.dimensions()[0], block_size)"
 kernels["DirectPairSummation"].smem_size_expression = f"blockDim.x * (dim + 1) * {dtype_size_expression('xm')}"
@@ -54,9 +54,9 @@ for kname in ("DirectPairSummation", "BwdDirectPairSummation"):
 
 for kname in ("LeafLeafPairSummation", "BwdLeafLeafPairSummation"):
     kernels[kname].template_par["dim"].instances = dimensions
-    kernels[kname].template_par["dim"].expression = "posm.dimensions()[1] - 1"
+    kernels[kname].template_par["dim"].expression = "posm_recv.dimensions()[1] - 1"
     kernels[kname].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values
-    add_dtype_template(kernels[kname], "posm")
+    add_dtype_template(kernels[kname], "posm_recv")
 
 gen.generate_ffi_module_file(
     output_file = str(HERE / "generated/ffi_pair_summation.cu"), 

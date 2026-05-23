@@ -181,13 +181,15 @@ template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
 __global__ void LeafLeafPairSummation(
     // inputs:
     const int2* node_range,
-    const int* spl_nodes,
+    const int* spl_recv,
+    const int* spl_src,
     const int* spl_ilist,
-    const int* ilist_nodes,
-    const PosMass<dim,tvec>* posm,
+    const int* ilist_isrc,
+    const PosMass<dim,tvec>* posm_recv,
+    const PosMass<dim,tvec>* posm_src,
     const tvec* radial_kernel_params,
     // outputs:
-    LocalExp<dim,tvec>* loc_out
+    LocalExp<dim,tvec>* loc_recv
 ) {
     auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
 
@@ -196,7 +198,7 @@ __global__ void LeafLeafPairSummation(
     if (nodeid >= nrange.y)
         return;
     
-    int2 prange = {spl_nodes[nodeid], spl_nodes[nodeid + 1]};
+    int2 prange = {spl_recv[nodeid], spl_recv[nodeid + 1]};
 
     int num = prange.y-prange.x;
 
@@ -211,12 +213,12 @@ __global__ void LeafLeafPairSummation(
     //  but later discard their result)
     int valid = threadIdx.x < num * n_write;
 
-    PosMass<dim,tvec> xaWrite = posm[prange.x + a_write];
+    PosMass<dim,tvec> xaWrite = posm_recv[prange.x + a_write];
 
     __shared__ int2 segments[32];
     SegmentManager seg_mgr(
-        ilist_nodes,
-        spl_nodes,
+        ilist_isrc,
+        spl_src,
         segments,
         spl_ilist[nodeid],
         spl_ilist[nodeid + 1],
@@ -234,7 +236,7 @@ __global__ void LeafLeafPairSummation(
 
         // Each thread loads one other particle B
         if(id >= 0)
-            xm_b[threadIdx.x] = posm[id];
+            xm_b[threadIdx.x] = posm_src[id];
         __syncthreads();
 
         // Now compute interactions
@@ -257,7 +259,7 @@ __global__ void LeafLeafPairSummation(
             kahan_add_vec(loc_cum.asvec, loc_shared[i*num + a_write].asvec, loc_a_kahan.asvec);
 
         if(valid)
-            loc_out[prange.x + a_write] = loc_cum;
+            loc_recv[prange.x + a_write] = loc_cum;
     }
 }
 
@@ -265,14 +267,17 @@ template <bool kahan, int radial_kernel_kind, int dim, typename tvec>
 __global__ void BwdLeafLeafPairSummation(
     // inputs:
     const int2* node_range,
-    const int* spl_nodes,
+    const int* spl_recv,
+    const int* spl_src,
     const int* spl_ilist,
-    const int* ilist_nodes,
-    const PosMass<dim,tvec>* posm,
+    const int* ilist_isrc,
+    const PosMass<dim,tvec>* posm_recv,
+    const PosMass<dim,tvec>* posm_src,
     const tvec* radial_kernel_params,
-    const LocalExp<dim,tvec> *gloc,
+    const LocalExp<dim,tvec> *gloc_recv,
+    const LocalExp<dim,tvec> *gloc_src,
     // outputs:
-    PosMass<dim,tvec>* gposm_out
+    PosMass<dim,tvec>* gposm_recv
 ) {
     auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
 
@@ -281,7 +286,7 @@ __global__ void BwdLeafLeafPairSummation(
     if (nodeid >= nrange.y)
         return;
     
-    int2 prange = {spl_nodes[nodeid], spl_nodes[nodeid + 1]};
+    int2 prange = {spl_recv[nodeid], spl_recv[nodeid + 1]};
 
     int num = prange.y-prange.x;
 
@@ -291,13 +296,13 @@ __global__ void BwdLeafLeafPairSummation(
     int read_b_offset = threadIdx.x / num;
     int valid = threadIdx.x < num * n_write;
 
-    PosMass<dim,tvec> xm_a = posm[prange.x + a_write];
-    LocalExp<dim,tvec> gloc_a = gloc[prange.x + a_write];
+    PosMass<dim,tvec> xm_a = posm_recv[prange.x + a_write];
+    LocalExp<dim,tvec> gloc_a = gloc_recv[prange.x + a_write];
 
     __shared__ int2 segments[32];
     SegmentManager seg_mgr(
-        ilist_nodes,
-        spl_nodes,
+        ilist_isrc,
+        spl_src,
         segments,
         spl_ilist[nodeid],
         spl_ilist[nodeid + 1],
@@ -317,8 +322,8 @@ __global__ void BwdLeafLeafPairSummation(
         int id = seg_mgr.next();
         
         if(id >= 0) {
-            xm_b[threadIdx.x] = posm[id];
-            gloc_b[threadIdx.x] = gloc[id];
+            xm_b[threadIdx.x] = posm_src[id];
+            gloc_b[threadIdx.x] = gloc_src[id];
         }
         __syncthreads();
 
@@ -340,7 +345,7 @@ __global__ void BwdLeafLeafPairSummation(
         for(int i=0; i < n_write; i++)
             kahan_add_vec(gxm_cum.asvec, gxm_shared[i*num + a_write].asvec, gxm_a_kahan.asvec);
 
-        gposm_out[prange.x + a_write] = gxm_cum;
+        gposm_recv[prange.x + a_write] = gxm_cum;
     }
 }
 

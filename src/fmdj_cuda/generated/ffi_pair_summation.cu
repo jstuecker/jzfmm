@@ -279,38 +279,44 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 ffi::Error LeafLeafPairSummationFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer node_range,
-    ffi::AnyBuffer spl_nodes,
+    ffi::AnyBuffer spl_recv,
+    ffi::AnyBuffer spl_src,
     ffi::AnyBuffer spl_ilist,
-    ffi::AnyBuffer ilist_nodes,
-    ffi::AnyBuffer posm,
+    ffi::AnyBuffer ilist_isrc,
+    ffi::AnyBuffer posm_recv,
+    ffi::AnyBuffer posm_src,
     ffi::AnyBuffer radial_kernel_params,
-    ffi::Result<ffi::AnyBuffer> loc_out,
+    ffi::Result<ffi::AnyBuffer> loc_recv,
     bool kahan,
     int radial_kernel_kind,
     size_t block_size
 ) {
-    int dim = posm.dimensions()[1] - 1;
-    DT tvec = posm.element_type();
+    int dim = posm_recv.dimensions()[1] - 1;
+    DT tvec = posm_recv.element_type();
     dim3 blockDim(block_size);
-    dim3 gridDim(spl_nodes.element_count() - 1);
-    size_t smem = blockDim.x * (dim + 1) * (posm.element_type() == DT::F64 ? sizeof(double) : sizeof(float));
+    dim3 gridDim(spl_recv.element_count() - 1);
+    size_t smem = blockDim.x * (dim + 1) * (posm_src.element_type() == DT::F64 ? sizeof(double) : sizeof(float));
     
     // Build a bundled argument list for cudaLaunchKernel
     void* node_range_arg = node_range.untyped_data();
-    void* spl_nodes_arg = spl_nodes.untyped_data();
+    void* spl_recv_arg = spl_recv.untyped_data();
+    void* spl_src_arg = spl_src.untyped_data();
     void* spl_ilist_arg = spl_ilist.untyped_data();
-    void* ilist_nodes_arg = ilist_nodes.untyped_data();
-    void* posm_arg = posm.untyped_data();
+    void* ilist_isrc_arg = ilist_isrc.untyped_data();
+    void* posm_recv_arg = posm_recv.untyped_data();
+    void* posm_src_arg = posm_src.untyped_data();
     void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
-    void* loc_out_arg = loc_out->untyped_data();
+    void* loc_recv_arg = loc_recv->untyped_data();
     void* args[] = {
         &node_range_arg,
-        &spl_nodes_arg,
+        &spl_recv_arg,
+        &spl_src_arg,
         &spl_ilist_arg,
-        &ilist_nodes_arg,
-        &posm_arg,
+        &ilist_isrc_arg,
+        &posm_recv_arg,
+        &posm_src_arg,
         &radial_kernel_params_arg,
-        &loc_out_arg
+        &loc_recv_arg
     };
     
 
@@ -371,12 +377,14 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // node_range
-        .Arg<ffi::AnyBuffer>() // spl_nodes
+        .Arg<ffi::AnyBuffer>() // spl_recv
+        .Arg<ffi::AnyBuffer>() // spl_src
         .Arg<ffi::AnyBuffer>() // spl_ilist
-        .Arg<ffi::AnyBuffer>() // ilist_nodes
-        .Arg<ffi::AnyBuffer>() // posm
+        .Arg<ffi::AnyBuffer>() // ilist_isrc
+        .Arg<ffi::AnyBuffer>() // posm_recv
+        .Arg<ffi::AnyBuffer>() // posm_src
         .Arg<ffi::AnyBuffer>() // radial_kernel_params
-        .Ret<ffi::AnyBuffer>() // loc_out
+        .Ret<ffi::AnyBuffer>() // loc_recv
         .Attr<bool>("kahan")
         .Attr<int>("radial_kernel_kind")
         .Attr<size_t>("block_size"),
@@ -391,41 +399,50 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 ffi::Error BwdLeafLeafPairSummationFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer node_range,
-    ffi::AnyBuffer spl_nodes,
+    ffi::AnyBuffer spl_recv,
+    ffi::AnyBuffer spl_src,
     ffi::AnyBuffer spl_ilist,
-    ffi::AnyBuffer ilist_nodes,
-    ffi::AnyBuffer posm,
+    ffi::AnyBuffer ilist_isrc,
+    ffi::AnyBuffer posm_recv,
+    ffi::AnyBuffer posm_src,
     ffi::AnyBuffer radial_kernel_params,
-    ffi::AnyBuffer gloc,
-    ffi::Result<ffi::AnyBuffer> gposm_out,
+    ffi::AnyBuffer gloc_recv,
+    ffi::AnyBuffer gloc_src,
+    ffi::Result<ffi::AnyBuffer> gposm_recv,
     bool kahan,
     int radial_kernel_kind,
     size_t block_size
 ) {
-    int dim = posm.dimensions()[1] - 1;
-    DT tvec = posm.element_type();
+    int dim = posm_recv.dimensions()[1] - 1;
+    DT tvec = posm_recv.element_type();
     dim3 blockDim(block_size);
-    dim3 gridDim(spl_nodes.element_count() - 1);
-    size_t smem = 2 * blockDim.x * (dim + 1) * (posm.element_type() == DT::F64 ? sizeof(double) : sizeof(float));
+    dim3 gridDim(spl_recv.element_count() - 1);
+    size_t smem = 2 * blockDim.x * (dim + 1) * (posm_src.element_type() == DT::F64 ? sizeof(double) : sizeof(float));
     
     // Build a bundled argument list for cudaLaunchKernel
     void* node_range_arg = node_range.untyped_data();
-    void* spl_nodes_arg = spl_nodes.untyped_data();
+    void* spl_recv_arg = spl_recv.untyped_data();
+    void* spl_src_arg = spl_src.untyped_data();
     void* spl_ilist_arg = spl_ilist.untyped_data();
-    void* ilist_nodes_arg = ilist_nodes.untyped_data();
-    void* posm_arg = posm.untyped_data();
+    void* ilist_isrc_arg = ilist_isrc.untyped_data();
+    void* posm_recv_arg = posm_recv.untyped_data();
+    void* posm_src_arg = posm_src.untyped_data();
     void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
-    void* gloc_arg = gloc.untyped_data();
-    void* gposm_out_arg = gposm_out->untyped_data();
+    void* gloc_recv_arg = gloc_recv.untyped_data();
+    void* gloc_src_arg = gloc_src.untyped_data();
+    void* gposm_recv_arg = gposm_recv->untyped_data();
     void* args[] = {
         &node_range_arg,
-        &spl_nodes_arg,
+        &spl_recv_arg,
+        &spl_src_arg,
         &spl_ilist_arg,
-        &ilist_nodes_arg,
-        &posm_arg,
+        &ilist_isrc_arg,
+        &posm_recv_arg,
+        &posm_src_arg,
         &radial_kernel_params_arg,
-        &gloc_arg,
-        &gposm_out_arg
+        &gloc_recv_arg,
+        &gloc_src_arg,
+        &gposm_recv_arg
     };
     
 
@@ -486,13 +503,16 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // node_range
-        .Arg<ffi::AnyBuffer>() // spl_nodes
+        .Arg<ffi::AnyBuffer>() // spl_recv
+        .Arg<ffi::AnyBuffer>() // spl_src
         .Arg<ffi::AnyBuffer>() // spl_ilist
-        .Arg<ffi::AnyBuffer>() // ilist_nodes
-        .Arg<ffi::AnyBuffer>() // posm
+        .Arg<ffi::AnyBuffer>() // ilist_isrc
+        .Arg<ffi::AnyBuffer>() // posm_recv
+        .Arg<ffi::AnyBuffer>() // posm_src
         .Arg<ffi::AnyBuffer>() // radial_kernel_params
-        .Arg<ffi::AnyBuffer>() // gloc
-        .Ret<ffi::AnyBuffer>() // gposm_out
+        .Arg<ffi::AnyBuffer>() // gloc_recv
+        .Arg<ffi::AnyBuffer>() // gloc_src
+        .Ret<ffi::AnyBuffer>() // gposm_recv
         .Attr<bool>("kahan")
         .Attr<int>("radial_kernel_kind")
         .Attr<size_t>("block_size"),

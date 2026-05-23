@@ -218,44 +218,67 @@ _fmm_dual_walk.jit = jax.jit(_fmm_dual_walk, static_argnames=['cfg'])
 #                           Leaf-Leaf (Particle to Particle) Interactions                          #
 # ------------------------------------------------------------------------------------------------ #
 
-def leaf_leaf_summation(particles: PosMass, ispl: jax.Array, ilist: InteractionList,
-                        cfg: Config = None) -> jax.Array:
+def leaf_leaf_summation(
+        particles: PosMass,
+        ispl: jax.Array,
+        ilist: InteractionList,
+        cfg: Config = None,
+        particles_src: PosMass | None = None,
+        spl_src: jax.Array | None = None,
+    ) -> jax.Array:
+    particles_recv = particles
+    spl_recv = ispl
+    if particles_src is None:
+        particles_src = particles_recv
+    if spl_src is None:
+        spl_src = spl_recv
+
     block_size = 128
     assert cfg.tree.max_leaf_size <= block_size
-    assert len(ispl) == len(ilist.ispl)
-    dim = particles.pos.shape[-1]
+    assert len(spl_recv) == len(ilist.ispl)
+    dim = particles_recv.pos.shape[-1]
 
-    node_range = jnp.array([0, ispl.size-1], dtype=jnp.int32)
-    posm = get_pos_mass(particles)
-    out_type = jax.ShapeDtypeStruct((particles.pos.shape[0], dim + 1), posm.dtype)
+    node_range = jnp.array([0, spl_recv.size-1], dtype=jnp.int32)
+    posm_recv = get_pos_mass(particles_recv)
+    posm_src = get_pos_mass(particles_src)
+    out_type = jax.ShapeDtypeStruct((particles_recv.pos.shape[0], dim + 1), posm_recv.dtype)
     kernel = cfg.kernel
-    kernel_params = kernel.params(dtype=posm.dtype)
+    kernel_params = kernel.params(dtype=posm_recv.dtype)
 
     @jax.custom_vjp
-    def eval(particles, ispl, ilist):
+    def eval(particles_recv, spl_recv, ilist, particles_src, spl_src):
         loc = jax.ffi.ffi_call("LeafLeafPairSummation", (out_type,))(
-            node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), kernel_params,
+            node_range, spl_recv, spl_src, ilist.ispl, ilist.isrc,
+            get_pos_mass(particles_recv), get_pos_mass(particles_src), kernel_params,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
-        loc = loc.at[...,0].add(-particles.mass*kernel.self_value()) # Remove self-interaction from potential
+        loc = loc.at[...,0].add(-particles_recv.mass*kernel.self_value()) # Remove self-interaction from potential
+        num = getattr(particles_recv, "num", None)
+        if num is not None:
+            valid = jnp.arange(loc.shape[0]) < num
+            loc = jnp.where(valid[:, None], loc, jnp.nan)
         return loc
     
-    def eval_fwd(particles, ispl, ilist):
-        return eval(particles, ispl, ilist), (particles, ispl, ilist)
+    def eval_fwd(particles_recv, spl_recv, ilist, particles_src, spl_src):
+        return eval(particles_recv, spl_recv, ilist, particles_src, spl_src), (
+            particles_recv, spl_recv, ilist, particles_src, spl_src
+        )
     
     def eval_bwd(res, gloc):
-        particles, ispl, ilist = res
+        particles_recv, spl_recv, ilist, particles_src, spl_src = res
         gposm = jax.ffi.ffi_call("BwdLeafLeafPairSummation", (out_type,))(
-            node_range, ispl, ilist.ispl, ilist.isrc, get_pos_mass(particles), kernel_params, gloc,
+            node_range, spl_recv, spl_src, ilist.ispl, ilist.isrc,
+            get_pos_mass(particles_recv), get_pos_mass(particles_src),
+            kernel_params, gloc, gloc,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
-        return PosMass(pos=gposm[:,:dim], mass=gposm[:,dim]), None, None
+        return PosMass(pos=gposm[:,:dim], mass=gposm[:,dim]), None, None, None, None
     
     eval.defvjp(eval_fwd, eval_bwd)
 
-    return eval(particles, ispl, ilist)
+    return eval(particles_recv, spl_recv, ilist, particles_src, spl_src)
 leaf_leaf_summation.jit = jax.jit(leaf_leaf_summation, static_argnames=['cfg'])
 
 
