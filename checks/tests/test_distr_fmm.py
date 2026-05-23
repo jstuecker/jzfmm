@@ -66,7 +66,7 @@ def test_distr_fmm_grad_matches_single_context():
     part = ics.uniform_particles.smap(mesh, jit=True)(32768, npad=8192)
     part = replace(
         part,
-        mass=part.mass * jnp.ones(part.pos.shape[:-1], dtype=part.pos.dtype),
+        mass=part.mass[:,None] * jnp.ones(part.pos.shape[:-1], dtype=part.pos.dtype),
     )
 
     grad = _fmm_grad.smap(mesh, jit=True)(part, cfg)

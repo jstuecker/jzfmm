@@ -188,13 +188,15 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
                 axis_name=axis_name, err_hint_child="\nHint: increase alloc_fac_nodes",
                 err_hint_parent="\nHint: increase alloc_fac_nodes"
             )
-            parent_range = jnp.array([0, parent_ilist.ispl.size-1], dtype=jnp.int32)
+            parent_ilist_recv = parent_ilist.without_remote_query_points(rank)
+            parent_range = jnp.array([0, parent_ilist_recv.ispl.size-1], dtype=jnp.int32)
         else:
             child_src, parent_spl_src = child_recv, parent_spl_recv
+            parent_ilist_recv = parent_ilist
             parent_range = jnp.array([0, spl_n2n.num(level+1)-1], dtype=jnp.int32)
 
         loc_ch, ilist = _fmm_node_to_node(
-            parent_range, parent_ilist, parent_spl_recv, child_recv,
+            parent_range, parent_ilist_recv, parent_spl_recv, child_recv,
             cfg=cfg, spl_src=parent_spl_src, child_src=child_src
         )
 
