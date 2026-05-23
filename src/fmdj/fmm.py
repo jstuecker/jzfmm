@@ -10,8 +10,9 @@ from dataclasses import dataclass, field, replace
 from jztree.data import PosMass, InteractionList, get_pos_mass, TreeHierarchy, PosLvl, PackedArray
 from jztree.tree import grouped_dense_interaction_list, zsort_and_tree
 from jztree.tree import distr_grouped_dense_interaction_list, simplify_interaction_list
-from jztree.jax_ext import raise_if
+from jztree.jax_ext import pcast_like, raise_if, shard_map_constructor
 from jztree.comm import all_to_all_request_children, get_rank_info, in_shard_map_context
+from jax.sharding import PartitionSpec as P
 
 from .config import Config
 from .data import LocalExpansion
@@ -106,6 +107,9 @@ def _fmm_node_to_node(
         radial_kernel_kind=np.int32(kernel.kind_id()),
         opening_criterion_kind=np.int32(opening.kind_id()),
     )
+    loc, interaction_counts = jax.tree.map(
+        lambda x: pcast_like(x, spl_recv), (loc, interaction_counts)
+    )
 
     # Insert interactions
     ispl_child = jnp.pad(jnp.cumsum(interaction_counts), (1, 0))
@@ -119,6 +123,7 @@ def _fmm_node_to_node(
         children_recv, children_src, ispl_child, opening_params,
         opening_criterion_kind=np.int32(opening.kind_id()),
     )[0]
+    child_ilist = pcast_like(child_ilist, spl_recv)
 
     # Create interaction list from outputs
     new_ilist = InteractionList(ispl=ispl_child, isrc=child_ilist)
@@ -154,6 +159,8 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
     p_local = cfg.fmm.p + cfg.fmm.p_extra_m2l
     assert p_local >= 0, "p + p_extra_m2l must be non-negative"
     loc = jnp.zeros((size, num_multi(p_local, dim=dim)), dtype=mph.data.dtype)
+    if in_smap:
+        loc = pcast_like(loc, mph.data)
 
     # Add super node data into tree information
     spl_n2n = th.ispl_n2n.append(spl, nsup+1, fill_value=spl[-1], resize=True)
@@ -403,7 +410,7 @@ def _as_posmass(part) -> PosMass:
     )
 
 def fast_multipole_method(
-        part: PosMass, *, cfg: Config, th: TreeHierarchy | None = None,
+        part: PosMass, cfg: Config, th: TreeHierarchy | None = None,
         result: str = "loc", pout: int = 1
     ) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
@@ -442,6 +449,11 @@ def fast_multipole_method(
     res = tuple(out[key] for key in keys)
     return res[0] if len(res) == 1 else res
 fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg", "result", "pout"))
+fast_multipole_method.smap = shard_map_constructor(
+    fast_multipole_method,
+    in_specs=(P(-1), None, P(-1), None, None),
+    static_argnames=("cfg", "result", "pout"),
+)
 
 def force_and_potential(p: PosMass, cfg : Config) -> LocalExpansion:
     if cfg.fmm is None:
