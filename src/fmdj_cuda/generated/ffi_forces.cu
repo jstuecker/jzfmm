@@ -64,20 +64,44 @@ ffi::Error DirectSummationFFIHost(
     static const std::map<TTuple, TFunc> instance_map = {
         { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 0, 2, float>) },
         { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 0, 3, float>) },
+        { {true, 0, 4, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 0, 4, float>) },
+        { {true, 0, 5, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 0, 5, float>) },
+        { {true, 0, 6, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 0, 6, float>) },
         { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 1, 2, float>) },
         { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 1, 3, float>) },
+        { {true, 1, 4, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 1, 4, float>) },
+        { {true, 1, 5, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 1, 5, float>) },
+        { {true, 1, 6, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 1, 6, float>) },
         { {true, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 2, 2, float>) },
         { {true, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 2, 3, float>) },
+        { {true, 2, 4, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 2, 4, float>) },
+        { {true, 2, 5, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 2, 5, float>) },
+        { {true, 2, 6, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 2, 6, float>) },
         { {true, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 3, 2, float>) },
         { {true, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 3, 3, float>) },
+        { {true, 3, 4, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 3, 4, float>) },
+        { {true, 3, 5, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 3, 5, float>) },
+        { {true, 3, 6, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 3, 6, float>) },
         { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 0, 2, float>) },
         { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 0, 3, float>) },
+        { {false, 0, 4, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 0, 4, float>) },
+        { {false, 0, 5, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 0, 5, float>) },
+        { {false, 0, 6, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 0, 6, float>) },
         { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 1, 2, float>) },
         { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 1, 3, float>) },
+        { {false, 1, 4, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 1, 4, float>) },
+        { {false, 1, 5, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 1, 5, float>) },
+        { {false, 1, 6, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 1, 6, float>) },
         { {false, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 2, 2, float>) },
         { {false, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 2, 3, float>) },
+        { {false, 2, 4, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 2, 4, float>) },
+        { {false, 2, 5, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 2, 5, float>) },
+        { {false, 2, 6, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 2, 6, float>) },
         { {false, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 3, 2, float>) },
-        { {false, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 3, 3, float>) }
+        { {false, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 3, 3, float>) },
+        { {false, 3, 4, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 3, 4, float>) },
+        { {false, 3, 5, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 3, 5, float>) },
+        { {false, 3, 6, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 3, 6, float>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -87,7 +111,7 @@ ffi::Error DirectSummationFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in DirectSummationFFIHost -- Only supporting:\n"\
-            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (true, 2, 2, float), (true, 2, 3, float), (true, 3, 2, float), (true, 3, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float), (false, 2, 2, float), (false, 2, 3, float), (false, 3, 2, float), (false, 3, 3, float)"
+            "(true, 0, 2, float), (true, 0, 3, float), (true, 0, 4, float), (true, 0, 5, float), (true, 0, 6, float), (true, 1, 2, float), (true, 1, 3, float), (true, 1, 4, float), (true, 1, 5, float), (true, 1, 6, float), (true, 2, 2, float), (true, 2, 3, float), (true, 2, 4, float), (true, 2, 5, float), (true, 2, 6, float), (true, 3, 2, float), (true, 3, 3, float), (true, 3, 4, float), (true, 3, 5, float), (true, 3, 6, float), (false, 0, 2, float), (false, 0, 3, float), (false, 0, 4, float), (false, 0, 5, float), (false, 0, 6, float), (false, 1, 2, float), (false, 1, 3, float), (false, 1, 4, float), (false, 1, 5, float), (false, 1, 6, float), (false, 2, 2, float), (false, 2, 3, float), (false, 2, 4, float), (false, 2, 5, float), (false, 2, 6, float), (false, 3, 2, float), (false, 3, 3, float), (false, 3, 4, float), (false, 3, 5, float), (false, 3, 6, float)"
         );
     }
     const void* instance = it->second;
@@ -165,20 +189,44 @@ ffi::Error BwdDirectSummationFFIHost(
     static const std::map<TTuple, TFunc> instance_map = {
         { {true, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 0, 2, float>) },
         { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 0, 3, float>) },
+        { {true, 0, 4, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 0, 4, float>) },
+        { {true, 0, 5, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 0, 5, float>) },
+        { {true, 0, 6, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 0, 6, float>) },
         { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 1, 2, float>) },
         { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 1, 3, float>) },
+        { {true, 1, 4, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 1, 4, float>) },
+        { {true, 1, 5, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 1, 5, float>) },
+        { {true, 1, 6, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 1, 6, float>) },
         { {true, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 2, 2, float>) },
         { {true, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 2, 3, float>) },
+        { {true, 2, 4, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 2, 4, float>) },
+        { {true, 2, 5, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 2, 5, float>) },
+        { {true, 2, 6, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 2, 6, float>) },
         { {true, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 3, 2, float>) },
         { {true, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 3, 3, float>) },
+        { {true, 3, 4, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 3, 4, float>) },
+        { {true, 3, 5, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 3, 5, float>) },
+        { {true, 3, 6, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 3, 6, float>) },
         { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 0, 2, float>) },
         { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 0, 3, float>) },
+        { {false, 0, 4, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 0, 4, float>) },
+        { {false, 0, 5, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 0, 5, float>) },
+        { {false, 0, 6, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 0, 6, float>) },
         { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 1, 2, float>) },
         { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 1, 3, float>) },
+        { {false, 1, 4, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 1, 4, float>) },
+        { {false, 1, 5, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 1, 5, float>) },
+        { {false, 1, 6, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 1, 6, float>) },
         { {false, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 2, 2, float>) },
         { {false, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 2, 3, float>) },
+        { {false, 2, 4, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 2, 4, float>) },
+        { {false, 2, 5, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 2, 5, float>) },
+        { {false, 2, 6, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 2, 6, float>) },
         { {false, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 3, 2, float>) },
-        { {false, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 3, 3, float>) }
+        { {false, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 3, 3, float>) },
+        { {false, 3, 4, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 3, 4, float>) },
+        { {false, 3, 5, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 3, 5, float>) },
+        { {false, 3, 6, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 3, 6, float>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -188,7 +236,7 @@ ffi::Error BwdDirectSummationFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in BwdDirectSummationFFIHost -- Only supporting:\n"\
-            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (true, 2, 2, float), (true, 2, 3, float), (true, 3, 2, float), (true, 3, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float), (false, 2, 2, float), (false, 2, 3, float), (false, 3, 2, float), (false, 3, 3, float)"
+            "(true, 0, 2, float), (true, 0, 3, float), (true, 0, 4, float), (true, 0, 5, float), (true, 0, 6, float), (true, 1, 2, float), (true, 1, 3, float), (true, 1, 4, float), (true, 1, 5, float), (true, 1, 6, float), (true, 2, 2, float), (true, 2, 3, float), (true, 2, 4, float), (true, 2, 5, float), (true, 2, 6, float), (true, 3, 2, float), (true, 3, 3, float), (true, 3, 4, float), (true, 3, 5, float), (true, 3, 6, float), (false, 0, 2, float), (false, 0, 3, float), (false, 0, 4, float), (false, 0, 5, float), (false, 0, 6, float), (false, 1, 2, float), (false, 1, 3, float), (false, 1, 4, float), (false, 1, 5, float), (false, 1, 6, float), (false, 2, 2, float), (false, 2, 3, float), (false, 2, 4, float), (false, 2, 5, float), (false, 2, 6, float), (false, 3, 2, float), (false, 3, 3, float), (false, 3, 4, float), (false, 3, 5, float), (false, 3, 6, float)"
         );
     }
     const void* instance = it->second;

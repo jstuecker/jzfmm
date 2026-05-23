@@ -6,6 +6,7 @@ from jax_ffi_gen import parse, generator as gen
 HERE = Path(__file__).resolve().parent
 
 dimensions = (2,3)
+direct_summation_dimensions = (2,3,4,5,6)
 # float_types = ("float", "double")
 float_types = ("float",) # by default don't compile double for now... doubles compilation time...
 p_instance_values = (1, 2, 3, 4, 5)
@@ -46,7 +47,7 @@ kernels["BwdDirectSummation"].smem_size_expression = f"2 * blockDim.x * (dim + 1
 kernels["BwdDirectSummation"].par["n"].expression = "xm.dimensions()[0]"
 
 for kname in ("DirectSummation", "BwdDirectSummation"):
-    kernels[kname].template_par["dim"].instances = dimensions
+    kernels[kname].template_par["dim"].instances = direct_summation_dimensions
     kernels[kname].template_par["dim"].expression = "xm.dimensions()[1] - 1"
     kernels[kname].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values
     add_dtype_template(kernels[kname], "xm")
