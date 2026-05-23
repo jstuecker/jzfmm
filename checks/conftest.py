@@ -17,11 +17,6 @@ def pytest_addoption(parser):
         help="Quick mode: deselect slow tests and reduce parametrized tests to first case.",
     )
 
-def pytest_runtest_setup(item):
-    if item.config.getoption("--quick"):
-        if item.get_closest_marker("skip_in_quick") or item.get_closest_marker("slow"):
-            pytest.skip("Skipped in --quick mode")
-
 def pytest_configure(config):
     config.addinivalue_line("markers", "slow: skip the whole test in --quick mode")
     config.addinivalue_line("markers", "skip_in_quick: skip the whole test in --quick mode")
@@ -30,12 +25,31 @@ def pytest_configure(config):
     )
     # Your existing setup:
     if should_init_jax_distributed():
-        jax.distributed.initialize()
+        jax.distributed.initialize(
+            heartbeat_timeout_seconds=30,
+            shutdown_timeout_seconds=60
+        )
     else:
         print("Using single-host mode")
 
     if jax.process_index() != 0:
-        _silence_process_output()
+        # Keep non-zero ranks from producing duplicate pytest output.
+        config.option.quiet = 3
+        config.option.no_header = True
+        config.option.no_summary = True
+        config.option.verbose = -1
+        config.option.show_capture = "no"
+
+def pytest_report_teststatus(report, config):
+    """Eliminates the 's.sss' dots for non-zero ranks."""
+    if jax.process_index() != 0:
+        return report.outcome, "", ""
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    if jax.process_index() != 0:
+        terminalreporter.stats = {}
+        terminalreporter.summary_stats = lambda: None
 
 def _keep_index_from_marker(item) -> int | None:
     """
@@ -169,9 +183,6 @@ def pytest_report_header(config):
     ]
 
 def pytest_unconfigure(config):
-    """The final cleanup."""
-    try:
-        if hasattr(jax.distributed, 'shutdown'):
-            jax.distributed.shutdown()
-    except:
-        pass
+    if jax.process_count() > 1:
+        # JAX distributed shutdown can emit noisy warnings from every rank.
+        _silence_process_output()
