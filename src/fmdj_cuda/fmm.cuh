@@ -206,12 +206,30 @@ __global__ void CountInteractionsAndM2L(
             }
         }
 
-        #pragma unroll
-        for(int i = 0; i < ncomb_loc; i++) {
-            // now atomically add the results
-            // note: we can easily avoid the atomic here -- change that later!
-            int iout = (offsetA + a_write) * ncomb_loc + i;
-            atomicAdd(&loc_out[iout], LocA[i]);
+        // Now we need to reduce the local terms accross threads
+        // with the same output particle.
+
+        __shared__ Vec<ncomb_loc,tvec> loc_partials[BLOCKSIZE];
+        loc_partials[threadIdx.x] = LocA;
+        __syncthreads();
+
+        if(threadIdx.x < num_childrenA) {
+            Vec<ncomb_loc,tvec> loc_sum;
+
+            #pragma unroll
+            for(int i = 0; i < ncomb_loc; i++) {
+                loc_sum[i] = tvec(0);
+            }
+
+            int n_write_child = blockDim.x / num_childrenA + (threadIdx.x < residual_threads);
+            for(int iw = 0; iw < n_write_child; iw++) {
+                loc_sum += loc_partials[iw * num_childrenA + threadIdx.x];
+            }
+
+            #pragma unroll
+            for(int i = 0; i < ncomb_loc; i++) {
+                loc_out[(offsetA + threadIdx.x) * ncomb_loc + i] = loc_sum[i];
+            }
         }
         __syncthreads();
     }
