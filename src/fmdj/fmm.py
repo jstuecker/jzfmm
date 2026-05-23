@@ -7,11 +7,12 @@ import warnings
 from dataclasses import dataclass, field, replace
 
 
-from jztree.data import PosMass, InteractionList, get_pos_mass, TreeHierarchy, PosLvl, PackedArray
+from jztree.data import PosMass, InteractionList, get_pos_mass, TreeHierarchy, PosLvl, PackedArray, RankIdx, get_num
 from jztree.tree import grouped_dense_interaction_list, zsort_and_tree
 from jztree.tree import distr_grouped_dense_interaction_list, simplify_interaction_list
 from jztree.jax_ext import pcast_like, raise_if, shard_map_constructor
-from jztree.comm import all_to_all_request_children, get_rank_info, in_shard_map_context
+from jztree.tools import masked_inverse
+from jztree.comm import all_to_all_request_children, all_to_all_with_irank, get_rank_info, in_shard_map_context
 from jax.sharding import PartitionSpec as P
 
 from .config import Config
@@ -457,13 +458,22 @@ def fast_multipole_method(
     ) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
     keys = _parse_fmm_result(result)
+    in_smap = in_shard_map_context()
 
     if th is None:
-        ids = jnp.arange(part.pos.shape[0], dtype=jnp.int32)
+        size = part.pos.shape[0]
+        idx = jnp.arange(size, dtype=jnp.int32)
+        if in_smap:
+            rank, ndev, axis_name = get_rank_info()
+            origin = RankIdx(rank=jnp.full(size, rank, dtype=jnp.int32), idx=idx)
+        else:
+            ndev = 1
+            origin = RankIdx(rank=None, idx=idx)
+        num_origin = get_num(part, default_to_length=(ndev == 1))
         partz, dataz, th = zsort_and_tree(
-            part, cfg.tree, data=ids
+            part, cfg.tree, data=origin
         )
-        ids_z = dataz
+        origin_z = dataz
     elif "loc" in keys:
         raise ValueError(
             "result='loc' is only available when fast_multipole_method builds the tree. "
@@ -471,7 +481,8 @@ def fast_multipole_method(
         )
     else:
         partz = part
-        ids_z = None
+        origin_z = None
+        num_origin = None
 
     locz = None
     if ("loc" in keys) or ("locz" in keys):
@@ -479,8 +490,15 @@ def fast_multipole_method(
 
     loc = None
     if "loc" in keys:
-        inv_sort = jnp.zeros_like(ids_z).at[ids_z].set(jnp.arange(len(ids_z), dtype=ids_z.dtype))
-        loc = LocalExpansion(locz.values[inv_sort], dim=part.pos.shape[-1])
+        if in_smap:
+            (loc_values, idx), _dev_spl = all_to_all_with_irank(
+                origin_z.rank, (locz.values, origin_z.idx), num=partz.num,
+                axis_name=axis_name, err_hint="\nThis should never fail..."
+            )
+        else:
+            loc_values, idx = locz.values, origin_z.idx
+        inv_sort = masked_inverse(idx, mask=jnp.arange(len(idx)) < num_origin)
+        loc = LocalExpansion(loc_values[inv_sort], dim=part.pos.shape[-1])
 
     out = {
         "loc": loc,
