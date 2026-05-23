@@ -63,7 +63,7 @@ def _fmm_node_to_node(
     if cfg.fmm.p == 5 and cfg.fmm.p_extra_m2l == 1 and dim == 3:
         warnings.warn(
             "FMMConfig(p=5, p_extra_m2l=1) currently makes the CUDA M2L kernel use local memory "
-            "for large per-thread work arrays and can be much slower than nearby configurations.",
+            "and will be extremely slow. Please prefer other p+p_extra_m2l <= 5.",
             RuntimeWarning,
             stacklevel=2,
         )

@@ -3,11 +3,16 @@ os.environ.setdefault("XLA_PYTHON_CLIENT_MEM_FRACTION", "0.20")
 
 import jax.numpy as jnp
 import jax
+import numpy as np
 import pytest
 from jztree_utils import ics
 
 from fmdj.config import Config, FMMConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel
 from fmdj.fmm import direct_summation, fast_multipole_method
+
+
+def _device_array_bytes(x):
+    return np.asarray(jax.block_until_ready(x)).tobytes()
 
 @pytest.mark.parametrize("p", [2,3,4])
 def test_fmm_uniform(p):
@@ -63,3 +68,14 @@ def test_softening_kernels():
 
     assert jnp.median(ferr_rel) <= 1e-3
     assert jnp.max(ferr_rel) <= 5e-2
+
+
+def test_fmm_reproducibility():
+    cfg = Config()
+    part = ics.uniform_particles(1024*1024)
+
+    expected = _device_array_bytes(fast_multipole_method.jit(part, cfg=cfg).values)
+
+    for _ in range(5):
+        actual = _device_array_bytes(fast_multipole_method.jit(part, cfg=cfg).values)
+        assert actual == expected
