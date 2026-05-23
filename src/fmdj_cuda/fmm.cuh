@@ -30,15 +30,17 @@ template<int opening_criterion_kind, int p, int p_extra_m2l, int dim, typename t
 __global__ void CountInteractionsAndM2L(
     // inputs:
     const int2* node_range,
-    const int* spl_nodes,
+    const int* spl_nodes_recv,
+    const int* spl_nodes_src,
     const int* spl_ilist,
-    const int* ilist_nodes,
-    const Node<dim,tvec>* children,
-    const tvec* mp_values,
+    const int* ilist_isrc,
+    const Node<dim,tvec>* children_recv,
+    const Node<dim,tvec>* children_src,
+    const tvec* mp_src,
     const tvec* radial_kernel_params,
     const tvec* opening_criterion_params,
     // outputs:
-    tvec* loc_out,
+    tvec* loc_recv,
     int* ilist_child_count_out,
     // attributes:
     int radial_kernel_kind
@@ -56,7 +58,7 @@ __global__ void CountInteractionsAndM2L(
         return;
     }
 
-    int2 child_range = {spl_nodes[nodeid], spl_nodes[nodeid + 1]};
+    int2 child_range = {spl_nodes_recv[nodeid], spl_nodes_recv[nodeid + 1]};
 
     // This loop should handle almost always everything on the first pass
     // However, to deal with edge cases we have to loop over scenarios where 
@@ -67,7 +69,7 @@ __global__ void CountInteractionsAndM2L(
         // childA info
         __shared__ NodeWithExt<dim,tvec> childA[MAX_NUMA];
         if(threadIdx.x < num_childrenA) {
-            Node<dim,tvec> child = children[offsetA + threadIdx.x];
+            Node<dim,tvec> child = children_recv[offsetA + threadIdx.x];
             childA[threadIdx.x] = {child.center, LvlToExt<dim,tvec>(child.level)};
         }
 
@@ -95,8 +97,8 @@ __global__ void CountInteractionsAndM2L(
 
         __shared__ int2 segments[BLOCKSIZE];
         SegmentManager seg_mgr(
-            ilist_nodes,
-            spl_nodes,
+            ilist_isrc,
+            spl_nodes_src,
             segments,
             ilist_range.x,
             ilist_range.y,
@@ -124,7 +126,7 @@ __global__ void CountInteractionsAndM2L(
             // Each thread loads one other child B to check the opening criterion
             NodeWithExt<dim,tvec> childB_ext;
             if(id >= 0) {
-                Node<dim,tvec> childB = children[id];
+                Node<dim,tvec> childB = children_src[id];
                 childB_ext = {childB.center, LvlToExt<dim,tvec>(childB.level)};
             }
 
@@ -160,7 +162,7 @@ __global__ void CountInteractionsAndM2L(
             if(any_interacts) {
                 posB[threadIdx.x] = childB_ext.center;
                 for(int k=0; k<ncomb_mp; k++) {
-                    mpB[threadIdx.x][k] = mp_values[id * ncomb_mp + k];
+                    mpB[threadIdx.x][k] = mp_src[id * ncomb_mp + k];
                 }
             }
 
@@ -228,7 +230,7 @@ __global__ void CountInteractionsAndM2L(
 
             #pragma unroll
             for(int i = 0; i < ncomb_loc; i++) {
-                loc_out[(offsetA + threadIdx.x) * ncomb_loc + i] = loc_sum[i];
+                loc_recv[(offsetA + threadIdx.x) * ncomb_loc + i] = loc_sum[i];
             }
         }
         __syncthreads();
@@ -249,10 +251,12 @@ template<int opening_criterion_kind, int dim, typename tvec>
 __global__ void InsertInteractions(
     // inputs:
     const int2* node_range,
-    const int* spl_nodes,
+    const int* spl_nodes_recv,
+    const int* spl_nodes_src,
     const int* spl_ilist,
-    const int* ilist_nodes,
-    const Node<dim,tvec>* children,
+    const int* ilist_isrc,
+    const Node<dim,tvec>* children_recv,
+    const Node<dim,tvec>* children_src,
     const int* spl_ilist_child,
     const tvec* opening_criterion_params,
     // outputs:
@@ -267,7 +271,7 @@ __global__ void InsertInteractions(
         return;
     }
 
-    int2 child_range = {spl_nodes[nodeid], spl_nodes[nodeid + 1]};
+    int2 child_range = {spl_nodes_recv[nodeid], spl_nodes_recv[nodeid + 1]};
 
     // This loop should handle almost always everything on the first pass
     // However, to deal with edge cases we have to loop over scenarios where 
@@ -279,7 +283,7 @@ __global__ void InsertInteractions(
         __shared__ NodeWithExt<dim,tvec> childA[MAX_NUMA];
         __shared__ int ilist_offsets[MAX_NUMA];
         if(threadIdx.x < num_childrenA) {
-            Node<dim,tvec> child = children[offsetA + threadIdx.x];
+            Node<dim,tvec> child = children_recv[offsetA + threadIdx.x];
             childA[threadIdx.x] = {child.center, LvlToExt<dim,tvec>(child.level)};
             ilist_offsets[threadIdx.x] = spl_ilist_child[offsetA + threadIdx.x];
         }
@@ -296,8 +300,8 @@ __global__ void InsertInteractions(
 
         __shared__ int2 segments[BLOCKSIZE];
         SegmentManager seg_mgr(
-            ilist_nodes,
-            spl_nodes,
+            ilist_isrc,
+            spl_nodes_src,
             segments,
             ilist_range.x,
             ilist_range.y,
@@ -310,7 +314,7 @@ __global__ void InsertInteractions(
             // Each thread loads one other child B to check the opening criterion
             NodeWithExt<dim,tvec> childB_ext;
             if(id >= 0) {
-                Node<dim,tvec> childB = children[id];
+                Node<dim,tvec> childB = children_src[id];
                 childB_ext = {childB.center, LvlToExt<dim,tvec>(childB.level)};
             }
 

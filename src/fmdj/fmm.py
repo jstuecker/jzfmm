@@ -4,12 +4,14 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 
 from jztree.data import PosMass, InteractionList, get_pos_mass, TreeHierarchy, PosLvl, PackedArray
 from jztree.tree import grouped_dense_interaction_list, zsort_and_tree
+from jztree.tree import distr_grouped_dense_interaction_list, simplify_interaction_list
 from jztree.jax_ext import raise_if
+from jztree.comm import all_to_all_request_children, get_rank_info, in_shard_map_context
 
 from .config import Config
 from .data import LocalExpansion
@@ -44,9 +46,11 @@ class FMMNodeData:
 def _fmm_node_to_node(
         node_range: jax.Array,
         node_ilist: InteractionList,
-        spl: jax.Array,
-        child_data: FMMChildData,
-        cfg: Config
+        spl_recv: jax.Array,
+        child_recv: FMMChildData,
+        cfg: Config,
+        spl_src: jax.Array | None = None,
+        child_src: FMMChildData | None = None
     ) -> Tuple[jax.Array, InteractionList]:
     """
     Evaluates M2L for a tree plane and generates child interaction list.
@@ -55,10 +59,15 @@ def _fmm_node_to_node(
     - loc: multipole local expansion, shape (Nchild, M)
     - new_ilist: new interaction list for children
     """
-    size = len(child_data.poslvl.pos)
+    if spl_src is None:
+        spl_src = spl_recv
+    if child_src is None:
+        child_src = child_recv
+
+    size = len(child_recv.poslvl.pos)
     ilist_alloc_size = cfg.fmm.ilist_alloc_fac * size
     kernel = cfg.kernel
-    dim = child_data.poslvl.pos.shape[-1]
+    dim = child_recv.poslvl.pos.shape[-1]
 
     if cfg.fmm.p == 5 and cfg.fmm.p_extra_m2l == 1 and dim == 3:
         warnings.warn(
@@ -69,13 +78,14 @@ def _fmm_node_to_node(
         )
 
     assert ilist_alloc_size < 2**31, "So far only int32 supported {ilist_alloc_size/2**31}"
-    assert len(spl) == len(node_ilist.ispl)
+    assert len(spl_recv) == len(node_ilist.ispl)
 
     # children = jnp.concatenate((plane.center(), plane.lvl.view(jnp.float32)[...,None]), axis=-1)
-    children = child_data.poslvl.pos_lvl()
+    children_recv = child_recv.poslvl.pos_lvl()
+    children_src = child_src.poslvl.pos_lvl()
     
     # Determine output shapes
-    dtype = child_data.mp.dtype
+    dtype = child_src.mp.dtype
     kernel_params = kernel.params(dtype=dtype)
     opening = cfg.fmm.opening
     opening_params = opening.params(dtype=dtype)
@@ -89,7 +99,8 @@ def _fmm_node_to_node(
         "CountInteractionsAndM2L",
         (out_loc, out_interaction_count, )
     )(
-        node_range, spl, node_ilist.ispl, node_ilist.isrc, children, child_data.mp, kernel_params, opening_params,
+        node_range, spl_recv, spl_src, node_ilist.ispl, node_ilist.isrc,
+        children_recv, children_src, child_src.mp, kernel_params, opening_params,
         p=np.int32(cfg.fmm.p),
         p_extra_m2l=np.int32(cfg.fmm.p_extra_m2l),
         radial_kernel_kind=np.int32(kernel.kind_id()),
@@ -104,7 +115,8 @@ def _fmm_node_to_node(
         "InsertInteractions",
         (out_child_ilist,)
     )(
-        node_range, spl, node_ilist.ispl, node_ilist.isrc, children, ispl_child, opening_params,
+        node_range, spl_recv, spl_src, node_ilist.ispl, node_ilist.isrc,
+        children_recv, children_src, ispl_child, opening_params,
         opening_criterion_kind=np.int32(opening.kind_id()),
     )[0]
 
@@ -121,13 +133,23 @@ def _fmm_node_to_node(
 _fmm_node_to_node.jit = jax.jit(_fmm_node_to_node, static_argnames=['cfg'])
 
 def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
+    in_smap = in_shard_map_context()
+    if in_smap:
+        rank, ndev, axis_name = get_rank_info()
+
     # define root level:
     size = th.size()
     center0 = th.center().get(0, size)
     dim = center0.shape[-1]
-    spl, ilist, nsup = grouped_dense_interaction_list(
-        th.num(th.num_planes()-1), size_ilist=int(size*cfg.fmm.ilist_alloc_fac), ngroup=32, size_super=size
-    )
+    if in_smap:
+        spl, ilist, nsup = distr_grouped_dense_interaction_list(
+            th.num(th.num_planes()-1), size, size_ilist=int(size*cfg.fmm.ilist_alloc_fac)
+        )
+    else:
+        spl, ilist, nsup = grouped_dense_interaction_list(
+            th.num(th.num_planes()-1), size_ilist=int(size*cfg.fmm.ilist_alloc_fac),
+            ngroup=32, size_super=size
+        )
 
     p_local = cfg.fmm.p + cfg.fmm.p_extra_m2l
     assert p_local >= 0, "p + p_extra_m2l must be non-negative"
@@ -141,25 +163,43 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
         level = th.num_planes() - 1 - i
 
         parent_loc, parent_ilist = carry
-        parent_spl = spl_n2n.get(level+1, size+1)
+        parent_spl_recv = spl_n2n.get(level+1, size+1)
+        parent_cent = cent.get(level+1, size)
 
-        parent_range = jnp.array([0, spl_n2n.num(level+1)-1], dtype=jnp.int32)
-        child_data = FMMChildData(
+        child_recv = FMMChildData(
             poslvl=PosLvl(pos=cent.get(level, size), lvl=th.lvl.get(level, size)),
             mp=mph.get(level, size=size)
         )
 
+        if in_smap:
+            # Request the remote source node data that local receivers interact with.
+            # This also runs in size-one shard maps as a syntax/shape test path.
+            (child_src, ids), parent_spl_src, dev_spl = all_to_all_request_children(
+                parent_ilist.dev_spl, parent_ilist.ids, parent_spl_recv,
+                (child_recv, jnp.arange(size)),
+                axis_name=axis_name, err_hint_child="\nHint: increase alloc_fac_nodes",
+                err_hint_parent="\nHint: increase alloc_fac_nodes"
+            )
+            parent_range = jnp.array([0, parent_ilist.ispl.size-1], dtype=jnp.int32)
+        else:
+            child_src, parent_spl_src = child_recv, parent_spl_recv
+            parent_range = jnp.array([0, spl_n2n.num(level+1)-1], dtype=jnp.int32)
+
         loc_ch, ilist = _fmm_node_to_node(
-            parent_range, parent_ilist, parent_spl, child_data, cfg=cfg
+            parent_range, parent_ilist, parent_spl_recv, child_recv,
+            cfg=cfg, spl_src=parent_spl_src, child_src=child_src
         )
 
         loc_ch = loc_ch + _fmm_node_to_child(
-            parent_spl, parent_loc, cent.get(level+1, size), cent.get(level, size), cfg=cfg
+            parent_spl_recv, parent_loc, parent_cent, child_recv.poslvl.pos, cfg=cfg
         )
+
+        if in_smap:
+            ilist = replace(ilist, ids=ids, dev_spl=dev_spl)
+            ilist = simplify_interaction_list(ilist)
 
         return loc_ch, ilist
 
-    # unrolling the loop turns out better, since number of iterations tends to be very small
     loc, ilist = jax.lax.fori_loop(
         0, th.num_planes(), handle_level, (loc, ilist), unroll=True
     )

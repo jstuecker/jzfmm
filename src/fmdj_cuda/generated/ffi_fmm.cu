@@ -31,51 +31,57 @@ using DT = ffi::DataType;
 ffi::Error CountInteractionsAndM2LFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer node_range,
-    ffi::AnyBuffer spl_nodes,
+    ffi::AnyBuffer spl_nodes_recv,
+    ffi::AnyBuffer spl_nodes_src,
     ffi::AnyBuffer spl_ilist,
-    ffi::AnyBuffer ilist_nodes,
-    ffi::AnyBuffer children,
-    ffi::AnyBuffer mp_values,
+    ffi::AnyBuffer ilist_isrc,
+    ffi::AnyBuffer children_recv,
+    ffi::AnyBuffer children_src,
+    ffi::AnyBuffer mp_src,
     ffi::AnyBuffer radial_kernel_params,
     ffi::AnyBuffer opening_criterion_params,
-    ffi::Result<ffi::AnyBuffer> loc_out,
+    ffi::Result<ffi::AnyBuffer> loc_recv,
     ffi::Result<ffi::AnyBuffer> ilist_child_count_out,
     int radial_kernel_kind,
     int opening_criterion_kind,
     int p,
     int p_extra_m2l
 ) {
-    int dim = children.dimensions()[1] - 1;
-    DT tvec = children.element_type();
+    int dim = children_recv.dimensions()[1] - 1;
+    DT tvec = children_recv.element_type();
     dim3 blockDim(32);
-    dim3 gridDim(spl_nodes.element_count() - 1);
+    dim3 gridDim(spl_nodes_recv.element_count() - 1);
     size_t smem = 0;
     
     // Initialize output buffers
-    cudaMemsetAsync(loc_out->untyped_data(), 0, loc_out->size_bytes(), stream);
+    cudaMemsetAsync(loc_recv->untyped_data(), 0, loc_recv->size_bytes(), stream);
     cudaMemsetAsync(ilist_child_count_out->untyped_data(), 0, ilist_child_count_out->size_bytes(), stream);
     
     // Build a bundled argument list for cudaLaunchKernel
     void* node_range_arg = node_range.untyped_data();
-    void* spl_nodes_arg = spl_nodes.untyped_data();
+    void* spl_nodes_recv_arg = spl_nodes_recv.untyped_data();
+    void* spl_nodes_src_arg = spl_nodes_src.untyped_data();
     void* spl_ilist_arg = spl_ilist.untyped_data();
-    void* ilist_nodes_arg = ilist_nodes.untyped_data();
-    void* children_arg = children.untyped_data();
-    void* mp_values_arg = mp_values.untyped_data();
+    void* ilist_isrc_arg = ilist_isrc.untyped_data();
+    void* children_recv_arg = children_recv.untyped_data();
+    void* children_src_arg = children_src.untyped_data();
+    void* mp_src_arg = mp_src.untyped_data();
     void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
     void* opening_criterion_params_arg = opening_criterion_params.untyped_data();
-    void* loc_out_arg = loc_out->untyped_data();
+    void* loc_recv_arg = loc_recv->untyped_data();
     void* ilist_child_count_out_arg = ilist_child_count_out->untyped_data();
     void* args[] = {
         &node_range_arg,
-        &spl_nodes_arg,
+        &spl_nodes_recv_arg,
+        &spl_nodes_src_arg,
         &spl_ilist_arg,
-        &ilist_nodes_arg,
-        &children_arg,
-        &mp_values_arg,
+        &ilist_isrc_arg,
+        &children_recv_arg,
+        &children_src_arg,
+        &mp_src_arg,
         &radial_kernel_params_arg,
         &opening_criterion_params_arg,
-        &loc_out_arg,
+        &loc_recv_arg,
         &ilist_child_count_out_arg,
         &radial_kernel_kind
     };
@@ -142,14 +148,16 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // node_range
-        .Arg<ffi::AnyBuffer>() // spl_nodes
+        .Arg<ffi::AnyBuffer>() // spl_nodes_recv
+        .Arg<ffi::AnyBuffer>() // spl_nodes_src
         .Arg<ffi::AnyBuffer>() // spl_ilist
-        .Arg<ffi::AnyBuffer>() // ilist_nodes
-        .Arg<ffi::AnyBuffer>() // children
-        .Arg<ffi::AnyBuffer>() // mp_values
+        .Arg<ffi::AnyBuffer>() // ilist_isrc
+        .Arg<ffi::AnyBuffer>() // children_recv
+        .Arg<ffi::AnyBuffer>() // children_src
+        .Arg<ffi::AnyBuffer>() // mp_src
         .Arg<ffi::AnyBuffer>() // radial_kernel_params
         .Arg<ffi::AnyBuffer>() // opening_criterion_params
-        .Ret<ffi::AnyBuffer>() // loc_out
+        .Ret<ffi::AnyBuffer>() // loc_recv
         .Ret<ffi::AnyBuffer>() // ilist_child_count_out
         .Attr<int>("radial_kernel_kind")
         .Attr<int>("opening_criterion_kind")
@@ -166,36 +174,42 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
 ffi::Error InsertInteractionsFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer node_range,
-    ffi::AnyBuffer spl_nodes,
+    ffi::AnyBuffer spl_nodes_recv,
+    ffi::AnyBuffer spl_nodes_src,
     ffi::AnyBuffer spl_ilist,
-    ffi::AnyBuffer ilist_nodes,
-    ffi::AnyBuffer children,
+    ffi::AnyBuffer ilist_isrc,
+    ffi::AnyBuffer children_recv,
+    ffi::AnyBuffer children_src,
     ffi::AnyBuffer spl_ilist_child,
     ffi::AnyBuffer opening_criterion_params,
     ffi::Result<ffi::AnyBuffer> child_ilist_out,
     int opening_criterion_kind
 ) {
-    int dim = children.dimensions()[1] - 1;
-    DT tvec = children.element_type();
+    int dim = children_recv.dimensions()[1] - 1;
+    DT tvec = children_recv.element_type();
     dim3 blockDim(32);
-    dim3 gridDim(spl_nodes.element_count() - 1);
+    dim3 gridDim(spl_nodes_recv.element_count() - 1);
     size_t smem = 0;
     
     // Build a bundled argument list for cudaLaunchKernel
     void* node_range_arg = node_range.untyped_data();
-    void* spl_nodes_arg = spl_nodes.untyped_data();
+    void* spl_nodes_recv_arg = spl_nodes_recv.untyped_data();
+    void* spl_nodes_src_arg = spl_nodes_src.untyped_data();
     void* spl_ilist_arg = spl_ilist.untyped_data();
-    void* ilist_nodes_arg = ilist_nodes.untyped_data();
-    void* children_arg = children.untyped_data();
+    void* ilist_isrc_arg = ilist_isrc.untyped_data();
+    void* children_recv_arg = children_recv.untyped_data();
+    void* children_src_arg = children_src.untyped_data();
     void* spl_ilist_child_arg = spl_ilist_child.untyped_data();
     void* opening_criterion_params_arg = opening_criterion_params.untyped_data();
     void* child_ilist_out_arg = child_ilist_out->untyped_data();
     void* args[] = {
         &node_range_arg,
-        &spl_nodes_arg,
+        &spl_nodes_recv_arg,
+        &spl_nodes_src_arg,
         &spl_ilist_arg,
-        &ilist_nodes_arg,
-        &children_arg,
+        &ilist_isrc_arg,
+        &children_recv_arg,
+        &children_src_arg,
         &spl_ilist_child_arg,
         &opening_criterion_params_arg,
         &child_ilist_out_arg
@@ -245,10 +259,12 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
     ffi::Ffi::Bind()
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // node_range
-        .Arg<ffi::AnyBuffer>() // spl_nodes
+        .Arg<ffi::AnyBuffer>() // spl_nodes_recv
+        .Arg<ffi::AnyBuffer>() // spl_nodes_src
         .Arg<ffi::AnyBuffer>() // spl_ilist
-        .Arg<ffi::AnyBuffer>() // ilist_nodes
-        .Arg<ffi::AnyBuffer>() // children
+        .Arg<ffi::AnyBuffer>() // ilist_isrc
+        .Arg<ffi::AnyBuffer>() // children_recv
+        .Arg<ffi::AnyBuffer>() // children_src
         .Arg<ffi::AnyBuffer>() // spl_ilist_child
         .Arg<ffi::AnyBuffer>() // opening_criterion_params
         .Ret<ffi::AnyBuffer>() // child_ilist_out

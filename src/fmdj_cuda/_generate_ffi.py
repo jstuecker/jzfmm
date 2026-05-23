@@ -73,23 +73,23 @@ kernels = parse.get_functions_from_file(
     only_kernels=True
 )
 
-kernels["CountInteractionsAndM2L"].grid_size_expression = "spl_nodes.element_count() - 1"
+kernels["CountInteractionsAndM2L"].grid_size_expression = "spl_nodes_recv.element_count() - 1"
 kernels["CountInteractionsAndM2L"].init_outputs_zero = True
 kernels["CountInteractionsAndM2L"].block_size_expression = 32
 kernels["CountInteractionsAndM2L"].template_par["p"].instances = p_instance_values
 kernels["CountInteractionsAndM2L"].template_par["p_extra_m2l"].instances = p_extra_m2l_instance_values
 kernels["CountInteractionsAndM2L"].template_par["opening_criterion_kind"].instances = opening_criterion_instance_values
 kernels["CountInteractionsAndM2L"].template_par["dim"].instances = dimensions
-kernels["CountInteractionsAndM2L"].template_par["dim"].expression = "children.dimensions()[1] - 1"
-add_dtype_template(kernels["CountInteractionsAndM2L"], "children")
+kernels["CountInteractionsAndM2L"].template_par["dim"].expression = "children_recv.dimensions()[1] - 1"
+add_dtype_template(kernels["CountInteractionsAndM2L"], "children_recv")
 
-kernels["InsertInteractions"].grid_size_expression = "spl_nodes.element_count() - 1"
+kernels["InsertInteractions"].grid_size_expression = "spl_nodes_recv.element_count() - 1"
 # kernels["InsertInteractions"].init_outputs_zero = True # this is actually expensive and not needed
 kernels["InsertInteractions"].block_size_expression = 32
 kernels["InsertInteractions"].template_par["opening_criterion_kind"].instances = opening_criterion_instance_values
 kernels["InsertInteractions"].template_par["dim"].instances = dimensions
-kernels["InsertInteractions"].template_par["dim"].expression = "children.dimensions()[1] - 1"
-add_dtype_template(kernels["InsertInteractions"], "children")
+kernels["InsertInteractions"].template_par["dim"].expression = "children_recv.dimensions()[1] - 1"
+add_dtype_template(kernels["InsertInteractions"], "children_recv")
 
 gen.generate_ffi_module_file(
     output_file = str(HERE / "generated/ffi_fmm.cu"), 
