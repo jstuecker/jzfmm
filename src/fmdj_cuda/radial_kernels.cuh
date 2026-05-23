@@ -7,6 +7,7 @@
 
 static constexpr int RADIAL_KERNEL_PLUMMER = 0;
 static constexpr int RADIAL_KERNEL_QUARTIC_PLUMMER = 1;
+static constexpr int RADIAL_KERNEL_PLUMMER_2D = 2;
 
 template<int radial_kernel_kind>
 struct RadialKernel;
@@ -26,6 +27,15 @@ __device__ __forceinline__ tvec radial_kernel_sqrt(tvec x) {
         return sqrtf(x);
     } else {
         return sqrt(x);
+    }
+}
+
+template<typename tvec>
+__device__ __forceinline__ tvec radial_kernel_log(tvec x) {
+    if constexpr (std::is_same_v<tvec, float>) {
+        return logf(x);
+    } else {
+        return log(x);
     }
 }
 
@@ -148,6 +158,47 @@ struct RadialKernel<RADIAL_KERNEL_QUARTIC_PLUMMER> {
     }
 };
 
+template<>
+struct RadialKernel<RADIAL_KERNEL_PLUMMER_2D> {
+    template<typename tvec>
+    struct Params {
+        tvec softening;
+        tvec softening2;
+    };
+
+    template<typename tvec>
+    __device__ __forceinline__ static Params<tvec> make_params(const tvec* params) {
+        const tvec softening = params[0];
+        return Params<tvec>{softening, softening * softening};
+    }
+
+    template<typename tvec>
+    __device__ __forceinline__ static tvec self_value(Params<tvec> params) {
+        return radial_kernel_log(params.softening);
+    }
+
+    template<int p, typename tvec>
+    __device__ __forceinline__ static void r2_derivative_coeffs(
+        tvec r2,
+        Params<tvec> params,
+        Vec<p+1,tvec>& coeffs
+    ) {
+        // Plummer-softened 2D Laplace kernel K(r) = 0.5 * log(r^2 + eps^2).
+        // coeffs[n] = ((1/r) d/dr)^n K(r) = 2^n d^n K / d(r^2)^n.
+        const tvec sinv = tvec(1) / (r2 + params.softening2);
+        coeffs[0] = tvec(0.5) * radial_kernel_log(r2 + params.softening2);
+
+        if constexpr (p >= 1) {
+            coeffs[1] = sinv;
+
+            #pragma unroll
+            for(int n = 2; n <= p; n++) {
+                coeffs[n] = -tvec(2 * (n - 1)) * coeffs[n - 1] * sinv;
+            }
+        }
+    }
+};
+
 template<int p, typename tvec>
 __device__ __forceinline__ void evaluate_radial_kernel_derivatives(
     int radial_kernel_kind,
@@ -156,6 +207,13 @@ __device__ __forceinline__ void evaluate_radial_kernel_derivatives(
     Vec<p+1,tvec>& coeffs
 ) {
     switch(radial_kernel_kind) {
+        case RADIAL_KERNEL_PLUMMER_2D: {
+            auto kernel_params = RadialKernel<RADIAL_KERNEL_PLUMMER_2D>::template make_params<tvec>(params);
+            RadialKernel<RADIAL_KERNEL_PLUMMER_2D>::template r2_derivative_coeffs<p,tvec>(
+                r2, kernel_params, coeffs
+            );
+            break;
+        }
         case RADIAL_KERNEL_QUARTIC_PLUMMER: {
             auto kernel_params = RadialKernel<RADIAL_KERNEL_QUARTIC_PLUMMER>::template make_params<tvec>(params);
             RadialKernel<RADIAL_KERNEL_QUARTIC_PLUMMER>::template r2_derivative_coeffs<p,tvec>(

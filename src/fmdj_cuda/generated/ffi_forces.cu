@@ -66,10 +66,14 @@ ffi::Error DirectSummationFFIHost(
         { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 0, 3, float>) },
         { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 1, 2, float>) },
         { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 1, 3, float>) },
+        { {true, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 2, 2, float>) },
+        { {true, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<true, 2, 3, float>) },
         { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 0, 2, float>) },
         { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 0, 3, float>) },
         { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 1, 2, float>) },
-        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 1, 3, float>) }
+        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 1, 3, float>) },
+        { {false, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 2, 2, float>) },
+        { {false, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectSummation<false, 2, 3, float>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -79,7 +83,7 @@ ffi::Error DirectSummationFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in DirectSummationFFIHost -- Only supporting:\n"\
-            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float)"
+            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (true, 2, 2, float), (true, 2, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float), (false, 2, 2, float), (false, 2, 3, float)"
         );
     }
     const void* instance = it->second;
@@ -159,10 +163,14 @@ ffi::Error BwdDirectSummationFFIHost(
         { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 0, 3, float>) },
         { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 1, 2, float>) },
         { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 1, 3, float>) },
+        { {true, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 2, 2, float>) },
+        { {true, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<true, 2, 3, float>) },
         { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 0, 2, float>) },
         { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 0, 3, float>) },
         { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 1, 2, float>) },
-        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 1, 3, float>) }
+        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 1, 3, float>) },
+        { {false, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 2, 2, float>) },
+        { {false, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectSummation<false, 2, 3, float>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -172,7 +180,7 @@ ffi::Error BwdDirectSummationFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in BwdDirectSummationFFIHost -- Only supporting:\n"\
-            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float)"
+            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (true, 2, 2, float), (true, 2, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float), (false, 2, 2, float), (false, 2, 3, float)"
         );
     }
     const void* instance = it->second;
@@ -260,10 +268,14 @@ ffi::Error LeafLeafSummationFFIHost(
         { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<true, 0, 3, float>) },
         { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<true, 1, 2, float>) },
         { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<true, 1, 3, float>) },
+        { {true, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<true, 2, 2, float>) },
+        { {true, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<true, 2, 3, float>) },
         { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<false, 0, 2, float>) },
         { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<false, 0, 3, float>) },
         { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<false, 1, 2, float>) },
-        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<false, 1, 3, float>) }
+        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<false, 1, 3, float>) },
+        { {false, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<false, 2, 2, float>) },
+        { {false, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafSummation<false, 2, 3, float>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -273,7 +285,7 @@ ffi::Error LeafLeafSummationFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in LeafLeafSummationFFIHost -- Only supporting:\n"\
-            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float)"
+            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (true, 2, 2, float), (true, 2, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float), (false, 2, 2, float), (false, 2, 3, float)"
         );
     }
     const void* instance = it->second;
@@ -367,10 +379,14 @@ ffi::Error BwdLeafLeafSummationFFIHost(
         { {true, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<true, 0, 3, float>) },
         { {true, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<true, 1, 2, float>) },
         { {true, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<true, 1, 3, float>) },
+        { {true, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<true, 2, 2, float>) },
+        { {true, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<true, 2, 3, float>) },
         { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<false, 0, 2, float>) },
         { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<false, 0, 3, float>) },
         { {false, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<false, 1, 2, float>) },
-        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<false, 1, 3, float>) }
+        { {false, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<false, 1, 3, float>) },
+        { {false, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<false, 2, 2, float>) },
+        { {false, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafSummation<false, 2, 3, float>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -380,7 +396,7 @@ ffi::Error BwdLeafLeafSummationFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in BwdLeafLeafSummationFFIHost -- Only supporting:\n"\
-            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float)"
+            "(true, 0, 2, float), (true, 0, 3, float), (true, 1, 2, float), (true, 1, 3, float), (true, 2, 2, float), (true, 2, 3, float), (false, 0, 2, float), (false, 0, 3, float), (false, 1, 2, float), (false, 1, 3, float), (false, 2, 2, float), (false, 2, 3, float)"
         );
     }
     const void* instance = it->second;

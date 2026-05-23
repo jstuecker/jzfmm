@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import math
 import jax
 import jax.numpy as jnp
 
@@ -38,6 +39,19 @@ class QuarticPlummerKernel(KernelConfig):
 
     def self_value(self) -> float:
         return -1.0 / self.softening
+
+@dataclass(unsafe_hash=True)
+class Plummer2DKernel(KernelConfig):
+    softening : float = 1e-3
+
+    def kind_id(self) -> int:
+        return 2
+
+    def params(self, dtype=jnp.float32) -> jax.Array:
+        return jnp.asarray([self.softening], dtype=dtype)
+
+    def self_value(self) -> float:
+        return math.log(self.softening)
 
 @dataclass(unsafe_hash=True)
 class OpeningCriterionConfig:

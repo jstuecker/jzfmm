@@ -11,7 +11,7 @@ float_types = ("float",) # by default don't compile double for now... doubles co
 p_instance_values = (1, 2, 3, 4, 5)
 p_l2l_instance_values = (1, 2, 3, 4, 5, 6)
 p_extra_m2l_instance_values = (0, 1)
-radial_kernel_instance_values = (0, 1)
+radial_kernel_instance_values = (0, 1, 2)
 opening_criterion_instance_values = (0,)
 default_includes = ["../common/math.cuh"]
 

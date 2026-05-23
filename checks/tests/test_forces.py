@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from jztree_utils import ics
 
-from fmdj.config import Config, FMMConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel
+from fmdj.config import Config, FMMConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel, Plummer2DKernel
 from fmdj.fmm import direct_summation, fast_multipole_method
 
 
@@ -67,6 +67,24 @@ def test_softening_kernels():
     ferr_rel = ferr / jnp.linalg.norm(0.5*(f_quartic + f_plummer), axis=-1)
 
     assert jnp.median(ferr_rel) <= 1e-3
+    assert jnp.max(ferr_rel) <= 5e-2
+
+
+def test_plummer_2d_kernel():
+    cfg = Config(
+        kernel=Plummer2DKernel(softening=0.05),
+        fmm=FMMConfig(p=4, opening=OpeningByAngle(theta=0.4), kahan_summation=True),
+    )
+
+    part = ics.uniform_particles(int(4096), dim=2)
+
+    fref = direct_summation.jit(part, kernel=cfg.kernel, kahan=True, G=cfg.G()).force()
+    ffmm = fast_multipole_method.jit(part, cfg=cfg).force()
+
+    ferr = jnp.linalg.norm(fref - ffmm, axis=-1)
+    ferr_rel = ferr / jnp.linalg.norm(0.5*(fref + ffmm), axis=-1)
+
+    assert jnp.median(ferr_rel) <= 2e-4
     assert jnp.max(ferr_rel) <= 5e-2
 
 
