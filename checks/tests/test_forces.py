@@ -110,6 +110,19 @@ def test_fmm_result_keys():
         fast_multipole_method(partz, cfg=cfg, th=th, result="loc")
 
 
+def test_padding():
+    cfg = Config()
+    npart = 2048
+    part = ics.uniform_particles(npart)
+    part_padded = ics.uniform_particles(npart, npad=512)
+
+    loc = fast_multipole_method.jit(part, cfg=cfg).values
+    loc_padded = fast_multipole_method.jit(part_padded, cfg=cfg).values
+
+    assert jnp.all(loc_padded[:npart] == loc)
+    assert jnp.all(jnp.isnan(loc_padded[npart:]))
+
+
 def test_fmm_reproducibility():
     cfg = Config()
     part = ics.uniform_particles(1024*1024)
