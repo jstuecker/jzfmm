@@ -122,7 +122,7 @@ class FMMConfig():
     opening : OpeningCriterionConfig = field(default_factory=OpeningByAngle)
 
     # Memory
-    ilist_alloc_fac : int = 256
+    alloc_fac_ilist : float = 256.
 
     # Other
     kahan_summation : bool = False

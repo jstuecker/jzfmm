@@ -28,7 +28,7 @@ def leaf_leaf_with_tree(partz, th, ilist, cfg):
 def bench_distr_fmm_hernquist(jax_bench, N):
     cfg = Config()
     cfg.tree.alloc_fac_nodes = 2.4
-    cfg.fmm.ilist_alloc_fac = 140
+    cfg.fmm.alloc_fac_ilist = 140
 
     ndev = jax.device_count()
     mesh = get_mesh(ndev)

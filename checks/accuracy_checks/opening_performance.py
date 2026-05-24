@@ -161,7 +161,7 @@ def run_benchmark(setup: str, reference: str, recompute_direct: bool = False) ->
     part = make_particles(setup)
     cfg_base = Config(
         kernel=PlummerKernel(softening=SOFTENING),
-        fmm=FMMConfig(kahan_summation=False, ilist_alloc_fac=1024),
+        fmm=FMMConfig(kahan_summation=False, alloc_fac_ilist=1024),
     )
     cfg_base.tree.mass_centered = False
     cfg_base.tree.alloc_fac_nodes = 2.0
