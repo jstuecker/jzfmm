@@ -188,6 +188,7 @@ __global__ void LeafLeafPairSummation(
     const PosMass<dim,tvec>* posm_recv,
     const PosMass<dim,tvec>* posm_src,
     const tvec* radial_kernel_params,
+    const LocalExp<dim,tvec>* loc_in,
     // outputs:
     LocalExp<dim,tvec>* loc_recv
 ) {
@@ -258,8 +259,10 @@ __global__ void LeafLeafPairSummation(
         for(int i=0; i < n_write; i++)
             kahan_add_vec(loc_cum.asvec, loc_shared[i*num + a_write].asvec, loc_a_kahan.asvec);
 
-        if(valid)
+        if(valid) {
+            loc_cum.asvec += loc_in[prange.x + a_write].asvec;
             loc_recv[prange.x + a_write] = loc_cum;
+        }
     }
 }
 

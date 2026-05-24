@@ -255,6 +255,7 @@ def leaf_leaf_summation(
         ispl: jax.Array,
         ilist: InteractionList,
         cfg: Config = None,
+        loc_in: jax.Array | None = None,
     ) -> jax.Array:
     particles_recv = particles
     spl_recv = ispl
@@ -269,10 +270,13 @@ def leaf_leaf_summation(
     node_range = jnp.array([0, spl_recv.size-1], dtype=jnp.int32)
     posm_recv = get_pos_mass(particles_recv)
     out_type = jax.ShapeDtypeStruct((particles_recv.pos.shape[0], dim + 1), posm_recv.dtype)
+    if loc_in is None:
+        loc_in = jnp.zeros(out_type.shape, dtype=out_type.dtype)
+        loc_in = pcast_like(loc_in, spl_recv)
     kernel = cfg.kernel
     kernel_params = kernel.params(dtype=posm_recv.dtype)
 
-    def eval_fwd(particles_recv, spl_recv, ilist):
+    def eval_fwd(particles_recv, spl_recv, ilist, loc_in):
         if in_smap:
             particles_src, spl_src, _dev_spl_src = all_to_all_request_children(
                 ilist.dev_spl, ilist.ids, spl_recv, particles_recv,
@@ -287,9 +291,12 @@ def leaf_leaf_summation(
         else:
             particles_src, spl_src = particles_recv, spl_recv
 
-        loc = jax.ffi.ffi_call("LeafLeafPairSummation", (out_type,))(
+        loc = jax.ffi.ffi_call(
+            "LeafLeafPairSummation", (out_type,),
+            input_output_aliases={8: 0},
+        )(
             node_range, spl_recv, spl_src, ilist.ispl, ilist.isrc,
-            get_pos_mass(particles_recv), get_pos_mass(particles_src), kernel_params,
+            get_pos_mass(particles_recv), get_pos_mass(particles_src), kernel_params, loc_in,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
@@ -302,8 +309,8 @@ def leaf_leaf_summation(
         return loc, (particles_recv, spl_recv, ilist, particles_src, spl_src)
 
     @jax.custom_vjp
-    def eval(particles_recv, spl_recv, ilist):
-        return eval_fwd(particles_recv, spl_recv, ilist)[0]
+    def eval(particles_recv, spl_recv, ilist, loc_in):
+        return eval_fwd(particles_recv, spl_recv, ilist, loc_in)[0]
     
     def eval_bwd(res, gloc):
         particles_recv, spl_recv, ilist, particles_src, spl_src = res
@@ -339,11 +346,11 @@ def leaf_leaf_summation(
         gposm = PosMass(
             pos=gpos, mass=gmass, num=gnum, num_total=particles_recv.num_total
         )
-        return gposm, None, None
+        return gposm, None, None, gloc
     
     eval.defvjp(eval_fwd, eval_bwd)
 
-    return eval(particles_recv, spl_recv, ilist)
+    return eval(particles_recv, spl_recv, ilist, loc_in)
 leaf_leaf_summation.jit = jax.jit(leaf_leaf_summation, static_argnames=['cfg'])
 
 
@@ -476,8 +483,7 @@ def _fast_multipole_method_z(partz: PosMass, th: TreeHierarchy, *, cfg: Config, 
     loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg=cfg)
     spl = th.splits_leaf_to_part()
 
-    loc_leaf_leaf = leaf_leaf_summation(partz, spl, jax.lax.stop_gradient(ilist), cfg=cfg)
-    loc = loc_leaf_leaf + loc_node_node
+    loc = leaf_leaf_summation(partz, spl, jax.lax.stop_gradient(ilist), cfg=cfg, loc_in=loc_node_node)
 
     return LocalExpansion(loc * cfg.G(), dim=partz.pos.shape[-1])
 _fast_multipole_method_z.jit = jax.jit(_fast_multipole_method_z, static_argnames=("cfg", "pout"))

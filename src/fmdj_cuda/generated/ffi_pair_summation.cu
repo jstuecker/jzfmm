@@ -286,6 +286,7 @@ ffi::Error LeafLeafPairSummationFFIHost(
     ffi::AnyBuffer posm_recv,
     ffi::AnyBuffer posm_src,
     ffi::AnyBuffer radial_kernel_params,
+    ffi::AnyBuffer loc_in,
     ffi::Result<ffi::AnyBuffer> loc_recv,
     bool kahan,
     int radial_kernel_kind,
@@ -306,6 +307,7 @@ ffi::Error LeafLeafPairSummationFFIHost(
     void* posm_recv_arg = posm_recv.untyped_data();
     void* posm_src_arg = posm_src.untyped_data();
     void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
+    void* loc_in_arg = loc_in.untyped_data();
     void* loc_recv_arg = loc_recv->untyped_data();
     void* args[] = {
         &node_range_arg,
@@ -316,6 +318,7 @@ ffi::Error LeafLeafPairSummationFFIHost(
         &posm_recv_arg,
         &posm_src_arg,
         &radial_kernel_params_arg,
+        &loc_in_arg,
         &loc_recv_arg
     };
     
@@ -384,6 +387,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // posm_recv
         .Arg<ffi::AnyBuffer>() // posm_src
         .Arg<ffi::AnyBuffer>() // radial_kernel_params
+        .Arg<ffi::AnyBuffer>() // loc_in
         .Ret<ffi::AnyBuffer>() // loc_recv
         .Attr<bool>("kahan")
         .Attr<int>("radial_kernel_kind")
