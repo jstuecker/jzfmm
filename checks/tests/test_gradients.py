@@ -89,6 +89,7 @@ def test_sim_com(particles_blob, mode):
         cfg.fmm = None
     else:
         cfg.tree.alloc_fac_nodes = 2.0
+        cfg.fmm.alloc_fac_ilist = 256. # need larger factor for very small problem size
 
     def loss(p):
         pfin = simulate(p, tend=1e2, nsteps=100, cfg=cfg)

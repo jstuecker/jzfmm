@@ -10,13 +10,13 @@ from jztree_utils import ics
 from fmdj.config import Config, FMMConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel, Plummer2DKernel, SoftenedDistanceKernel
 from fmdj.fmm import direct_summation, fast_multipole_method
 
-
 def _device_array_bytes(x):
     return np.asarray(jax.block_until_ready(x)).tobytes()
 
 @pytest.mark.parametrize("p", [2,3,4])
 def test_fmm_uniform(p):
     cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=FMMConfig(p=p, opening=OpeningByAngle(theta=0.4), kahan_summation=True))
+    cfg.fmm.alloc_fac_ilist = 256. # need larger, because small opening angle
 
     part = ics.uniform_particles(int(1e4))
 
@@ -109,7 +109,6 @@ def test_fmm_result_keys():
     with pytest.raises(ValueError, match="result='loc'"):
         fast_multipole_method(partz, cfg=cfg, th=th, result="loc")
 
-
 def test_padding():
     cfg = Config()
     npart = 2048
@@ -122,13 +121,12 @@ def test_padding():
     assert jnp.all(loc_padded[:npart] == loc)
     assert jnp.all(jnp.isnan(loc_padded[npart:]))
 
-
 def test_fmm_reproducibility():
     cfg = Config()
     part = ics.uniform_particles(1024*1024)
 
-    expected = _device_array_bytes(fast_multipole_method.jit(part, cfg=cfg).values)
+    expected = fast_multipole_method.jit(part, cfg=cfg).values
 
     for _ in range(5):
-        actual = _device_array_bytes(fast_multipole_method.jit(part, cfg=cfg).values)
-        assert actual == expected
+        actual = fast_multipole_method.jit(part, cfg=cfg).values
+        assert jnp.all(expected == actual) # check bit-perfect agreement

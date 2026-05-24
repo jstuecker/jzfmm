@@ -122,7 +122,7 @@ class FMMConfig():
     opening : OpeningCriterionConfig = field(default_factory=OpeningByAngle)
 
     # Memory
-    alloc_fac_ilist : float = 256.
+    alloc_fac_ilist : float = 64.
 
     # Other
     kahan_summation : bool = False
@@ -131,7 +131,7 @@ class FMMConfig():
 @dataclass(unsafe_hash=True)
 class Config():
     # Sub config objects
-    tree : TreeConfig | None = TreeConfig(mass_centered=False)
+    tree : TreeConfig | None = TreeConfig(mass_centered=False, alloc_fac_nodes=1.2)
     fmm : FMMConfig | None = FMMConfig()
     logging : LoggingConfig = LoggingConfig()
 
