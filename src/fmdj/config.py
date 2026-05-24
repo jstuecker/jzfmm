@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-import math
 import jax
 import jax.numpy as jnp
 
@@ -15,8 +14,6 @@ class KernelConfig:
         raise NotImplementedError
     def params(self, dtype=jnp.float32) -> jax.Array:
         raise NotImplementedError
-    def self_value(self) -> float:
-        raise NotImplementedError
 
 @dataclass(unsafe_hash=True)
 class PlummerKernel(KernelConfig):
@@ -30,9 +27,6 @@ class PlummerKernel(KernelConfig):
     def params(self, dtype=jnp.float32) -> jax.Array:
         return jnp.asarray([self.softening], dtype=dtype)
 
-    def self_value(self) -> float:
-        return -1.0 / self.softening
-
 @dataclass(unsafe_hash=True)
 class QuarticPlummerKernel(KernelConfig):
     """K(r) = -1 / (r^4 + eps^4)^(1/4)."""
@@ -44,9 +38,6 @@ class QuarticPlummerKernel(KernelConfig):
 
     def params(self, dtype=jnp.float32) -> jax.Array:
         return jnp.asarray([self.softening], dtype=dtype)
-
-    def self_value(self) -> float:
-        return -1.0 / self.softening
 
 @dataclass(unsafe_hash=True)
 class Plummer2DKernel(KernelConfig):
@@ -60,9 +51,6 @@ class Plummer2DKernel(KernelConfig):
     def params(self, dtype=jnp.float32) -> jax.Array:
         return jnp.asarray([self.softening], dtype=dtype)
 
-    def self_value(self) -> float:
-        return math.log(self.softening)
-
 @dataclass(unsafe_hash=True)
 class SoftenedDistanceKernel(KernelConfig):
     """K(r) = sqrt(r^2 + eps^2)."""
@@ -74,9 +62,6 @@ class SoftenedDistanceKernel(KernelConfig):
 
     def params(self, dtype=jnp.float32) -> jax.Array:
         return jnp.asarray([self.softening], dtype=dtype)
-
-    def self_value(self) -> float:
-        return self.softening
 
 # ------------------------------------------------------------------------------------------------ #
 #                                              Opening                                             #

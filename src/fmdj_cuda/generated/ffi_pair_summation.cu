@@ -33,6 +33,7 @@ ffi::Error DirectPairSummationFFIHost(
     ffi::AnyBuffer xm,
     ffi::AnyBuffer radial_kernel_params,
     ffi::Result<ffi::AnyBuffer> loc_out,
+    bool remove_self_interaction,
     bool kahan,
     int radial_kernel_kind,
     size_t block_size
@@ -52,7 +53,8 @@ ffi::Error DirectPairSummationFFIHost(
         &xm_arg,
         &radial_kernel_params_arg,
         &loc_out_arg,
-        &n
+        &n,
+        &remove_self_interaction
     };
     
 
@@ -139,6 +141,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // xm
         .Arg<ffi::AnyBuffer>() // radial_kernel_params
         .Ret<ffi::AnyBuffer>() // loc_out
+        .Attr<bool>("remove_self_interaction")
         .Attr<bool>("kahan")
         .Attr<int>("radial_kernel_kind")
         .Attr<size_t>("block_size"),
@@ -156,6 +159,7 @@ ffi::Error BwdDirectPairSummationFFIHost(
     ffi::AnyBuffer xm,
     ffi::AnyBuffer radial_kernel_params,
     ffi::Result<ffi::AnyBuffer> gxm,
+    bool remove_self_interaction,
     bool kahan,
     int radial_kernel_kind,
     size_t block_size
@@ -177,7 +181,8 @@ ffi::Error BwdDirectPairSummationFFIHost(
         &xm_arg,
         &radial_kernel_params_arg,
         &gxm_arg,
-        &n
+        &n,
+        &remove_self_interaction
     };
     
 
@@ -265,6 +270,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // xm
         .Arg<ffi::AnyBuffer>() // radial_kernel_params
         .Ret<ffi::AnyBuffer>() // gxm
+        .Attr<bool>("remove_self_interaction")
         .Attr<bool>("kahan")
         .Attr<int>("radial_kernel_kind")
         .Attr<size_t>("block_size"),
@@ -288,6 +294,7 @@ ffi::Error LeafLeafPairSummationFFIHost(
     ffi::AnyBuffer radial_kernel_params,
     ffi::AnyBuffer loc_in,
     ffi::Result<ffi::AnyBuffer> loc_recv,
+    bool remove_self_interaction,
     bool kahan,
     int radial_kernel_kind,
     size_t block_size
@@ -319,7 +326,8 @@ ffi::Error LeafLeafPairSummationFFIHost(
         &posm_src_arg,
         &radial_kernel_params_arg,
         &loc_in_arg,
-        &loc_recv_arg
+        &loc_recv_arg,
+        &remove_self_interaction
     };
     
 
@@ -389,6 +397,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // radial_kernel_params
         .Arg<ffi::AnyBuffer>() // loc_in
         .Ret<ffi::AnyBuffer>() // loc_recv
+        .Attr<bool>("remove_self_interaction")
         .Attr<bool>("kahan")
         .Attr<int>("radial_kernel_kind")
         .Attr<size_t>("block_size"),
@@ -413,6 +422,7 @@ ffi::Error BwdLeafLeafPairSummationFFIHost(
     ffi::AnyBuffer gloc_recv,
     ffi::AnyBuffer gloc_src,
     ffi::Result<ffi::AnyBuffer> gposm_recv,
+    bool remove_self_interaction,
     bool kahan,
     int radial_kernel_kind,
     size_t block_size
@@ -446,7 +456,8 @@ ffi::Error BwdLeafLeafPairSummationFFIHost(
         &radial_kernel_params_arg,
         &gloc_recv_arg,
         &gloc_src_arg,
-        &gposm_recv_arg
+        &gposm_recv_arg,
+        &remove_self_interaction
     };
     
 
@@ -517,6 +528,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // gloc_recv
         .Arg<ffi::AnyBuffer>() // gloc_src
         .Ret<ffi::AnyBuffer>() // gposm_recv
+        .Attr<bool>("remove_self_interaction")
         .Attr<bool>("kahan")
         .Attr<int>("radial_kernel_kind")
         .Attr<size_t>("block_size"),

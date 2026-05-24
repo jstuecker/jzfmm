@@ -84,7 +84,8 @@ __global__ void DirectPairSummation(
     const PosMass<dim,tvec> *xm,
     const tvec* radial_kernel_params,
     LocalExp<dim,tvec> *loc_out,
-    int n
+    int n,
+    const bool remove_self_interaction
 ) {
     const int steps = div_ceil(n, blockDim.x);
     auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
@@ -114,7 +115,8 @@ __global__ void DirectPairSummation(
         }
     }
 
-    loc_i.pot -= xmi.mass * RadialKernel<radial_kernel_kind>::self_value(radial_kernel); // remove self-interaction from potential
+    if(remove_self_interaction)
+        loc_i.pot -= xmi.mass * radial_kernel_value<radial_kernel_kind,tvec>(tvec(0), radial_kernel);
 
     if(ipart < n)
         loc_out[blockIdx.x * blockDim.x + threadIdx.x] = loc_i;
@@ -126,7 +128,8 @@ __global__ void BwdDirectPairSummation(
     const PosMass<dim,tvec> *xm,
     const tvec* radial_kernel_params,
     PosMass<dim,tvec> *gxm,
-    int n
+    int n,
+    const bool remove_self_interaction
 ) {
     const int steps = div_ceil(n, blockDim.x);
     auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
@@ -169,6 +172,9 @@ __global__ void BwdDirectPairSummation(
         }
     }
 
+    if((!remove_self_interaction) && (ipart < n))
+        gxm_i.mass += radial_kernel_value<radial_kernel_kind,tvec>(tvec(0), radial_kernel) * gloc_i.pot;
+
     if(ipart < n)
         gxm[ipart] = gxm_i;
 }
@@ -190,7 +196,9 @@ __global__ void LeafLeafPairSummation(
     const tvec* radial_kernel_params,
     const LocalExp<dim,tvec>* loc_in,
     // outputs:
-    LocalExp<dim,tvec>* loc_recv
+    LocalExp<dim,tvec>* loc_recv,
+    // attributes:
+    const bool remove_self_interaction
 ) {
     auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
 
@@ -261,6 +269,8 @@ __global__ void LeafLeafPairSummation(
 
         if(valid) {
             loc_cum.asvec += loc_in[prange.x + a_write].asvec;
+            if(remove_self_interaction)
+                loc_cum.pot -= xaWrite.mass * radial_kernel_value<radial_kernel_kind,tvec>(tvec(0), radial_kernel);
             loc_recv[prange.x + a_write] = loc_cum;
         }
     }
@@ -280,7 +290,9 @@ __global__ void BwdLeafLeafPairSummation(
     const LocalExp<dim,tvec> *gloc_recv,
     const LocalExp<dim,tvec> *gloc_src,
     // outputs:
-    PosMass<dim,tvec>* gposm_recv
+    PosMass<dim,tvec>* gposm_recv,
+    // attributes:
+    const bool remove_self_interaction
 ) {
     auto radial_kernel = RadialKernel<radial_kernel_kind>::template make_params<tvec>(radial_kernel_params);
 
@@ -347,6 +359,9 @@ __global__ void BwdLeafLeafPairSummation(
         
         for(int i=0; i < n_write; i++)
             kahan_add_vec(gxm_cum.asvec, gxm_shared[i*num + a_write].asvec, gxm_a_kahan.asvec);
+
+        if(!remove_self_interaction)
+            gxm_cum.mass += radial_kernel_value<radial_kernel_kind,tvec>(tvec(0), radial_kernel) * gloc_a.pot;
 
         gposm_recv[prange.x + a_write] = gxm_cum;
     }

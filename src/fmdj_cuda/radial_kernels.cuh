@@ -54,11 +54,6 @@ struct RadialKernel<RADIAL_KERNEL_PLUMMER> {
         return Params<tvec>{softening, softening * softening};
     }
 
-    template<typename tvec>
-    __device__ __forceinline__ static tvec self_value(Params<tvec> params) {
-        return -tvec(1) / params.softening;
-    }
-
     template<int p, typename tvec>
     __device__ __forceinline__ static void r2_derivative_coeffs(
         tvec r2,
@@ -91,11 +86,6 @@ struct RadialKernel<RADIAL_KERNEL_QUARTIC_PLUMMER> {
         const tvec softening = params[0];
         const tvec softening2 = softening * softening;
         return Params<tvec>{softening, softening2 * softening2};
-    }
-
-    template<typename tvec>
-    __device__ __forceinline__ static tvec self_value(Params<tvec> params) {
-        return -tvec(1) / params.softening;
     }
 
     template<int p, typename tvec>
@@ -173,11 +163,6 @@ struct RadialKernel<RADIAL_KERNEL_PLUMMER_2D> {
         return Params<tvec>{softening, softening * softening};
     }
 
-    template<typename tvec>
-    __device__ __forceinline__ static tvec self_value(Params<tvec> params) {
-        return radial_kernel_log(params.softening);
-    }
-
     template<int p, typename tvec>
     __device__ __forceinline__ static void r2_derivative_coeffs(
         tvec r2,
@@ -212,11 +197,6 @@ struct RadialKernel<RADIAL_KERNEL_SOFTENED_DISTANCE> {
     __device__ __forceinline__ static Params<tvec> make_params(const tvec* params) {
         const tvec softening = params[0];
         return Params<tvec>{softening, softening * softening};
-    }
-
-    template<typename tvec>
-    __device__ __forceinline__ static tvec self_value(Params<tvec> params) {
-        return params.softening;
     }
 
     template<int p, typename tvec>
@@ -281,6 +261,18 @@ __device__ __forceinline__ void evaluate_radial_kernel_derivatives(
             break;
         }
     }
+}
+
+template<int radial_kernel_kind, typename tvec>
+__device__ __forceinline__ tvec radial_kernel_value(
+    tvec r2,
+    typename RadialKernel<radial_kernel_kind>::template Params<tvec> params
+) {
+    Vec<1,tvec> coeffs;
+    RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<0,tvec>(
+        r2, params, coeffs
+    );
+    return coeffs[0];
 }
 
 #endif // RADIAL_KERNELS_H
