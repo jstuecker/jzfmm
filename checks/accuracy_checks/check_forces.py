@@ -21,7 +21,8 @@ def rerr_force(a: LocalExpansion, b: LocalExpansion):
 def rerr_potential(a: LocalExpansion, b: LocalExpansion):
     return jnp.abs((a.potential() - b.potential())/b.potential())
 def rel_mom_cons(a: LocalExpansion):
-    f = a.force() * part.mass[:,None]
+    mass = jnp.broadcast_to(part.mass, part.pos.shape[:-1])
+    f = a.force() * mass[:, None]
     return jnp.abs(jnp.sum(f) / jnp.linalg.norm(f))
 
 t0 = time.time()

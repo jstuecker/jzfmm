@@ -21,8 +21,7 @@ def gaussian_blob(N, scale=1.0, mass=1., seed=0, npad=0):
     rank, ndev, axis_name = get_rank_info()
 
     pos = jax.random.normal(jax.random.PRNGKey(seed), (N,3), dtype=jnp.float32) * scale
-    mass0 = jnp.ones(len(pos), dtype=pos.dtype) * (mass/N)
-    posmass = PosMass(pos=pos, mass=mass0, num=N, num_total=ndev*N)
+    posmass = PosMass(pos=pos, mass=mass/N, num=N, num_total=ndev*N)
 
     if npad > 0:
         return pad_pytree(posmass, N, npad)
@@ -42,6 +41,5 @@ def discodj_sim(res, zsort=False):
     if zsort:
         pos = jztree.tree.zsort(pos)[0]
 
-    mass = jnp.ones(len(pos), dtype=pos.dtype) / res**3
-    return PosMass(pos=pos, mass=mass)
+    return PosMass(pos=pos, mass=1. / res**3)
 discodj_sim.jit = jax.jit(discodj_sim, static_argnames=("res", "zsort"))

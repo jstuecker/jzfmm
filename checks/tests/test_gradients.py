@@ -119,7 +119,7 @@ def test_force_gradients(dim):
     part = ics.gaussian_particles(npart, dim=dim, total_mass=npart*1.)
     part.num = None # currently causes some problems with gradients
     part.num_total = None # currently causes some problems with gradients
-    part.mass = part.mass * jnp.ones(part.pos.shape[0], dtype=jnp.float32)
+    part.mass = jnp.broadcast_to(part.mass, part.pos.shape[:-1])
     fmmcfg = FMMConfig(p=4, kahan_summation=True, opening=OpeningByAngle(theta=0.8))
     cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=fmmcfg)
     

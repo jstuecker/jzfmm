@@ -245,6 +245,11 @@ _fmm_dual_walk.jit = jax.jit(_fmm_dual_walk, static_argnames=['cfg'])
 #                           Leaf-Leaf (Particle to Particle) Interactions                          #
 # ------------------------------------------------------------------------------------------------ #
 
+def _sum_to_input_shape(x: jax.Array, target: jax.Array) -> jax.Array:
+    if x.shape == jnp.shape(target):
+        return x
+    return jnp.reshape(jnp.sum(x), jnp.shape(target))
+
 def leaf_leaf_summation(
         particles: PosMass,
         ispl: jax.Array,
@@ -323,7 +328,10 @@ def leaf_leaf_summation(
             kahan=bool(cfg.fmm.kahan_summation)
         )[0]
         gpos = pcast_like(gposm[:,:dim], particles_recv.pos)
-        gmass = pcast_like(gposm[:,dim], particles_recv.mass)
+        gmass = pcast_like(
+            _sum_to_input_shape(gposm[:,dim], particles_recv.mass),
+            particles_recv.mass,
+        )
         gnum = None
         if particles_recv.num is not None:
             gnum = jnp.zeros_like(particles_recv.num, dtype=jax.dtypes.float0)
@@ -451,7 +459,7 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg: Config) ->
 
         gx2 = shift_local_to_children_vjp_x(ispl, gmp_node, xnode, pos, mp)
         
-        return gx1 + gx2, gmp
+        return gx1 + gx2, _sum_to_input_shape(gmp, mp)
     
     @partial(jax.custom_vjp, nondiff_argnames=['pout'])
     def eval(pos, mp, pout=1):

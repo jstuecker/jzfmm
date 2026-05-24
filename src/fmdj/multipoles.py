@@ -49,10 +49,18 @@ def get_index_map(p, dim=3):
 #                                             FFI Calls                                            #
 # ------------------------------------------------------------------------------------------------ #
 
+def _as_particle_multipoles(mp: jax.Array, xchild: jax.Array) -> jax.Array:
+    if jnp.ndim(mp) == 0:
+        return jnp.broadcast_to(mp, xchild.shape[:-1] + (1,))
+    if jnp.ndim(mp) == 1:
+        if len(mp) == len(xchild): # Have shape (N,) for monopole masses
+            return jnp.reshape(mp, mp.shape + (1,))
+        return jnp.broadcast_to(mp, jnp.broadcast_shapes(xchild.shape[:-1] + (1,), jnp.shape(mp)))
+    return mp
+
 def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg, block_size=32):
     """Summarizes multipoles from child nodes to parent nodes"""
-    if len(mp.shape) == 1: # probably plain masses corresponding to monopoles
-        mp = mp.reshape(-1,1)
+    mp = _as_particle_multipoles(mp, xchild)
 
     assert ispl.dtype == jnp.int32
     dtype = mp.dtype
@@ -77,8 +85,7 @@ def summarize_multipoles(
         *, cfg: Config
     ) -> jax.Array:
 
-    if mp.ndim == 1:
-        mp = mp.reshape(-1,1)
+    mp = _as_particle_multipoles(mp, xchild)
     dim = xnode.shape[-1]
     pin = p_of_num_multi(mp.shape[-1], dim=dim)
 
@@ -104,13 +111,7 @@ summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg',
 
 def build_multipole_hierarchy(th: TreeHierarchy, pos: jax.Array, mp: jax.Array, cfg: Config
                               ) -> PackedArray:
-    if jnp.ndim(mp) == 0:
-        mp = jnp.broadcast_to(mp, pos.shape[:-1] + (1,))
-    elif jnp.ndim(mp) == 1:
-        if len(mp) == len(pos): # Have shape (N,) for monopole masses
-            mp = jnp.reshape(mp, mp.shape + (1,))
-        else: # Have shape (p,) and need to broadcast to (N,p)
-            mp = jnp.broadcast_to(mp, jnp.broadcast_shapes(pos.shape[:-1] + (1,), jnp.shape(mp)))
+    mp = _as_particle_multipoles(mp, pos)
 
     dim = pos.shape[-1]
     size = th.ispl_n2n.size()-1
@@ -173,6 +174,7 @@ def shift_local_to_children_vjp_x(
     """Shifts local expansions to child nodes"""
     dtype = loc.dtype
 
+    gloc_child = _as_particle_multipoles(gloc_child, xchild)
     dim = xnode.shape[-1]
     pout = p_of_num_multi(gloc_child.shape[1], dim=dim)
     p = p_of_num_multi(loc.shape[1], dim=dim)

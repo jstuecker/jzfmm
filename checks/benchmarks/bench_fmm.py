@@ -1,10 +1,6 @@
 import pytest
 from fmdj.config import Config, FMMConfig
-import jax
-import jax.numpy as jnp
-from fmdj.config import Config, FMMConfig
 from dataclasses import replace
-from fmdj.data import PosMass
 from jztree.tree import build_tree_hierarchy, zsort, center_of_mass
 from fmdj.multipoles import build_multipole_hierarchy
 from fmdj.fmm import _fmm_dual_walk, leaf_leaf_summation, fast_multipole_method
@@ -69,8 +65,7 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
 
     jb = jax_bench(jit_rounds=40, jit_warmup=10)
 
-    posz, isortz = jb.measure(fn_jit=zsort.jit, pos=pos_mass.pos, tag="zsort")[1]
-    pos_mass_z = PosMass(pos=posz, mass=pos_mass.mass[isortz])
+    pos_mass_z = jb.measure(fn_jit=zsort.jit, pos=pos_mass, tag="zsort")[1][0]
 
     th = jb.measure(fn_jit=build_tree_hierarchy.jit, partz=pos_mass_z, cfg_tree=cfg.tree, tag="build_new")[1]
 

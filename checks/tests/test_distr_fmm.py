@@ -62,10 +62,7 @@ def test_distr_grad_vs_single():
     cfg.tree.alloc_fac_nodes = 2.0
 
     part = ics.uniform_particles.smap(mesh, jit=True)(32768, npad=8192*2)
-    part = replace(
-        part,
-        mass=part.mass[:,None] * jnp.ones(part.pos.shape[:-1], dtype=part.pos.dtype),
-    )
+    part = replace(part, mass=jnp.broadcast_to(part.mass[:, None], part.pos.shape[:-1]))
 
     grad = _fmm_grad.smap(mesh, jit=True)(part, cfg)
     grad = replace(grad, num=part.num, num_total=part.num_total)

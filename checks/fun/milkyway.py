@@ -34,7 +34,7 @@ vel = jnp.cross(pos, jnp.array((0.,0.,1.))) * (vcirc/r)[:,None]
 vel = vel + jax.random.normal(jax.random.key(2), vel.shape) * 10.
 
 # We choose effectively mass-less particles, let dynamics be driven by external potential
-part = fmdj.data.Particles(pos=jnp.array(pos), vel=jnp.array(vel), mass=jnp.ones_like(pos[...,0])*1e-1)
+part = fmdj.data.Particles(pos=jnp.array(pos), vel=jnp.array(vel), mass=1e-1)
 
 # ------------------------------------------------------------------------------------------------ #
 #                                             Plotting                                             #

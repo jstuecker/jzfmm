@@ -117,7 +117,7 @@ def _silence_process_output() -> None:
 def get_particles(N = 1024*1024):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (N, 3), dtype=jnp.float32) * 0.3
     pos0 = jnp.clip(pos0, -0.5, 0.5).block_until_ready()
-    mass = jnp.ones(N, dtype=jnp.float32)
+    mass = jnp.asarray(1., dtype=jnp.float32)
     
     return jax.block_until_ready((pos0, mass))
 
@@ -132,13 +132,13 @@ def npart(request):
 @pytest.fixture
 def pos_mass(npart):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
-    return PosMass(pos=pos0, mass=jnp.ones(pos0.shape[0]))
+    return PosMass(pos=pos0, mass=1.)
 
 @pytest.fixture
 def pos_mass_z(npart):
     pos0 = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
     posz, isort = zsort(pos0)
-    return PosMass(pos=posz, mass=jnp.ones(posz.shape[0]))
+    return PosMass(pos=posz, mass=1.)
 
 @pytest.fixture
 def tree_hierarchy(pos_mass_z, cfg):
@@ -148,12 +148,11 @@ def tree_hierarchy(pos_mass_z, cfg):
 @pytest.fixture
 def particles_blob(npart):
     x = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
-    m = jnp.ones_like(x[:,0]) * 1.
     vel = jnp.zeros_like(x)
 
     loc = LocalExpansion(jnp.zeros((npart,4), dtype=jnp.float32))
 
-    return Particles(pos=x, mass=m, vel=vel, cpos=jnp.array([0.,0.,0.]), cvel=jnp.array([0.,0.,0.0]), loc=loc)
+    return Particles(pos=x, mass=1., vel=vel, cpos=jnp.array([0.,0.,0.]), cvel=jnp.array([0.,0.,0.0]), loc=loc)
 
 @pytest.fixture
 def particles_nfw(npart):
