@@ -41,9 +41,7 @@ _fmm_grad.smap = shard_map_constructor(
     static_argnames=("cfg",),
 )
 
-
-@pytest.mark.shrink_in_quick
-def test_distr_fmm_matches_single_context():
+def test_distr_fmm_vs_single():
     cfg = Config()
     cfg.tree.alloc_fac_nodes = 2.0
 
@@ -55,15 +53,13 @@ def test_distr_fmm_matches_single_context():
     partz_flat = squeeze_particles(partz)
     loc_ref = fast_multipole_method.jit(partz_flat, cfg=cfg).values
 
-    assert jnp.allclose(locz, loc_ref, rtol=1e-5, atol=1e-5)
+    assert jnp.allclose(locz, loc_ref, rtol=1e-5, atol=1e-8)
 
-
-@pytest.mark.shrink_in_quick
-def test_distr_fmm_grad_matches_single_context():
+def test_distr_grad_vs_single():
     cfg = Config()
     cfg.tree.alloc_fac_nodes = 2.0
 
-    part = ics.uniform_particles.smap(mesh, jit=True)(32768, npad=8192)
+    part = ics.uniform_particles.smap(mesh, jit=True)(32768, npad=8192*2)
     part = replace(
         part,
         mass=part.mass[:,None] * jnp.ones(part.pos.shape[:-1], dtype=part.pos.dtype),

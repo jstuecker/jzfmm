@@ -127,7 +127,13 @@ def _fmm_node_to_node(
     child_ilist = pcast_like(child_ilist, spl_recv)
 
     # Create interaction list from outputs
-    new_ilist = InteractionList(ispl=ispl_child, isrc=child_ilist)
+    new_ilist = InteractionList(
+        ispl=ispl_child,
+        isrc=child_ilist,
+        has_separate_query_and_source_indices=(
+            node_ilist.has_separate_query_and_source_indices
+        ),
+    )
 
     new_ilist.ispl = new_ilist.ispl + raise_if(
         new_ilist.nfilled() > new_ilist.size(), 
@@ -149,7 +155,9 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
     dim = center0.shape[-1]
     if in_smap:
         spl, ilist, nsup = distr_grouped_dense_interaction_list(
-            th.num(th.num_planes()-1), size, size_ilist=int(size*cfg.fmm.ilist_alloc_fac)
+            th.num(th.num_planes()-1), size,
+            size_ilist=int(size*cfg.fmm.ilist_alloc_fac),
+            separate_query_and_source_indices=True,
         )
     else:
         spl, ilist, nsup = grouped_dense_interaction_list(
@@ -188,15 +196,13 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
                 axis_name=axis_name, err_hint_child="\nHint: increase alloc_fac_nodes",
                 err_hint_parent="\nHint: increase alloc_fac_nodes"
             )
-            parent_ilist_recv = parent_ilist.without_remote_query_points(rank)
-            parent_range = jnp.array([0, parent_ilist_recv.ispl.size-1], dtype=jnp.int32)
+            parent_range = jnp.array([0, parent_ilist.ispl.size-1], dtype=jnp.int32)
         else:
             child_src, parent_spl_src = child_recv, parent_spl_recv
-            parent_ilist_recv = parent_ilist
             parent_range = jnp.array([0, spl_n2n.num(level+1)-1], dtype=jnp.int32)
 
         loc_ch, ilist = _fmm_node_to_node(
-            parent_range, parent_ilist_recv, parent_spl_recv, child_recv,
+            parent_range, parent_ilist, parent_spl_recv, child_recv,
             cfg=cfg, spl_src=parent_spl_src, child_src=child_src
         )
 
@@ -251,7 +257,6 @@ def leaf_leaf_summation(
                 err_hint_parent="\nHint: increase alloc_fac_nodes.",
                 err_hint_child="\nHint: increase padding."
             )
-            ilist = ilist.without_remote_query_points(rank)
         else:
             particles_src, spl_src = particles_recv, spl_recv
 
