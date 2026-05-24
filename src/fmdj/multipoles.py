@@ -102,7 +102,7 @@ def summarize_multipoles(
     return eval(xchild, mp)
 summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', ])
 
-def build_multipole_hierarchy(th: TreeHierarchy, pos: jax.Array, mp: jax.Array, *, cfg: Config
+def build_multipole_hierarchy(th: TreeHierarchy, pos: jax.Array, mp: jax.Array, cfg: Config
                               ) -> PackedArray:
     if jnp.ndim(mp) == 0:
         mp = jnp.broadcast_to(mp, pos.shape[:-1] + (1,))
