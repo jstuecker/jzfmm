@@ -41,7 +41,7 @@ _fmm_grad.smap = shard_map_constructor(
     static_argnames=("cfg",),
 )
 
-def test_distr_fmm_vs_single():
+def test_distr_vs_single():
     # This test checks for bit-perfect reproducibility of fmm accross GPU counts
     cfg = Config()
     cfg.tree.alloc_fac_nodes = 2.0
