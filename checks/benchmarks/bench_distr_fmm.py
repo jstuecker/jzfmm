@@ -38,13 +38,18 @@ def bench_distr_fmm_hernquist(jax_bench, N):
     )
 
     jb = jax_bench(jit_rounds=4, jit_warmup=1)
-    jb.measure(
-        fn_jit=fast_multipole_method.smap(mesh, jit=True),
-        part=part,
-        cfg=cfg,
-        result="locz",
-        tag=f"ndev{ndev}",
-    )
+    with jz.stats.statistics() as st:
+        jb.measure(
+            fn_jit=fast_multipole_method.smap(mesh, jit=True),
+            part=part,
+            cfg=cfg,
+            result="locz",
+            tag=f"ndev{ndev}",
+        )
+        st = st.reduce_multi_host()
+        if jax.process_index() == 0:
+            print(f"Allocation suggestions for N={N}, ndev={ndev}")
+            st.print_suggestions(cfg)
 
 
 @pytest.mark.skipif(jax.device_count() <= 1, reason="Requires multiple devices")

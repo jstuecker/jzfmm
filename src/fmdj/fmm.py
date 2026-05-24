@@ -13,6 +13,7 @@ from jztree.tree import distr_grouped_dense_interaction_list, simplify_interacti
 from jztree.jax_ext import pcast_like, raise_if, shard_map_constructor
 from jztree.tools import masked_inverse
 from jztree.comm import all_to_all_request_children, all_to_all_with_irank, get_rank_info, in_shard_map_context
+from jztree.stats import AllocStats, stats_callback
 from jax.sharding import PartitionSpec as P
 
 from .config import Config
@@ -147,6 +148,10 @@ def _fmm_node_to_node(
         "Interaction list allocation too small ({nfil}/{size})\nHint: Increase alloc_fac_ilist", 
         nfil=new_ilist.nfilled(), size=new_ilist.size()
     )
+    stats_callback(
+        "allocation", AllocStats.record_filled_interactions,
+        new_ilist.nfilled(), new_ilist.size()
+    )
     
     return loc, new_ilist
 _fmm_node_to_node.jit = jax.jit(_fmm_node_to_node, static_argnames=['cfg'])
@@ -203,6 +208,10 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
                 (child_recv, jnp.arange(size)),
                 axis_name=axis_name, err_hint_child="\nHint: increase alloc_fac_nodes",
                 err_hint_parent="\nHint: increase alloc_fac_nodes"
+            )
+            stats_callback(
+                "allocation", AllocStats.record_filled_nodes_interaction,
+                dev_spl[-1], size
             )
             parent_range = jnp.array([0, parent_ilist.ispl.size-1], dtype=jnp.int32)
         else:
@@ -265,6 +274,10 @@ def leaf_leaf_summation(
                 axis_name=axis_name,
                 err_hint_parent="\nHint: increase alloc_fac_nodes.",
                 err_hint_child="\nHint: increase padding."
+            )
+            stats_callback(
+                "allocation", AllocStats.record_filled_part_interactions,
+                _dev_spl_src[-1], particles_src.pos.shape[0]
             )
         else:
             particles_src, spl_src = particles_recv, spl_recv
