@@ -41,6 +41,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     ffi::AnyBuffer radial_kernel_params,
     ffi::AnyBuffer opening_criterion_params,
     ffi::AnyBuffer single_thread_per_receiver,
+    ffi::AnyBuffer loc_in,
     ffi::Result<ffi::AnyBuffer> loc_recv,
     ffi::Result<ffi::AnyBuffer> ilist_child_count_out,
     int radial_kernel_kind,
@@ -55,7 +56,6 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     size_t smem = 0;
     
     // Initialize output buffers
-    cudaMemsetAsync(loc_recv->untyped_data(), 0, loc_recv->size_bytes(), stream);
     cudaMemsetAsync(ilist_child_count_out->untyped_data(), 0, ilist_child_count_out->size_bytes(), stream);
     
     // Build a bundled argument list for cudaLaunchKernel
@@ -70,6 +70,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
     void* opening_criterion_params_arg = opening_criterion_params.untyped_data();
     void* single_thread_per_receiver_arg = single_thread_per_receiver.untyped_data();
+    void* loc_in_arg = loc_in.untyped_data();
     void* loc_recv_arg = loc_recv->untyped_data();
     void* ilist_child_count_out_arg = ilist_child_count_out->untyped_data();
     void* args[] = {
@@ -84,6 +85,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         &radial_kernel_params_arg,
         &opening_criterion_params_arg,
         &single_thread_per_receiver_arg,
+        &loc_in_arg,
         &loc_recv_arg,
         &ilist_child_count_out_arg,
         &radial_kernel_kind
@@ -161,6 +163,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // radial_kernel_params
         .Arg<ffi::AnyBuffer>() // opening_criterion_params
         .Arg<ffi::AnyBuffer>() // single_thread_per_receiver
+        .Arg<ffi::AnyBuffer>() // loc_in
         .Ret<ffi::AnyBuffer>() // loc_recv
         .Ret<ffi::AnyBuffer>() // ilist_child_count_out
         .Attr<int>("radial_kernel_kind")

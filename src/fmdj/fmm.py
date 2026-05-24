@@ -53,6 +53,7 @@ def _fmm_node_to_node(
         child_recv: FMMChildData,
         cfg: Config,
         single_thread_per_receiver: jax.Array | None = None,
+        loc_in: jax.Array | None = None,
         spl_src: jax.Array | None = None,
         child_src: FMMChildData | None = None
     ) -> Tuple[jax.Array, InteractionList]:
@@ -101,16 +102,20 @@ def _fmm_node_to_node(
     p_local = cfg.fmm.p + cfg.fmm.p_extra_m2l
     assert p_local >= 0, "p + p_extra_m2l must be non-negative"
     out_loc = jax.ShapeDtypeStruct((size, num_multi(p_local, dim=dim)), dtype)
+    if loc_in is None:
+        loc_in = jnp.zeros(out_loc.shape, dtype=out_loc.dtype)
+        loc_in = pcast_like(loc_in, spl_recv)
     out_interaction_count = jax.ShapeDtypeStruct((size,), jnp.int32)
     
     # Count opened interactions and evaluate M2L
     loc, interaction_counts = jax.ffi.ffi_call(
         "CountInteractionsAndM2L",
-        (out_loc, out_interaction_count, )
+        (out_loc, out_interaction_count,),
+        input_output_aliases={11: 0},
     )(
         node_range, spl_recv, spl_src, node_ilist.ispl, node_ilist.isrc,
         children_recv, children_src, child_src.mp, kernel_params, opening_params,
-        single_thread_per_receiver,
+        single_thread_per_receiver, loc_in,
         p=np.int32(cfg.fmm.p),
         p_extra_m2l=np.int32(cfg.fmm.p_extra_m2l),
         radial_kernel_kind=np.int32(kernel.kind_id()),
@@ -119,6 +124,8 @@ def _fmm_node_to_node(
     loc, interaction_counts = jax.tree.map(
         lambda x: pcast_like(x, spl_recv), (loc, interaction_counts)
     )
+    # valid_child = jnp.arange(size, dtype=spl_recv.dtype) < spl_recv[-1]
+    # interaction_counts = jnp.where(valid_child, interaction_counts, 0)
 
     # Insert interactions
     ispl_child = jnp.pad(jnp.cumsum(interaction_counts), (1, 0))
@@ -218,14 +225,15 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
             child_src, parent_spl_src = child_recv, parent_spl_recv
             parent_range = jnp.array([0, spl_n2n.num(level+1)-1], dtype=jnp.int32)
 
+        loc_ch = _fmm_node_to_child(
+            parent_spl_recv, parent_loc, parent_cent, child_recv.poslvl.pos, cfg=cfg
+        )
+
         loc_ch, ilist = _fmm_node_to_node(
             parent_range, parent_ilist, parent_spl_recv, child_recv,
             cfg=cfg, single_thread_per_receiver=single_thread_per_receiver,
+            loc_in=loc_ch,
             spl_src=parent_spl_src, child_src=child_src
-        )
-
-        loc_ch = loc_ch + _fmm_node_to_child(
-            parent_spl_recv, parent_loc, parent_cent, child_recv.poslvl.pos, cfg=cfg
         )
 
         if in_smap:

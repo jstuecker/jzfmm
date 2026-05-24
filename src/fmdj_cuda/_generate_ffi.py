@@ -74,8 +74,8 @@ kernels = parse.get_functions_from_file(
 )
 
 kernels["CountInteractionsAndM2L"].grid_size_expression = "spl_nodes_recv.element_count() - 1"
-kernels["CountInteractionsAndM2L"].init_outputs_zero = True
 kernels["CountInteractionsAndM2L"].block_size_expression = 32
+kernels["CountInteractionsAndM2L"].par["ilist_child_count_out"].init_zero = True
 kernels["CountInteractionsAndM2L"].template_par["p"].instances = p_instance_values
 kernels["CountInteractionsAndM2L"].template_par["p_extra_m2l"].instances = p_extra_m2l_instance_values
 kernels["CountInteractionsAndM2L"].template_par["opening_criterion_kind"].instances = opening_criterion_instance_values

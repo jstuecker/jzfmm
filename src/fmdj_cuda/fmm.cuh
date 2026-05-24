@@ -40,6 +40,7 @@ __global__ void CountInteractionsAndM2L(
     const tvec* radial_kernel_params,
     const tvec* opening_criterion_params,
     const int* single_thread_per_receiver,
+    const tvec* loc_in,
     // outputs:
     tvec* loc_recv,
     int* ilist_child_count_out,
@@ -218,7 +219,8 @@ __global__ void CountInteractionsAndM2L(
             if(threadIdx.x < num_childrenA) {
                 #pragma unroll
                 for(int i = 0; i < ncomb_loc; i++) {
-                    loc_recv[(offsetA + threadIdx.x) * ncomb_loc + i] = LocA[i];
+                    int iout = (offsetA + threadIdx.x) * ncomb_loc + i;
+                    loc_recv[iout] = loc_in[iout] + LocA[i];
                 }
             }
             __syncthreads();
@@ -246,7 +248,8 @@ __global__ void CountInteractionsAndM2L(
 
             #pragma unroll
             for(int i = 0; i < ncomb_loc; i++) {
-                loc_recv[(offsetA + threadIdx.x) * ncomb_loc + i] = loc_sum[i];
+                int iout = (offsetA + threadIdx.x) * ncomb_loc + i;
+                loc_recv[iout] = loc_in[iout] + loc_sum[i];
             }
         }
         __syncthreads();
