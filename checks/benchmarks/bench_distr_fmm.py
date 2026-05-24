@@ -22,13 +22,13 @@ def leaf_leaf_with_tree(partz, th, ilist, cfg):
     return leaf_leaf_summation(partz, th.splits_leaf_to_part(), ilist, cfg=cfg)
 
 
-# @pytest.mark.shrink_in_quick(keep_index=1)
+@pytest.mark.shrink_in_quick(keep_index=2)
 @pytest.mark.parametrize("N", (int(1e6), int(3e6), int(1e7), int(3e7), int(1e8)))
 @pytest.mark.skipif(jax.device_count() <= 1, reason="Requires multiple devices")
 def bench_distr_fmm_hernquist(jax_bench, N):
     cfg = Config()
-    cfg.tree.alloc_fac_nodes = 2.4
-    cfg.fmm.alloc_fac_ilist = 140
+    cfg.tree.alloc_fac_nodes = 1.2
+    cfg.fmm.alloc_fac_ilist = 64.
 
     ndev = jax.device_count()
     mesh = get_mesh(ndev)
@@ -51,12 +51,12 @@ def bench_distr_fmm_hernquist(jax_bench, N):
             print(f"Allocation suggestions for N={N}, ndev={ndev}")
             st.print_suggestions(cfg)
 
-
 @pytest.mark.skipif(jax.device_count() <= 1, reason="Requires multiple devices")
 def bench_distr_fmm_hernquist_steps(jax_bench):
     N = int(1e7)
     cfg = Config()
-    cfg.tree.alloc_fac_nodes = 2.4
+    cfg.tree.alloc_fac_nodes = 1.2
+    cfg.fmm.alloc_fac_ilist = 64.
 
     ndev = jax.device_count()
     mesh = get_mesh(ndev)
@@ -98,13 +98,14 @@ def bench_distr_fmm_hernquist_steps(jax_bench):
         part=partz, cfg=cfg, th=th, result="locz", tag=f"totalzz_ndev{ndev}"
     )
 
-
+@pytest.mark.skip_in_quick
 @pytest.mark.parametrize("p, pex", ((2, 1), (3, 0), (3, 1), (4, 0), (4, 1), (5,0)))
 @pytest.mark.skipif(jax.device_count() <= 1, reason="Requires multiple devices")
 def bench_distr_fmm_hernquist_p(jax_bench, p, pex):
     N = int(1e7)
     cfg = Config(fmm=FMMConfig(p=p, p_extra_m2l=pex))
-    cfg.tree.alloc_fac_nodes = 2.4
+    cfg.tree.alloc_fac_nodes = 1.2
+    cfg.fmm.alloc_fac_ilist = 64.
 
     ndev = jax.device_count()
     mesh = get_mesh(ndev)

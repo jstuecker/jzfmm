@@ -74,7 +74,7 @@ def _fmm_node_to_node(
         single_thread_per_receiver = jnp.zeros(1, dtype=jnp.int32)
 
     size = len(child_recv.poslvl.pos)
-    ilist_alloc_size = cfg.fmm.alloc_fac_ilist * size
+    ilist_alloc_size = node_ilist.size()
     kernel = cfg.kernel
     dim = child_recv.poslvl.pos.shape[-1]
 
@@ -168,12 +168,12 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
     if in_smap:
         spl, ilist, nsup = distr_grouped_dense_interaction_list(
             th.num(th.num_planes()-1), size,
-            size_ilist=int(size*cfg.fmm.alloc_fac_ilist),
+            size_ilist=int(th.size_leaves*cfg.fmm.alloc_fac_ilist),
             separate_query_and_source_indices=True,
         )
     else:
         spl, ilist, nsup = grouped_dense_interaction_list(
-            th.num(th.num_planes()-1), size_ilist=int(size*cfg.fmm.alloc_fac_ilist),
+            th.num(th.num_planes()-1), size_ilist=int(th.size_leaves*cfg.fmm.alloc_fac_ilist),
             ngroup=32, size_super=size
         )
 
