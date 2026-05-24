@@ -42,6 +42,7 @@ _fmm_grad.smap = shard_map_constructor(
 )
 
 def test_distr_fmm_vs_single():
+    # This test checks for bit-perfect reproducibility of fmm accross GPU counts
     cfg = Config()
     cfg.tree.alloc_fac_nodes = 2.0
 
@@ -53,9 +54,10 @@ def test_distr_fmm_vs_single():
     partz_flat = squeeze_particles(partz)
     loc_ref = fast_multipole_method.jit(partz_flat, cfg=cfg).values
 
-    assert jnp.allclose(locz, loc_ref, rtol=1e-5, atol=1e-8)
+    assert jnp.all(locz == loc_ref)
 
 def test_distr_grad_vs_single():
+    # Check for bit-perfect reproducibility of gradients accross GPU counts
     cfg = Config()
     cfg.tree.alloc_fac_nodes = 2.0
 
@@ -72,5 +74,5 @@ def test_distr_grad_vs_single():
     part_flat = squeeze_particles(part)
     grad_ref = jax.jit(_fmm_grad, static_argnames=("cfg",))(part_flat, cfg)
 
-    assert jnp.allclose(grad.pos, grad_ref.pos, rtol=1e-4, atol=1e-4)
-    assert jnp.allclose(grad.mass, grad_ref.mass, rtol=1e-4, atol=1e-4)
+    assert jnp.all(grad.pos == grad_ref.pos)
+    assert jnp.all(grad.mass == grad_ref.mass)

@@ -39,6 +39,7 @@ __global__ void CountInteractionsAndM2L(
     const tvec* mp_src,
     const tvec* radial_kernel_params,
     const tvec* opening_criterion_params,
+    const int* single_thread_per_receiver,
     // outputs:
     tvec* loc_recv,
     int* ilist_child_count_out,
@@ -110,15 +111,30 @@ __global__ void CountInteractionsAndM2L(
         // force kernel. Also do that here!
 
         // Precalculate layout for M2L interactions
-        // Which childA am I writing to:
-        int a_write = threadIdx.x % num_childrenA;   
-        // Where I would read from in the first iteration:
-        int read_b_offset = threadIdx.x / num_childrenA;
-        // Number of threads that aren't evenly distributed:
-        int residual_threads = blockDim.x % num_childrenA; 
-        // Number of threads that write to the same childA as me:
-        int n_write_a = blockDim.x / num_childrenA + (a_write < residual_threads);
-        Vec<dim,tvec> xaWrite = childA[a_write].center;
+        bool single_thread = single_thread_per_receiver[0] != 0;
+        bool valid_thread;
+        int a_write;
+        int read_b_offset;
+        int residual_threads = blockDim.x % num_childrenA;
+        int n_write_a;
+
+        if(single_thread) {
+            // Deterministic top-level mode: all threads still serve as source lanes,
+            // but only one thread accumulates for each receiver child.
+            valid_thread = threadIdx.x < num_childrenA;
+            a_write = threadIdx.x;
+            read_b_offset = 0;
+            n_write_a = 1;
+        }
+        else {
+            // Normal mode: split the source interactions for each receiver across the block.
+            valid_thread = true;
+            a_write = threadIdx.x % num_childrenA;
+            read_b_offset = threadIdx.x / num_childrenA;
+            n_write_a = blockDim.x / num_childrenA + (a_write < residual_threads);
+        }
+
+        Vec<dim,tvec> xaWrite = childA[valid_thread ? a_write : 0].center;
 
         while(!seg_mgr.finished()) {
             int id = seg_mgr.next();
@@ -153,7 +169,7 @@ __global__ void CountInteractionsAndM2L(
                 // Flag the active m2l interactions for this child
                 unsigned int interact_flags = __ballot_sync(ALLTHREADS, interact_now);
                 // we only store the flag for the child that we need to write to later
-                interact_flags_wa = (i == a_write) ? interact_flags : interact_flags_wa;
+                interact_flags_wa = (valid_thread && (i == a_write)) ? interact_flags : interact_flags_wa;
             }
 
             __syncthreads();
@@ -171,29 +187,19 @@ __global__ void CountInteractionsAndM2L(
             // Now we have all the data we need for the M2L interactions in shared memory.
             // To avoid reduction operations across threads, we transpose the problem differently here.
 
-            int ninteractionsB_withA = __popc(interact_flags_wa);
-            for(int ib=read_b_offset; ib < ninteractionsB_withA; ib += n_write_a) {
-                // have to add the m2l interactions between a_write and the ib-th set bit in 
-                // interact_flags_wa
+            if(valid_thread) {
+                int ninteractionsB_withA = __popc(interact_flags_wa);
+                for(int ib=read_b_offset; ib < ninteractionsB_withA; ib += n_write_a) {
+                    // have to add the m2l interactions between a_write and the ib-th set bit in 
+                    // interact_flags_wa
 
-                // find the ib-th set bit
-                int b_read = __fns(interact_flags_wa, 0, ib+1);
+                    // find the ib-th set bit
+                    int b_read = __fns(interact_flags_wa, 0, ib+1);
 
-                if(b_read > 32) {
-                    // This should not be possible to happen.
-                    // To be sure about this, for now invalidate multipoles
-                    // later I can delete this part of the code
-                    #pragma unroll
-                    for(int k = 0; k < ncomb_loc; k++) {
-                        LocA[k] = NAN;
-                    }
+                    Vec<dim,tvec> dx = posB[b_read] - xaWrite;
 
-                    continue;
+                    m2l_translator<p,p_extra_m2l,dim,tvec>(dx, mpB[b_read], LocA, radial_kernel_kind, radial_kernel_params);
                 }
-
-                Vec<dim,tvec> dx = posB[b_read] - xaWrite;
-
-                m2l_translator<p,p_extra_m2l,dim,tvec>(dx, mpB[b_read], LocA, radial_kernel_kind, radial_kernel_params);
             }
         }
 
@@ -208,9 +214,19 @@ __global__ void CountInteractionsAndM2L(
             }
         }
 
+        if(single_thread) {
+            if(threadIdx.x < num_childrenA) {
+                #pragma unroll
+                for(int i = 0; i < ncomb_loc; i++) {
+                    loc_recv[(offsetA + threadIdx.x) * ncomb_loc + i] = LocA[i];
+                }
+            }
+            __syncthreads();
+            continue;
+        }
+
         // Now we need to reduce the local terms accross threads
         // with the same output particle.
-
         __shared__ Vec<ncomb_loc,tvec> loc_partials[BLOCKSIZE];
         loc_partials[threadIdx.x] = LocA;
         __syncthreads();

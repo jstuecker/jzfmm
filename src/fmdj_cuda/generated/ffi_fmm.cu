@@ -40,6 +40,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     ffi::AnyBuffer mp_src,
     ffi::AnyBuffer radial_kernel_params,
     ffi::AnyBuffer opening_criterion_params,
+    ffi::AnyBuffer single_thread_per_receiver,
     ffi::Result<ffi::AnyBuffer> loc_recv,
     ffi::Result<ffi::AnyBuffer> ilist_child_count_out,
     int radial_kernel_kind,
@@ -68,6 +69,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     void* mp_src_arg = mp_src.untyped_data();
     void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
     void* opening_criterion_params_arg = opening_criterion_params.untyped_data();
+    void* single_thread_per_receiver_arg = single_thread_per_receiver.untyped_data();
     void* loc_recv_arg = loc_recv->untyped_data();
     void* ilist_child_count_out_arg = ilist_child_count_out->untyped_data();
     void* args[] = {
@@ -81,6 +83,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         &mp_src_arg,
         &radial_kernel_params_arg,
         &opening_criterion_params_arg,
+        &single_thread_per_receiver_arg,
         &loc_recv_arg,
         &ilist_child_count_out_arg,
         &radial_kernel_kind
@@ -157,6 +160,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Arg<ffi::AnyBuffer>() // mp_src
         .Arg<ffi::AnyBuffer>() // radial_kernel_params
         .Arg<ffi::AnyBuffer>() // opening_criterion_params
+        .Arg<ffi::AnyBuffer>() // single_thread_per_receiver
         .Ret<ffi::AnyBuffer>() // loc_recv
         .Ret<ffi::AnyBuffer>() // ilist_child_count_out
         .Attr<int>("radial_kernel_kind")

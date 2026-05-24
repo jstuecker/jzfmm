@@ -51,11 +51,15 @@ def _fmm_node_to_node(
         spl_recv: jax.Array,
         child_recv: FMMChildData,
         cfg: Config,
+        single_thread_per_receiver: jax.Array | None = None,
         spl_src: jax.Array | None = None,
         child_src: FMMChildData | None = None
     ) -> Tuple[jax.Array, InteractionList]:
     """
     Evaluates M2L for a tree plane and generates child interaction list.
+
+    single_thread_per_receiver: Use this to make results exactly independent of grouping
+       of nodes. Only useful to use at top-level to achieve GPU count independence.
 
     Outputs:
     - loc: multipole local expansion, shape (Nchild, M)
@@ -65,6 +69,8 @@ def _fmm_node_to_node(
         spl_src = spl_recv
     if child_src is None:
         child_src = child_recv
+    if single_thread_per_receiver is None:
+        single_thread_per_receiver = jnp.zeros(1, dtype=jnp.int32)
 
     size = len(child_recv.poslvl.pos)
     ilist_alloc_size = cfg.fmm.ilist_alloc_fac * size
@@ -103,6 +109,7 @@ def _fmm_node_to_node(
     )(
         node_range, spl_recv, spl_src, node_ilist.ispl, node_ilist.isrc,
         children_recv, children_src, child_src.mp, kernel_params, opening_params,
+        single_thread_per_receiver,
         p=np.int32(cfg.fmm.p),
         p_extra_m2l=np.int32(cfg.fmm.p_extra_m2l),
         radial_kernel_kind=np.int32(kernel.kind_id()),
@@ -181,6 +188,7 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
         parent_loc, parent_ilist = carry
         parent_spl_recv = spl_n2n.get(level+1, size+1)
         parent_cent = cent.get(level+1, size)
+        single_thread_per_receiver = jnp.asarray(i == 0, dtype=jnp.int32)[None]
 
         child_recv = FMMChildData(
             poslvl=PosLvl(pos=cent.get(level, size), lvl=th.lvl.get(level, size)),
@@ -203,7 +211,8 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
 
         loc_ch, ilist = _fmm_node_to_node(
             parent_range, parent_ilist, parent_spl_recv, child_recv,
-            cfg=cfg, spl_src=parent_spl_src, child_src=child_src
+            cfg=cfg, single_thread_per_receiver=single_thread_per_receiver,
+            spl_src=parent_spl_src, child_src=child_src
         )
 
         loc_ch = loc_ch + _fmm_node_to_child(
