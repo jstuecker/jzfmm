@@ -13,7 +13,7 @@ from jztree.jax_ext import shard_map_constructor
 from jztree.comm import get_rank_info, in_shard_map_context
 from jztree_utils import ics
 
-from fmdj.config import Config
+from fmdj.config import FMMConfig
 from fmdj.fmm import fast_multipole_method
 
 
@@ -21,7 +21,7 @@ mesh = jax.sharding.Mesh(jax.devices(), ("gpus",), axis_types=(AxisType.Auto,))
 
 
 def _fmm_loss(part, cfg):
-    loc = fast_multipole_method(part, cfg=cfg, result="loc").values
+    loc = fast_multipole_method(part, cfg_fmm=cfg, result="loc").values
     valid = jnp.arange(loc.shape[0]) < part.num
     loss = jnp.sum(jnp.where(valid[:, None], loc, 0.0))
     if in_shard_map_context():
@@ -43,22 +43,22 @@ _fmm_grad.smap = shard_map_constructor(
 
 def test_distr_vs_single():
     # This test checks for bit-perfect reproducibility of fmm accross GPU counts
-    cfg = Config()
+    cfg = FMMConfig()
     cfg.tree.alloc_fac_nodes = 2.0
 
     part = ics.uniform_particles.smap(mesh, jit=True)(int(1e6), npad=int(4e5))
 
-    partz, locz = fast_multipole_method.smap(mesh, jit=True)(part, cfg=cfg, result="partz_locz")
+    partz, locz = fast_multipole_method.smap(mesh, jit=True)(part, cfg_fmm=cfg, result="partz_locz")
     locz = squeeze_any(locz.values, locz.values.shape[1], partz.num, partz.num_total)
 
     partz_flat = squeeze_particles(partz)
-    loc_ref = fast_multipole_method.jit(partz_flat, cfg=cfg).values
+    loc_ref = fast_multipole_method.jit(partz_flat, cfg_fmm=cfg).values
 
     assert jnp.all(locz == loc_ref)
 
 def test_distr_grad_vs_single():
     # Check for bit-perfect reproducibility of gradients accross GPU counts
-    cfg = Config()
+    cfg = FMMConfig()
     cfg.tree.alloc_fac_nodes = 2.0
 
     part = ics.uniform_particles.smap(mesh, jit=True)(32768, npad=8192*2)

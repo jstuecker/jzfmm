@@ -6,7 +6,7 @@ import jax
 
 from jztree.tools import log
 from .data import Particles, LocalExpansion
-from .config import Config
+from .config import SimConfig
 from .fmm import force_and_potential
 
 def kick(vel, acc, dt, mask=None):
@@ -21,7 +21,7 @@ def drift(pos, vel, dt, mask=None):
     else:
         return pos + vel * dt
 
-def find_center(p : Particles, cfg : Config = None):
+def find_center(p : Particles, cfg: SimConfig = None):
     ebind = p.loc.potential() + 0.5 * jnp.sum(p.vel**2, axis=-1)
     if cfg.centered > 1:
         # sort by most boundedness
@@ -40,7 +40,7 @@ def find_center(p : Particles, cfg : Config = None):
     return cpos, cvel
 find_center.jit = jax.jit(find_center, static_argnames=("cfg",))
 
-def shift_reference_center(p : Particles, cfg : Config = None):
+def shift_reference_center(p : Particles, cfg: SimConfig = None):
     dcpos, dcvel = find_center(p, cfg=cfg)
 
     cpos = p.cpos + dcpos if p.cpos is not None else dcpos
@@ -51,7 +51,7 @@ def shift_reference_center(p : Particles, cfg : Config = None):
 
     return p
 
-def ext_acc(p : Particles, t, cfg : Config):
+def ext_acc(p : Particles, t, cfg: SimConfig):
     if cfg.external_potential is None:
         return jnp.zeros_like(p.pos)
     else:
@@ -61,7 +61,7 @@ def ext_acc(p : Particles, t, cfg : Config):
         
         return acc
 
-def timestep(p : Particles, dt, cfg : Config, t=0., mask=None):
+def timestep(p : Particles, dt, cfg: SimConfig, t=0., mask=None):
     p = replace(p)  # Make a copy to avoid modifying the input
 
     if p.loc is None:
@@ -81,7 +81,7 @@ def timestep(p : Particles, dt, cfg : Config, t=0., mask=None):
     return p
 timestep.jit = jax.jit(timestep, static_argnames=("cfg",))
 
-def _simulate(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float = 0.) -> Particles:
+def _simulate(p: Particles, tend: float, nsteps: int, cfg: SimConfig, tstart: float = 0.) -> Particles:
     # Make an initial dt=0 step to get the correct initial acceleration
     p = timestep(p, dt=0., cfg=cfg, t=tstart)
     dt = (tend - tstart) / nsteps
@@ -92,7 +92,7 @@ def _simulate(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float
     p, t = jax.lax.fori_loop(0, nsteps, step, (p, tstart))
     return p
 
-def simulate(p: Particles, tend: float, nsteps: int, cfg: Config, tstart: float = 0.) -> Particles:
+def simulate(p: Particles, tend: float, nsteps: int, cfg: SimConfig, tstart: float = 0.) -> Particles:
     @jax.custom_vjp
     def eval(p):
         return _simulate(p, tend, nsteps, cfg, tstart)
@@ -136,7 +136,7 @@ def simulate_with_outputs(
         tend: float, 
         nout: int, 
         steps_per_output: int,
-        cfg: Config,
+        cfg: SimConfig,
         tstart: float = 0.
     ) -> Generator[Particles, None, None]:
     """Don't jit this function!"""

@@ -11,9 +11,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from fmdj.config import Config, FMMConfig, OpeningByAngle, PlummerKernel
+from fmdj.config import FMMConfig, OpeningByAngle, PlummerKernel, UnitConfig
 from fmdj.data import PosMass
 from fmdj.fmm import direct_summation, fast_multipole_method
+from jztree.config import TreeConfig
 
 
 N_PARTICLES = int(1e6)
@@ -59,14 +60,14 @@ def make_gaus_particles() -> PosMass:
     return PosMass(pos=pos, mass=mass, num=N_PARTICLES, num_total=N_PARTICLES)
 
 
-def hernquist_force_reference(pos: jax.Array, cfg: Config) -> jax.Array:
+def hernquist_force_reference(pos: jax.Array, G: float) -> jax.Array:
     r = jnp.linalg.norm(pos, axis=-1)
     r_safe = jnp.clip(r, 1e-30, None)
-    acc_mag = cfg.G() * HERNQUIST_MASS / (r_safe + HERNQUIST_A) ** 2
+    acc_mag = G * HERNQUIST_MASS / (r_safe + HERNQUIST_A) ** 2
     return -(pos / r_safe[:, None]) * acc_mag[:, None]
 
 
-def gaussian_force_reference(pos: jax.Array, cfg: Config) -> jax.Array:
+def gaussian_force_reference(pos: jax.Array, G: float) -> jax.Array:
     # For a spherical Gaussian density with total mass M and per-coordinate
     # standard deviation sigma, M(<r) = M * [erf(x) - 2*x*exp(-x^2)/sqrt(pi)]
     # where x = r / (sqrt(2)*sigma).
@@ -76,7 +77,7 @@ def gaussian_force_reference(pos: jax.Array, cfg: Config) -> jax.Array:
     enclosed_mass = GAUS_MASS * (
         jax.scipy.special.erf(x) - 2.0 * x * jnp.exp(-(x * x)) / jnp.sqrt(jnp.pi)
     )
-    acc_mag = cfg.G() * enclosed_mass / (r_safe * r_safe)
+    acc_mag = G * enclosed_mass / (r_safe * r_safe)
     return -(pos / r_safe[:, None]) * acc_mag[:, None]
 
 
@@ -97,15 +98,15 @@ def make_particles(setup: str) -> PosMass:
     raise ValueError(f"Unknown setup {setup!r}. Expected 'hernquist' or 'gaus'.")
 
 
-def force_reference(setup: str, pos: jax.Array, cfg: Config) -> jax.Array:
+def force_reference(setup: str, pos: jax.Array, G: float) -> jax.Array:
     if setup == "hernquist":
-        return hernquist_force_reference(pos, cfg)
+        return hernquist_force_reference(pos, G)
     if setup == "gaus":
-        return gaussian_force_reference(pos, cfg)
+        return gaussian_force_reference(pos, G)
     raise ValueError(f"Unknown setup {setup!r}. Expected 'hernquist' or 'gaus'.")
 
 
-def direct_force_reference(setup: str, part: PosMass, cfg: Config, recompute: bool = False) -> jax.Array:
+def direct_force_reference(setup: str, part: PosMass, cfg_fmm: FMMConfig, G: float, recompute: bool = False) -> jax.Array:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     path = direct_reference_path(setup)
 
@@ -116,7 +117,7 @@ def direct_force_reference(setup: str, part: PosMass, cfg: Config, recompute: bo
 
     print(f"Calculating direct force reference with kahan summation and writing {path}")
     t0 = time.perf_counter()
-    force_ref = direct_summation.jit(part, kernel=cfg.kernel, kahan=True, G=cfg.G()).force()
+    force_ref = direct_summation.jit(part, kernel=cfg_fmm.kernel, kahan=True, G=G).force()
     force_ref = jax.block_until_ready(force_ref)
     np.savez(
         path,
@@ -129,11 +130,11 @@ def direct_force_reference(setup: str, part: PosMass, cfg: Config, recompute: bo
     return force_ref
 
 
-def get_force_reference(setup: str, reference: str, part: PosMass, cfg: Config, recompute_direct: bool = False) -> jax.Array:
+def get_force_reference(setup: str, reference: str, part: PosMass, cfg_fmm: FMMConfig, G: float, recompute_direct: bool = False) -> jax.Array:
     if reference == "analytic":
-        return jax.block_until_ready(force_reference(setup, part.pos, cfg))
+        return jax.block_until_ready(force_reference(setup, part.pos, G))
     if reference == "direct":
-        return direct_force_reference(setup, part, cfg, recompute=recompute_direct)
+        return direct_force_reference(setup, part, cfg_fmm, G, recompute=recompute_direct)
     raise ValueError(f"Unknown reference {reference!r}. Expected 'direct' or 'analytic'.")
 
 
@@ -143,8 +144,8 @@ def relative_force_error(force: jax.Array, force_ref: jax.Array) -> jax.Array:
     return jnp.linalg.norm(force - force_ref, axis=-1) / denom
 
 
-def time_fmm(part: PosMass, cfg: Config) -> tuple[float, jax.Array]:
-    compiled = fast_multipole_method.jit.lower(part, cfg=cfg).compile()
+def time_fmm(part: PosMass, cfg_fmm: FMMConfig, G: float) -> tuple[float, jax.Array]:
+    compiled = fast_multipole_method.jit.lower(part, cfg_fmm=cfg_fmm, G=G).compile()
 
     def call():
         return jax.block_until_ready(compiled(part))
@@ -159,16 +160,18 @@ def time_fmm(part: PosMass, cfg: Config) -> tuple[float, jax.Array]:
 
 def run_benchmark(setup: str, reference: str, recompute_direct: bool = False) -> dict[str, np.ndarray]:
     part = make_particles(setup)
-    cfg_base = Config(
+    cfg_tree = TreeConfig(mass_centered=False, alloc_fac_nodes=2.0)
+    cfg_fmm = FMMConfig(
         kernel=PlummerKernel(softening=SOFTENING),
-        fmm=FMMConfig(kahan_summation=False, alloc_fac_ilist=1024),
+        tree=cfg_tree,
+        kahan_summation=False,
+        alloc_fac_ilist=1024,
+        opening=OpeningByAngle(),
+        p_extra_m2l=1,
     )
-    cfg_base.tree.mass_centered = False
-    cfg_base.tree.alloc_fac_nodes = 2.0
-    cfg_base.fmm.opening = OpeningByAngle()
-    cfg_base.fmm.p_extra_m2l = 1
+    G = UnitConfig().G()
 
-    force_ref = get_force_reference(setup, reference, part, cfg_base, recompute_direct=recompute_direct)
+    force_ref = get_force_reference(setup, reference, part, cfg_fmm, G, recompute_direct=recompute_direct)
 
     times = np.empty((len(P_VALUES), len(THETAS)), dtype=np.float64)
     err_median = np.empty_like(times)
@@ -177,16 +180,13 @@ def run_benchmark(setup: str, reference: str, recompute_direct: bool = False) ->
 
     for ip, p in enumerate(P_VALUES):
         for itheta, theta in enumerate(THETAS):
-            cfg = replace(
-                cfg_base,
-                fmm=replace(
-                    cfg_base.fmm,
-                    p=p,
-                    opening=OpeningByAngle(theta=float(theta)),
-                    p_extra_m2l=1 if p<5 else 0
-                ),
+            cfg_fmm_p = replace(
+                cfg_fmm,
+                p=p,
+                opening=OpeningByAngle(theta=float(theta)),
+                p_extra_m2l=1 if p<5 else 0
             )
-            dt, force = time_fmm(part, cfg)
+            dt, force = time_fmm(part, cfg_fmm_p, G)
             rerr = relative_force_error(force, force_ref)
 
             times[ip, itheta] = dt

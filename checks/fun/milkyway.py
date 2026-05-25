@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from fmdj_utils.plots import time_in_years
 from matplotlib.animation import FuncAnimation
 from fmdj.external_potential import MilkyWayPotential
+from jztree.config import TreeConfig
 
 import argparse
 
@@ -28,7 +29,7 @@ xy = aegis.numerics.sample.random_direction(len(r), ndim=2)
 pos = jnp.stack([xy[...,0], xy[...,1], jax.random.normal(jax.random.key(1), len(xy))*0.1], axis=-1)*r[:,None]
 
 pot = MilkyWayPotential()
-accr = jnp.linalg.norm(pot.acceleration(pos, cfg=fmdj.Config()), axis=-1)
+accr = jnp.linalg.norm(pot.acceleration(pos, cfg=fmdj.SimConfig()), axis=-1)
 vcirc = jnp.sqrt(jnp.clip(accr * r, 0., None))
 vel = jnp.cross(pos, jnp.array((0.,0.,1.))) * (vcirc/r)[:,None]
 vel = vel + jax.random.normal(jax.random.key(2), vel.shape) * 10.
@@ -95,8 +96,11 @@ def update(t_and_p):
 #                                         Run and Visualize                                        #
 # ------------------------------------------------------------------------------------------------ #
 
-cfg = fmdj.Config(kernel=fmdj.PlummerKernel(softening=1e-2))
-cfg.tree.alloc_fac_nodes = 2.0
+cfg_fmm = fmdj.FMMConfig(
+    kernel=fmdj.PlummerKernel(softening=1e-2),
+    tree=TreeConfig(mass_centered=False, alloc_fac_nodes=2.0),
+)
+cfg = fmdj.SimConfig(force=cfg_fmm)
 cfg.external_potential = MilkyWayPotential()
 if not dm:
     cfg.external_potential.halo = None

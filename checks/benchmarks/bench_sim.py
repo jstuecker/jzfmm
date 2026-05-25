@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import aegis
 from dataclasses import replace
-from fmdj import Config
+from fmdj import DirectSummationConfig, SimConfig
 from fmdj.external_potential import NFWPotential
 from fmdj.data import Particles
 from fmdj.time_integration import simulate
@@ -11,7 +11,7 @@ from fmdj.time_integration import simulate
 
 @pytest.fixture
 def stripping_cfg():
-    cfg = Config()
+    cfg = SimConfig()
     cfg.logging.level = -1
 
     host = aegis.profiles.NFWProfile(conc=6., m200c=1e12)
@@ -36,7 +36,7 @@ def bench_sim_direct_sum(jax_bench, particles_nfw, stripping_cfg):
     jb = jax_bench(jit_rounds=1, jit_warmup=0, eager_rounds=0, eager_warmup=0)
     
     cfg, host = stripping_cfg
-    cfg = replace(cfg, fmm=None)
+    cfg = replace(cfg, force=DirectSummationConfig())
 
     jb.measure(
         fn=simulate, fn_jit=simulate.jit, 

@@ -4,7 +4,7 @@ import math
 import numpy as np
 from jztree.data import PackedArray, TreeHierarchy
 from jztree.jax_ext import pcast_like
-from .config import Config
+from .config import FMMConfig
 
 import fmdj_cuda.ffi_multipoles as ffi_multipoles
 jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLocalToLocal(), platform="CUDA")
@@ -58,7 +58,7 @@ def _as_particle_multipoles(mp: jax.Array, xchild: jax.Array) -> jax.Array:
         return jnp.broadcast_to(mp, jnp.broadcast_shapes(xchild.shape[:-1] + (1,), jnp.shape(mp)))
     return mp
 
-def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg, block_size=32):
+def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg_fmm, block_size=32):
     """Summarizes multipoles from child nodes to parent nodes"""
     mp = _as_particle_multipoles(mp, xchild)
 
@@ -66,13 +66,13 @@ def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg, block_size=32):
     dtype = mp.dtype
     dim = xnode.shape[-1]
     p_in = p_of_num_multi(mp.shape[1], dim=dim)
-    out_mp = jax.ShapeDtypeStruct((ispl.size-1, num_multi(cfg.fmm.p, dim=dim)), dtype)
+    out_mp = jax.ShapeDtypeStruct((ispl.size-1, num_multi(cfg_fmm.p, dim=dim)), dtype)
     mpnew = jax.ffi.ffi_call("SummarizeMultipoles", (out_mp,))(
         ispl, mp, xnode, xchild,
         p_in=np.int32(p_in),
-        p=np.int32(cfg.fmm.p),
+        p=np.int32(cfg_fmm.p),
         block_size=np.uint64(block_size),
-        kahan = cfg.fmm.kahan_summation
+        kahan = cfg_fmm.kahan_summation
     )[0]
 
     return mpnew
@@ -82,7 +82,7 @@ def summarize_multipoles(
         mp: jax.Array,
         xnode: jax.Array,
         xchild: jax.Array,
-        *, cfg: Config
+        *, cfg_fmm: FMMConfig
     ) -> jax.Array:
 
     mp = _as_particle_multipoles(mp, xchild)
@@ -91,15 +91,15 @@ def summarize_multipoles(
 
     @jax.custom_vjp
     def eval(xchild, mp):
-        return _summarize_multipoles_impl(ispl, mp, xnode, xchild, cfg=cfg)
+        return _summarize_multipoles_impl(ispl, mp, xnode, xchild, cfg_fmm=cfg_fmm)
     
     def eval_fwd(xchild, mp):
-        mp_n = _summarize_multipoles_impl(ispl, mp, xnode, xchild, cfg=cfg)
+        mp_n = _summarize_multipoles_impl(ispl, mp, xnode, xchild, cfg_fmm=cfg_fmm)
         return mp_n, (mp, xchild)
     
     def eval_bwd(res, gmp_n):
         mp, xchild = res
-        gmp = _fmm_node_to_child(ispl, gmp_n, xnode, xchild, cfg=cfg, pout=pin)
+        gmp = _fmm_node_to_child(ispl, gmp_n, xnode, xchild, cfg_fmm=cfg_fmm, pout=pin)
         gx = shift_local_to_children_vjp_x(ispl, gmp_n, xnode, xchild, mp)
 
         return gx, gmp
@@ -107,18 +107,18 @@ def summarize_multipoles(
     eval.defvjp(eval_fwd, eval_bwd)
     
     return eval(xchild, mp)
-summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg', ])
+summarize_multipoles.jit = jax.jit(summarize_multipoles, static_argnames=['cfg_fmm', ])
 
-def build_multipole_hierarchy(th: TreeHierarchy, pos: jax.Array, mp: jax.Array, cfg: Config
+def build_multipole_hierarchy(th: TreeHierarchy, pos: jax.Array, mp: jax.Array, cfg_fmm: FMMConfig
                               ) -> PackedArray:
     mp = _as_particle_multipoles(mp, pos)
 
     dim = pos.shape[-1]
     size = th.ispl_n2n.size()-1
-    mp0 = summarize_multipoles(th.splits_leaf_to_part(size=size+1), mp, th.center().get(0, size), pos, cfg=cfg)
+    mp0 = summarize_multipoles(th.splits_leaf_to_part(size=size+1), mp, th.center().get(0, size), pos, cfg_fmm=cfg_fmm)
 
     mph = PackedArray.create_empty(
-        (size, num_multi(cfg.fmm.p, dim=dim)), levels=th.num_planes(), dtype=mp0.dtype, fill_values=jnp.nan
+        (size, num_multi(cfg_fmm.p, dim=dim)), levels=th.num_planes(), dtype=mp0.dtype, fill_values=jnp.nan
     )
     mph = mph.set(0, mp0, th.num(0))
 
@@ -128,13 +128,13 @@ def build_multipole_hierarchy(th: TreeHierarchy, pos: jax.Array, mp: jax.Array, 
             mp=mph.get(i-1, size),
             xnode=th.center().get(i, size),
             xchild=th.center().get(i-1, size),
-            cfg=cfg
+            cfg_fmm=cfg_fmm
         )
         return mph.set(i, mp_coarse, th.num(i))
     mph = jax.lax.fori_loop(1, th.num_planes(), handle_level, mph)
     
     return mph
-build_multipole_hierarchy.jit = jax.jit(build_multipole_hierarchy, static_argnames=['cfg'])
+build_multipole_hierarchy.jit = jax.jit(build_multipole_hierarchy, static_argnames=['cfg_fmm'])
 
 def _shift_local_to_children_impl(
         ispl: jnp.array,
@@ -195,7 +195,7 @@ def _fmm_node_to_child(
         loc: jnp.array,
         xnode: jnp.array,
         xchild: jnp.array,
-        cfg: Config,
+        cfg_fmm: FMMConfig,
         pout: int = None
     ) -> jax.Array:
     assert len(ispl) == len(loc) + 1 == len(xnode) + 1
@@ -217,14 +217,14 @@ def _fmm_node_to_child(
     
     def eval_bwd(res, gloc_c): # the adjoint of the l2l operator is an m2m operator
         loc, xchild = res
-        gloc = summarize_multipoles(ispl, gloc_c, xnode, xchild, cfg=cfg)
+        gloc = summarize_multipoles(ispl, gloc_c, xnode, xchild, cfg_fmm=cfg_fmm)
         gx = shift_local_to_children_vjp_x(ispl, loc, xnode, xchild, gloc_c)
         return gx, gloc
     
     eval.defvjp(eval_fwd, eval_bwd)
     
     return eval(xchild, loc)
-_fmm_node_to_child.jit = jax.jit(_fmm_node_to_child, static_argnames=["cfg", "pout"])
+_fmm_node_to_child.jit = jax.jit(_fmm_node_to_child, static_argnames=["cfg_fmm", "pout"])
 
 def multipole_readout_pos_vjp(mp: jax.Array, gmp: jax.Array, dim=3):
     return local_readout_pos_vjp(gmp, mp, dim=dim) # turns out, math is identical with transposed inputs

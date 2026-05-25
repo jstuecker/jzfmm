@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from jztree_utils import ics
 
-from fmdj.config import Config, FMMConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel, Plummer2DKernel, SoftenedDistanceKernel
+from fmdj.config import FMMConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel, Plummer2DKernel, SoftenedDistanceKernel
 from fmdj.fmm import direct_summation, fast_multipole_method
 
 def _device_array_bytes(x):
@@ -15,13 +15,13 @@ def _device_array_bytes(x):
 
 @pytest.mark.parametrize("p", [2,3,4])
 def test_fmm_uniform(p):
-    cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=FMMConfig(p=p, opening=OpeningByAngle(theta=0.4), kahan_summation=True))
-    cfg.fmm.alloc_fac_ilist = 256. # need larger, because small opening angle
+    cfg_fmm = FMMConfig(kernel=PlummerKernel(softening=0.05), p=p, opening=OpeningByAngle(theta=0.4), kahan_summation=True)
+    cfg_fmm.alloc_fac_ilist = 256. # need larger, because small opening angle
 
     part = ics.uniform_particles(int(1e4))
 
-    fref = direct_summation.jit(part, kernel=cfg.kernel, kahan=True, G=cfg.G()).force()
-    ffmm = fast_multipole_method.jit(part, cfg=cfg).force()
+    fref = direct_summation.jit(part, kernel=cfg_fmm.kernel, kahan=True).force()
+    ffmm = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).force()
 
     ferr = jnp.linalg.norm(fref - ffmm, axis=-1)
     ferr_rel = ferr / jnp.linalg.norm(0.5*(fref + ffmm), axis=-1)
@@ -34,12 +34,12 @@ def test_fmm_uniform(p):
 @pytest.mark.parametrize("dim", [2,3])
 def test_dim(dim):
     p = 3
-    cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=FMMConfig(p=p, opening=OpeningByAngle(theta=0.4), kahan_summation=True))
+    cfg_fmm = FMMConfig(kernel=PlummerKernel(softening=0.05), p=p, opening=OpeningByAngle(theta=0.4), kahan_summation=True)
 
     part = ics.uniform_particles(int(1e4), dim=dim)
 
-    fref = direct_summation.jit(part, kernel=cfg.kernel, kahan=True, G=cfg.G()).force()
-    ffmm = fast_multipole_method.jit(part, cfg=cfg).force()
+    fref = direct_summation.jit(part, kernel=cfg_fmm.kernel, kahan=True).force()
+    ffmm = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).force()
 
     ferr = jnp.linalg.norm(fref - ffmm, axis=-1)
     ferr_rel = ferr / jnp.linalg.norm(0.5*(fref + ffmm), axis=-1)
@@ -49,19 +49,23 @@ def test_dim(dim):
     assert jnp.max(ferr_rel) <= 9.*10**-(p-1)
 
 def test_gravity3d_kernels():
-    cfg_plummer = Config(
+    cfg_plummer = FMMConfig(
         kernel=PlummerKernel(softening=1e-3),
-        fmm=FMMConfig(p=3, opening=OpeningByAngle(theta=0.4), kahan_summation=True),
+        p=3,
+        opening=OpeningByAngle(theta=0.4),
+        kahan_summation=True,
     )
-    cfg_quartic = Config(
+    cfg_quartic = FMMConfig(
         kernel=QuarticPlummerKernel(softening=1e-3),
-        fmm=cfg_plummer.fmm,
+        p=cfg_plummer.p,
+        opening=cfg_plummer.opening,
+        kahan_summation=cfg_plummer.kahan_summation,
     )
 
     part = ics.uniform_particles(int(2048))
 
-    f_plummer = fast_multipole_method.jit(part, cfg=cfg_plummer).force()
-    f_quartic = fast_multipole_method.jit(part, cfg=cfg_quartic).force()
+    f_plummer = fast_multipole_method.jit(part, cfg_fmm=cfg_plummer).force()
+    f_quartic = fast_multipole_method.jit(part, cfg_fmm=cfg_quartic).force()
 
     ferr = jnp.linalg.norm(f_quartic - f_plummer, axis=-1)
     ferr_rel = ferr / jnp.linalg.norm(0.5*(f_quartic + f_plummer), axis=-1)
@@ -75,15 +79,17 @@ def test_gravity3d_kernels():
     SoftenedDistanceKernel(softening=0.05),
 ])
 def test_other_kernels(kernel):
-    cfg = Config(
+    cfg_fmm = FMMConfig(
         kernel=kernel,
-        fmm=FMMConfig(p=4, opening=OpeningByAngle(theta=0.4), kahan_summation=True),
+        p=4,
+        opening=OpeningByAngle(theta=0.4),
+        kahan_summation=True,
     )
 
     part = ics.uniform_particles(int(4096), dim=2)
 
-    fref = direct_summation.jit(part, kernel=cfg.kernel, kahan=True, G=cfg.G()).force()
-    ffmm = fast_multipole_method.jit(part, cfg=cfg).force()
+    fref = direct_summation.jit(part, kernel=cfg_fmm.kernel, kahan=True).force()
+    ffmm = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).force()
 
     ferr = jnp.linalg.norm(fref - ffmm, axis=-1)
     ferr_rel = ferr / jnp.linalg.norm(0.5*(fref + ffmm), axis=-1)
@@ -92,41 +98,43 @@ def test_other_kernels(kernel):
     assert jnp.max(ferr_rel) <= 5e-2
 
 def test_fmm_result_keys():
-    cfg = Config(
+    cfg_fmm = FMMConfig(
         kernel=PlummerKernel(softening=0.05),
-        fmm=FMMConfig(p=3, opening=OpeningByAngle(theta=0.4), kahan_summation=True),
+        p=3,
+        opening=OpeningByAngle(theta=0.4),
+        kahan_summation=True,
     )
     part = ics.uniform_particles(2048)
 
     loc, partz, locz, th = fast_multipole_method.jit(
-        part, cfg=cfg, result="loc_partz_locz_tree"
+        part, cfg_fmm=cfg_fmm, result="loc_partz_locz_tree"
     )
-    locz_from_tree = fast_multipole_method.jit(partz, cfg=cfg, th=th, result="locz")
+    locz_from_tree = fast_multipole_method.jit(partz, cfg_fmm=cfg_fmm, th=th, result="locz")
 
     assert locz_from_tree.values == pytest.approx(locz.values)
     assert sorted(loc.potential().tolist()) == pytest.approx(sorted(locz.potential().tolist()))
 
     with pytest.raises(ValueError, match="result='loc'"):
-        fast_multipole_method(partz, cfg=cfg, th=th, result="loc")
+        fast_multipole_method(partz, cfg_fmm=cfg_fmm, th=th, result="loc")
 
 def test_padding():
-    cfg = Config()
+    cfg_fmm = FMMConfig()
     npart = 2048
     part = ics.uniform_particles(npart)
     part_padded = ics.uniform_particles(npart, npad=512)
 
-    loc = fast_multipole_method.jit(part, cfg=cfg).values
-    loc_padded = fast_multipole_method.jit(part_padded, cfg=cfg).values
+    loc = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).values
+    loc_padded = fast_multipole_method.jit(part_padded, cfg_fmm=cfg_fmm).values
 
     assert jnp.all(loc_padded[:npart] == loc)
     assert jnp.all(jnp.isnan(loc_padded[npart:]))
 
 def test_fmm_reproducibility():
-    cfg = Config()
+    cfg_fmm = FMMConfig()
     part = ics.uniform_particles(1024*1024)
 
-    expected = fast_multipole_method.jit(part, cfg=cfg).values
+    expected = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).values
 
     for _ in range(5):
-        actual = fast_multipole_method.jit(part, cfg=cfg).values
+        actual = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).values
         assert jnp.all(expected == actual) # check bit-perfect agreement

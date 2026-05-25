@@ -16,7 +16,7 @@ from jztree.comm import all_to_all_request_children, all_to_all_with_irank, get_
 from jztree.stats import AllocStats, stats_callback
 from jax.sharding import PartitionSpec as P
 
-from .config import Config
+from .config import DirectSummationConfig, FMMConfig, SimConfig
 from .data import LocalExpansion
 from .multipoles import _fmm_node_to_child, build_multipole_hierarchy, local_readout_pos_vjp, num_multi, p_of_num_multi, shift_local_to_children_vjp_x
 
@@ -51,7 +51,7 @@ def _fmm_node_to_node(
         node_ilist: InteractionList,
         spl_recv: jax.Array,
         child_recv: FMMChildData,
-        cfg: Config,
+        cfg_fmm: FMMConfig,
         single_thread_per_receiver: jax.Array | None = None,
         loc_in: jax.Array | None = None,
         spl_src: jax.Array | None = None,
@@ -76,10 +76,10 @@ def _fmm_node_to_node(
 
     size = len(child_recv.poslvl.pos)
     ilist_alloc_size = node_ilist.size()
-    kernel = cfg.kernel
+    kernel = cfg_fmm.kernel
     dim = child_recv.poslvl.pos.shape[-1]
 
-    if cfg.fmm.p == 5 and cfg.fmm.p_extra_m2l == 1 and dim == 3:
+    if cfg_fmm.p == 5 and cfg_fmm.p_extra_m2l == 1 and dim == 3:
         warnings.warn(
             "FMMConfig(p=5, p_extra_m2l=1) currently makes the CUDA M2L kernel use local memory "
             "and will be extremely slow. Please prefer other p+p_extra_m2l <= 5.",
@@ -97,9 +97,9 @@ def _fmm_node_to_node(
     # Determine output shapes
     dtype = child_src.mp.dtype
     kernel_params = kernel.params(dtype=dtype)
-    opening = cfg.fmm.opening
+    opening = cfg_fmm.opening
     opening_params = opening.params(dtype=dtype)
-    p_local = cfg.fmm.p + cfg.fmm.p_extra_m2l
+    p_local = cfg_fmm.p + cfg_fmm.p_extra_m2l
     assert p_local >= 0, "p + p_extra_m2l must be non-negative"
     out_loc = jax.ShapeDtypeStruct((size, num_multi(p_local, dim=dim)), dtype)
     if loc_in is None:
@@ -116,8 +116,8 @@ def _fmm_node_to_node(
         node_range, spl_recv, spl_src, node_ilist.ispl, node_ilist.isrc,
         children_recv, children_src, child_src.mp, kernel_params, opening_params,
         single_thread_per_receiver, loc_in,
-        p=np.int32(cfg.fmm.p),
-        p_extra_m2l=np.int32(cfg.fmm.p_extra_m2l),
+        p=np.int32(cfg_fmm.p),
+        p_extra_m2l=np.int32(cfg_fmm.p_extra_m2l),
         radial_kernel_kind=np.int32(kernel.kind_id()),
         opening_criterion_kind=np.int32(opening.kind_id()),
     )
@@ -161,9 +161,9 @@ def _fmm_node_to_node(
     )
     
     return loc, new_ilist
-_fmm_node_to_node.jit = jax.jit(_fmm_node_to_node, static_argnames=['cfg'])
+_fmm_node_to_node.jit = jax.jit(_fmm_node_to_node, static_argnames=['cfg_fmm'])
 
-def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
+def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg_fmm: FMMConfig):
     in_smap = in_shard_map_context()
     if in_smap:
         rank, ndev, axis_name = get_rank_info()
@@ -175,16 +175,16 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
     if in_smap:
         spl, ilist, nsup = distr_grouped_dense_interaction_list(
             th.num(th.num_planes()-1), size,
-            size_ilist=int(th.size_leaves*cfg.fmm.alloc_fac_ilist),
+            size_ilist=int(th.size_leaves*cfg_fmm.alloc_fac_ilist),
             separate_query_and_source_indices=True,
         )
     else:
         spl, ilist, nsup = grouped_dense_interaction_list(
-            th.num(th.num_planes()-1), size_ilist=int(th.size_leaves*cfg.fmm.alloc_fac_ilist),
+            th.num(th.num_planes()-1), size_ilist=int(th.size_leaves*cfg_fmm.alloc_fac_ilist),
             ngroup=32, size_super=size
         )
 
-    p_local = cfg.fmm.p + cfg.fmm.p_extra_m2l
+    p_local = cfg_fmm.p + cfg_fmm.p_extra_m2l
     assert p_local >= 0, "p + p_extra_m2l must be non-negative"
     loc = jnp.zeros((size, num_multi(p_local, dim=dim)), dtype=mph.data.dtype)
     if in_smap:
@@ -226,12 +226,12 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
             parent_range = jnp.array([0, spl_n2n.num(level+1)-1], dtype=jnp.int32)
 
         loc_ch = _fmm_node_to_child(
-            parent_spl_recv, parent_loc, parent_cent, child_recv.poslvl.pos, cfg=cfg
+            parent_spl_recv, parent_loc, parent_cent, child_recv.poslvl.pos, cfg_fmm=cfg_fmm
         )
 
         loc_ch, ilist = _fmm_node_to_node(
             parent_range, parent_ilist, parent_spl_recv, child_recv,
-            cfg=cfg, single_thread_per_receiver=single_thread_per_receiver,
+            cfg_fmm=cfg_fmm, single_thread_per_receiver=single_thread_per_receiver,
             loc_in=loc_ch,
             spl_src=parent_spl_src, child_src=child_src
         )
@@ -247,7 +247,7 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg: Config):
     )
 
     return loc, ilist
-_fmm_dual_walk.jit = jax.jit(_fmm_dual_walk, static_argnames=['cfg'])
+_fmm_dual_walk.jit = jax.jit(_fmm_dual_walk, static_argnames=['cfg_fmm'])
 
 # ------------------------------------------------------------------------------------------------ #
 #                           Leaf-Leaf (Particle to Particle) Interactions                          #
@@ -262,7 +262,7 @@ def leaf_leaf_summation(
         particles: PosMass,
         ispl: jax.Array,
         ilist: InteractionList,
-        cfg: Config = None,
+        cfg_fmm: FMMConfig = None,
         loc_in: jax.Array | None = None,
         remove_self_interaction: bool = True,
     ) -> jax.Array:
@@ -273,7 +273,7 @@ def leaf_leaf_summation(
         rank, _, axis_name = get_rank_info()
 
     block_size = 128
-    assert cfg.tree.max_leaf_size <= block_size
+    assert cfg_fmm.tree.max_leaf_size <= block_size
     dim = particles_recv.pos.shape[-1]
 
     node_range = jnp.array([0, spl_recv.size-1], dtype=jnp.int32)
@@ -282,7 +282,7 @@ def leaf_leaf_summation(
     if loc_in is None:
         loc_in = jnp.zeros(out_type.shape, dtype=out_type.dtype)
         loc_in = pcast_like(loc_in, spl_recv)
-    kernel = cfg.kernel
+    kernel = cfg_fmm.kernel
     kernel_params = kernel.params(dtype=posm_recv.dtype)
 
     def eval_fwd(particles_recv, spl_recv, ilist, loc_in):
@@ -307,7 +307,7 @@ def leaf_leaf_summation(
             node_range, spl_recv, spl_src, ilist.ispl, ilist.isrc,
             get_pos_mass(particles_recv), get_pos_mass(particles_src), kernel_params, loc_in,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
-            kahan=bool(cfg.fmm.kahan_summation),
+            kahan=bool(cfg_fmm.kahan_summation),
             remove_self_interaction=bool(remove_self_interaction),
         )[0]
         loc = pcast_like(loc, spl_recv)
@@ -341,7 +341,7 @@ def leaf_leaf_summation(
             get_pos_mass(particles_recv), get_pos_mass(particles_src),
             kernel_params, gloc, gloc_src,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
-            kahan=bool(cfg.fmm.kahan_summation),
+            kahan=bool(cfg_fmm.kahan_summation),
             remove_self_interaction=bool(remove_self_interaction),
         )[0]
         gpos = pcast_like(gposm[:,:dim], particles_recv.pos)
@@ -361,7 +361,7 @@ def leaf_leaf_summation(
     eval.defvjp(eval_fwd, eval_bwd)
 
     return eval(particles_recv, spl_recv, ilist, loc_in)
-leaf_leaf_summation.jit = jax.jit(leaf_leaf_summation, static_argnames=['cfg', 'remove_self_interaction'])
+leaf_leaf_summation.jit = jax.jit(leaf_leaf_summation, static_argnames=['cfg_fmm', 'remove_self_interaction'])
 
 
 # ------------------------------------------------------------------------------------------------ #
@@ -451,18 +451,18 @@ direct_potential_scan_jax.jit = jax.jit(direct_potential_scan_jax, static_argnam
 # ------------------------------------------------------------------------------------------------ #
 
 
-def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg: Config) -> Tuple[jax.Array, InteractionList]:
+def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg_fmm: FMMConfig) -> Tuple[jax.Array, InteractionList]:
     
     def eval_fwd(pos, mp, pout=1):
-        mph = build_multipole_hierarchy(th, pos, mp, cfg=cfg)
-        loc_node, ilist = _fmm_dual_walk(th, mph, cfg=cfg)
+        mph = build_multipole_hierarchy(th, pos, mp, cfg_fmm=cfg_fmm)
+        loc_node, ilist = _fmm_dual_walk(th, mph, cfg_fmm=cfg_fmm)
         ispl = th.splits_leaf_to_part()
         xnode = th.center().get(0, th.size())
-        loc_part = _fmm_node_to_child(ispl, loc_node, xnode, pos, pout=pout, cfg=cfg)
+        loc_part = _fmm_node_to_child(ispl, loc_node, xnode, pos, pout=pout, cfg_fmm=cfg_fmm)
         return (loc_part, ilist), (pos, mp, ispl, xnode, loc_node)
     
     def eval_bwd(pout, res, grads):
-        assert cfg.fmm.p_extra_m2l == 0, (
+        assert cfg_fmm.p_extra_m2l == 0, (
             "Differentiating through p_extra_m2l != 0 is not supported yet. "
             "The forward pass supports boosted M2L locals, but the rectangular M2L adjoint still needs to be added."
         )
@@ -488,18 +488,20 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg: Config) ->
     eval.defvjp(eval_fwd, eval_bwd)
 
     return eval(partz.pos, jnp.reshape(partz.mass, jnp.shape(partz.mass) + (1,)))
-evaluate_node_node_fmm.jit = jax.jit(evaluate_node_node_fmm, static_argnames=['cfg', ])
+evaluate_node_node_fmm.jit = jax.jit(evaluate_node_node_fmm, static_argnames=['cfg_fmm', ])
 
-def _fast_multipole_method_z(partz: PosMass, th: TreeHierarchy, *, cfg: Config, pout: int = 1) -> LocalExpansion:
+def _fast_multipole_method_z(
+        partz: PosMass, th: TreeHierarchy, *, cfg_fmm: FMMConfig, G=1., pout: int = 1
+    ) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
 
-    loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg=cfg)
+    loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg_fmm=cfg_fmm)
     spl = th.splits_leaf_to_part()
 
-    loc = leaf_leaf_summation(partz, spl, jax.lax.stop_gradient(ilist), cfg=cfg, loc_in=loc_node_node)
+    loc = leaf_leaf_summation(partz, spl, jax.lax.stop_gradient(ilist), cfg_fmm=cfg_fmm, loc_in=loc_node_node)
 
-    return LocalExpansion(loc * cfg.G(), dim=partz.pos.shape[-1])
-_fast_multipole_method_z.jit = jax.jit(_fast_multipole_method_z, static_argnames=("cfg", "pout"))
+    return LocalExpansion(loc * G, dim=partz.pos.shape[-1])
+_fast_multipole_method_z.jit = jax.jit(_fast_multipole_method_z, static_argnames=("cfg_fmm", "G", "pout"))
 
 def _parse_fmm_result(result: str) -> Tuple[str, ...]:
     keys = tuple(result.split("_"))
@@ -517,8 +519,8 @@ def _as_posmass(part) -> PosMass:
     )
 
 def fast_multipole_method(
-        part: PosMass, cfg: Config, th: TreeHierarchy | None = None,
-        result: str = "loc", pout: int = 1
+        part: PosMass, cfg_fmm: FMMConfig, th: TreeHierarchy | None = None,
+        result: str = "loc", G=1., pout: int = 1
     ) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
     keys = _parse_fmm_result(result)
@@ -535,7 +537,7 @@ def fast_multipole_method(
             origin = RankIdx(rank=None, idx=idx)
         num_origin = get_num(part, default_to_length=(ndev == 1))
         partz, dataz, th = zsort_and_tree(
-            part, cfg.tree, data=origin
+            part, cfg_fmm.tree, data=origin
         )
         origin_z = dataz
     elif "loc" in keys:
@@ -550,7 +552,7 @@ def fast_multipole_method(
 
     locz = None
     if ("loc" in keys) or ("locz" in keys):
-        locz = _fast_multipole_method_z(_as_posmass(partz), th, cfg=cfg, pout=pout)
+        locz = _fast_multipole_method_z(_as_posmass(partz), th, cfg_fmm=cfg_fmm, G=G, pout=pout)
 
     loc = None
     if "loc" in keys:
@@ -572,16 +574,27 @@ def fast_multipole_method(
     }
     res = tuple(out[key] for key in keys)
     return res[0] if len(res) == 1 else res
-fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg", "result", "pout"))
+fast_multipole_method.jit = jax.jit(fast_multipole_method, static_argnames=("cfg_fmm", "result", "G", "pout"))
 fast_multipole_method.smap = shard_map_constructor(
     fast_multipole_method,
-    in_specs=(P(-1), None, P(-1), None, None),
-    static_argnames=("cfg", "result", "pout"),
+    in_specs=(P(-1), None, P(-1), None, None, None),
+    static_argnames=("cfg_fmm", "result", "G", "pout"),
 )
 
-def force_and_potential(p: PosMass, cfg : Config) -> LocalExpansion:
-    if cfg.fmm is None:
-        return direct_summation(p, kernel=cfg.kernel, kahan=True, G=cfg.G())
-    else:
-        return fast_multipole_method(p, cfg=cfg, pout=1)
+def force_and_potential(p: PosMass, cfg: SimConfig) -> LocalExpansion:
+    cfg_force = cfg.force
+    if cfg_force is None:
+        dim = p.pos.shape[-1]
+        values = jnp.zeros(p.pos.shape[:-1] + (dim + 1,), dtype=p.pos.dtype)
+        return LocalExpansion(values, dim=dim)
+    if isinstance(cfg_force, DirectSummationConfig):
+        return direct_summation(
+            p,
+            kernel=cfg_force.kernel,
+            kahan=cfg_force.kahan_summation,
+            G=cfg.units.G(),
+        )
+    if isinstance(cfg_force, FMMConfig):
+        return fast_multipole_method(p, cfg_fmm=cfg_force, G=cfg.units.G(), pout=1)
+    raise TypeError(f"Unsupported force cfg type {type(cfg_force)}")
 force_and_potential.jit = jax.jit(force_and_potential, static_argnames=("cfg",))

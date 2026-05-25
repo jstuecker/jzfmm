@@ -4,7 +4,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from .config import Config, PotentialField
+from .config import SimConfig, PotentialField
 
 @dataclass(unsafe_hash=True)
 class NFWPotential(PotentialField):
@@ -14,24 +14,24 @@ class NFWPotential(PotentialField):
     def phic(self, G: float = 1.) -> float:
         return - 4. * jnp.pi * self.rs**2 * self.rhoc * G
 
-    def potential(self, x: jax.Array, t: float = 0., cfg: Config = None) -> jax.Array:
+    def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
         u = jnp.linalg.norm(x, axis=-1) / self.rs
         # The -1 is to set phi(r->0) = 0. This is numerically beneficial
-        return self.phic(G=cfg.G()) * (jnp.log(1. + u) / u - 1.)
+        return self.phic(G=cfg.units.G()) * (jnp.log(1. + u) / u - 1.)
 
 @dataclass(unsafe_hash=True)
 class HernquistPotential(PotentialField):
     a: float = 1.0
     mass: float = 1.0
 
-    def potential(self, x: jax.Array, t: float = 0., cfg: Config = None) -> jax.Array:
-        return -cfg.G() * self.mass / (jnp.linalg.norm(x, axis=-1) + self.a)
+    def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
+        return -cfg.units.G() * self.mass / (jnp.linalg.norm(x, axis=-1) + self.a)
 
 @dataclass(unsafe_hash=True)
 class UniformAcceleration(PotentialField):
     acc : tuple[float, float, float] = (0., 0., 0.)
 
-    def potential(self, x: jax.Array, t: float = 0., cfg: Config = None) -> jax.Array:
+    def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
         return - (self.acc[0] * x[:,0] + self.acc[1] * x[:,1] + self.acc[2] * x[:,2])
 
 @dataclass(unsafe_hash=True)
@@ -44,11 +44,11 @@ class MiyamotoNagaiPotential(PotentialField):
     b: float = 300e-6
     a: float = 3000e-6
 
-    def potential(self, x: jax.Array, t: float = 0., cfg: Config = None) -> jax.Array:
+    def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
         R = jnp.sqrt(x[...,0]**2 + x[...,1]**2)
         z = x[...,2]
 
-        return - cfg.G()*self.mass / jnp.sqrt(R**2 + (jnp.sqrt(z**2 + self.b**2) + self.a)**2)
+        return - cfg.units.G()*self.mass / jnp.sqrt(R**2 + (jnp.sqrt(z**2 + self.b**2) + self.a)**2)
 
 @dataclass(unsafe_hash=True)
 class DiskPotential(PotentialField):
@@ -75,7 +75,7 @@ class DiskPotential(PotentialField):
         
         return pars
 
-    def potential(self, x: jax.Array, t: float = 0., cfg: Config = None) -> jax.Array:
+    def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
         pars = self._mn_pars()
 
         R = jnp.sqrt(x[...,0]**2 + x[...,1]**2)
@@ -83,7 +83,7 @@ class DiskPotential(PotentialField):
 
         pot = 0.
         for p in pars:
-            pot = pot - cfg.G()*p["M"] / jnp.sqrt(R**2 + (jnp.sqrt(z**2 + self.height**2) + p["a"])**2)
+            pot = pot - cfg.units.G()*p["M"] / jnp.sqrt(R**2 + (jnp.sqrt(z**2 + self.height**2) + p["a"])**2)
 
         return pot
 

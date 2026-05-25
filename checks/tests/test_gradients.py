@@ -8,9 +8,10 @@ from dataclasses import replace
 from jax.test_util import check_grads
 
 from jztree.tree import _dense_interaction_list
+from jztree.config import TreeConfig
 from jztree_utils import ics
 
-from fmdj.config import Config, FMMConfig, OpeningByAngle, PlummerKernel
+from fmdj.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, SimConfig
 from fmdj.data import PosMass
 from fmdj.multipoles import summarize_multipoles, build_multipole_hierarchy, _fmm_node_to_child
 from fmdj.fmm import _fmm_dual_walk, evaluate_node_node_fmm
@@ -33,11 +34,12 @@ def my_check_gradient(f, x, epsrel=1e-4, rtol=5e-3, atol=0.):
 
 @pytest.mark.skip_in_quick
 def test_m2m_gradients(pos_mass_z, tree_hierarchy, cfg):
+    cfg_fmm = cfg.force
     spl = tree_hierarchy.th.splits_leaf_to_part()
     xnode = tree_hierarchy.center().get(0, tree_hierarchy.size())
 
     def m2m(x,m):
-        return summarize_multipoles(spl, m, xnode, x, cfg=cfg)
+        return summarize_multipoles(spl, m, xnode, x, cfg_fmm=cfg_fmm)
 
     check_grads(lambda m: m2m(pos_mass_z.pos, m), (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-3)
     check_grads(lambda x: m2m(x, pos_mass_z.mass), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-3)
@@ -46,14 +48,14 @@ def test_m2m_gradients(pos_mass_z, tree_hierarchy, cfg):
 @pytest.mark.skip_in_quick
 def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
     th = tree_hierarchy
-    cfg = replace(cfg, kernel=PlummerKernel(softening=1e-1))
-    mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg=cfg)
-    loc, ilist = _fmm_dual_walk.jit(th, mph, cfg)
+    cfg_fmm = replace(cfg.force, kernel=PlummerKernel(softening=1e-1))
+    mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg_fmm=cfg_fmm)
+    loc, ilist = _fmm_dual_walk.jit(th, mph, cfg_fmm)
 
     ispl = th.splits_leaf_to_part()
     cent =  th.center().get(0, th.size())
     def l2l(x,loc):
-        return _fmm_node_to_child(ispl, loc, cent, x, cfg=cfg, pout=1)
+        return _fmm_node_to_child(ispl, loc, cent, x, cfg_fmm=cfg_fmm, pout=1)
 
     loc = loc.at[:,1:4].set(0.)
     check_grads(lambda x: l2l(x, loc), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-2)
@@ -62,17 +64,16 @@ def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
 
 @pytest.mark.skip_in_quick
 def test_fmm_node_gradients(pos_mass_z, tree_hierarchy, cfg):
-    cfg_fmm = replace(cfg.fmm, p=4)
-    cfg = replace(cfg, kernel=PlummerKernel(softening=1e-1), fmm=cfg_fmm)
+    cfg_fmm = replace(cfg.force, p=4, kernel=PlummerKernel(softening=1e-1))
 
     def f(pos):
         pm = PosMass(pos=pos, mass=pos_mass_z.mass)
-        return evaluate_node_node_fmm(pm, tree_hierarchy, cfg=cfg)[0]
+        return evaluate_node_node_fmm(pm, tree_hierarchy, cfg_fmm=cfg_fmm)[0]
     check_grads(f, (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-2)
 
     def f(mass):
         pm = PosMass(pos=pos_mass_z.pos, mass=mass)
-        return evaluate_node_node_fmm(pm, tree_hierarchy, cfg=cfg)[0]
+        return evaluate_node_node_fmm(pm, tree_hierarchy, cfg_fmm=cfg_fmm)[0]
     check_grads(f, (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-1)
 
 @pytest.mark.parametrize("mode", ["fmm", "direct"])
@@ -83,13 +84,15 @@ def test_sim_com(particles_blob, mode):
 
     acc = (0.,0.,0.05)
 
-    cfg = Config(kernel=PlummerKernel(softening=0.3))
+    cfg_fmm = FMMConfig(
+        kernel=PlummerKernel(softening=0.3),
+        tree=TreeConfig(mass_centered=False, alloc_fac_nodes=2.0),
+        alloc_fac_ilist=256.,
+    )
+    cfg = SimConfig(force=cfg_fmm)
     cfg.external_potential = UniformAcceleration(acc=acc)
     if mode == "direct":
-        cfg.fmm = None
-    else:
-        cfg.tree.alloc_fac_nodes = 2.0
-        cfg.fmm.alloc_fac_ilist = 256. # need larger factor for very small problem size
+        cfg.force = DirectSummationConfig(kernel=PlummerKernel(softening=0.3))
 
     def loss(p):
         pfin = simulate(p, tend=1e2, nsteps=100, cfg=cfg)
@@ -120,24 +123,23 @@ def test_force_gradients(dim):
     part.num = None # currently causes some problems with gradients
     part.num_total = None # currently causes some problems with gradients
     part.mass = jnp.broadcast_to(part.mass, part.pos.shape[:-1])
-    fmmcfg = FMMConfig(p=4, kahan_summation=True, opening=OpeningByAngle(theta=0.8))
-    cfg = Config(kernel=PlummerKernel(softening=0.05), fmm=fmmcfg)
+    cfg_fmm = FMMConfig(kernel=PlummerKernel(softening=0.05), p=4, kahan_summation=True, opening=OpeningByAngle(theta=0.8))
     
     ispl = jnp.arange(part.pos.shape[0]//32 + 1, dtype=jnp.int32) * 32
     ilist = _dense_interaction_list.jit(len(ispl)-1, len(ispl)-1, (len(ispl)-1)**2)
 
-    fphi1 = direct_summation.jit(part, kernel=cfg.kernel, kahan=True).values
-    fphi2 = leaf_leaf_summation.jit(part, ispl, ilist, cfg)
-    fphi3 = fast_multipole_method.jit(part, cfg=cfg).values / cfg.G()
+    fphi1 = direct_summation.jit(part, kernel=cfg_fmm.kernel, kahan=True).values
+    fphi2 = leaf_leaf_summation.jit(part, ispl, ilist, cfg_fmm)
+    fphi3 = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).values
 
     abstol = float(jnp.std(fphi1) * 2e-2)
 
     assert fphi2 == pytest.approx(fphi1, abs=abstol*1e-2)
     assert fphi3 == pytest.approx(fphi1, abs=abstol)
 
-    def f1(part): return leaf_leaf_summation(part, ispl, ilist, cfg=cfg).sum()
-    def f2(part): return direct_summation(part, kernel=cfg.kernel, kahan=True).values.sum()
-    def f3(part): return fast_multipole_method(part, cfg=cfg).values.sum() / cfg.G()
+    def f1(part): return leaf_leaf_summation(part, ispl, ilist, cfg_fmm=cfg_fmm).sum()
+    def f2(part): return direct_summation(part, kernel=cfg_fmm.kernel, kahan=True).values.sum()
+    def f3(part): return fast_multipole_method(part, cfg_fmm=cfg_fmm).values.sum()
     
     gposm1 = jax.jit(jax.grad(f1, allow_int=True))(part)
     gposm2 = jax.jit(jax.grad(f2, allow_int=True))(part)

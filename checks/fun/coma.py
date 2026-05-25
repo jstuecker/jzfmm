@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import os
 from fmdj_utils.plots import plot_particles_inset, time_in_years
 from matplotlib.animation import FuncAnimation
+from jztree.config import TreeConfig
 import argparse
 
 os.makedirs("output", exist_ok=True)
@@ -111,8 +112,11 @@ def update(t_and_p):
     fig, ax, s1, title = previous
     return [s1,title]
 
-cfg = fmdj.Config(kernel=fmdj.PlummerKernel(softening=0.1))
-cfg.tree.alloc_fac_nodes = 2.0
+cfg_fmm = fmdj.FMMConfig(
+    kernel=fmdj.PlummerKernel(softening=0.1),
+    tree=TreeConfig(mass_centered=False, alloc_fac_nodes=2.0),
+)
+cfg = fmdj.SimConfig(force=cfg_fmm)
 
 if dm:
     cfg.external_potential = fmdj.external_potential.NFWPotential(coma.rs, coma.rhoc)

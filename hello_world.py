@@ -3,7 +3,7 @@ import numpy as np
 import jax.numpy as jnp
 import aegis
 from fmdj.data import Particles
-from fmdj.config import Config
+from fmdj.config import FMMConfig, PlummerKernel, SimConfig
 from fmdj.external_potential import NFWPotential
 from fmdj.time_integration import simulate_with_outputs
 
@@ -25,8 +25,8 @@ prof = aegis.profiles.NFWProfile(conc=10., r200c=10.)
 pos0, vel0, m = prof.sample_particles(1024*128, result="pos_vel_m", rpmin=1e-3, ramax=10.)
 
 p0 = Particles(pos=jnp.array(pos0), mass=jnp.array(m), vel=jnp.array(vel0))
-cfg = Config()
-cfg.softening = 1e-2
+cfg_fmm = FMMConfig(kernel=PlummerKernel(softening=1e-2))
+cfg = SimConfig(force=cfg_fmm)
 
 host = aegis.profiles.NFWProfile(conc=6., m200c=1e12)
 cfg.external_potential = NFWPotential(host.rs, host.rhoc)

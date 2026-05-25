@@ -94,11 +94,39 @@ class PotentialField:
         return -jax.grad(lambda x: jnp.sum(self.potential(x, t=t, cfg=cfg)))(x)
 
 # ------------------------------------------------------------------------------------------------ #
-#                                                FMM                                               #
+#                                               Units                                              #
 # ------------------------------------------------------------------------------------------------ #
 
 @dataclass(unsafe_hash=True)
-class FMMConfig():
+class UnitConfig:
+    """Simulation units relative to kpc, km/s, and solar masses."""
+
+    pos_in_kpc: float = 1.
+    vel_in_kmps: float = 1.
+    mass_in_msol: float = 1.
+
+    def G(self) -> float:
+        return 4.30071057317063e-06 * self.mass_in_msol / self.pos_in_kpc / self.vel_in_kmps**2
+
+# ------------------------------------------------------------------------------------------------ #
+#                                               Force                                              #
+# ------------------------------------------------------------------------------------------------ #
+
+@dataclass(unsafe_hash=True)
+class DirectSummationConfig:
+    kernel : KernelConfig = field(default_factory=PlummerKernel)
+    kahan_summation : bool = True
+
+@dataclass(unsafe_hash=True)
+class FMMConfig:
+    # Tree
+    tree : TreeConfig = field(
+        default_factory=lambda: TreeConfig(mass_centered=False, alloc_fac_nodes=1.2)
+    )
+
+    # Kernel
+    kernel : KernelConfig = field(default_factory=PlummerKernel)
+
     # Multipole order:
     p : int = 4
     p_extra_m2l : int = 0
@@ -112,20 +140,17 @@ class FMMConfig():
     # Other
     kahan_summation : bool = False
 
-
 @dataclass(unsafe_hash=True)
-class Config():
-    # Sub config objects
-    tree : TreeConfig | None = TreeConfig(mass_centered=False, alloc_fac_nodes=1.2)
-    fmm : FMMConfig | None = FMMConfig()
-    logging : LoggingConfig = LoggingConfig()
+class SimConfig:
+    # Sub cfg objects
+    force : FMMConfig | DirectSummationConfig | None = field(default_factory=FMMConfig)
+    units : UnitConfig = field(default_factory=UnitConfig)
+    logging : LoggingConfig = field(default_factory=LoggingConfig)
 
     # flexible objects
     external_potential : PotentialField | None = None
-    kernel : KernelConfig = field(default_factory=PlummerKernel)
 
     # Time integration
     centered : int = 100       # If > 0, express positions relative to the #N most bound particles
 
-    def G(self) -> float:
-        return 4.30071057317063e-06
+Config = SimConfig

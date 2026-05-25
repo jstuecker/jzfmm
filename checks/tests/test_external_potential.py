@@ -2,11 +2,11 @@ import jax.numpy as jnp
 import jax
 import aegis
 import pytest
-from fmdj.config import Config
+from fmdj.config import SimConfig
 from fmdj.external_potential import NFWPotential
 
 def test_nfw_acc():
-    cfg = Config()
+    cfg = SimConfig()
 
     host = aegis.profiles.NFWProfile(conc=6., m200c=1e12)
     cfg.external_potential = NFWPotential(host.rs, host.rhoc)
