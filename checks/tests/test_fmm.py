@@ -7,11 +7,14 @@ import numpy as np
 import pytest
 from jztree_utils import ics
 
-from fmdj.config import FMMConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel, Plummer2DKernel, SoftenedDistanceKernel
+from fmdj.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel, Plummer2DKernel, SoftenedDistanceKernel
 from fmdj.fmm import direct_summation, fast_multipole_method
 
 def _device_array_bytes(x):
     return np.asarray(jax.block_until_ready(x)).tobytes()
+
+def _cfg_direct(cfg_fmm: FMMConfig) -> DirectSummationConfig:
+    return DirectSummationConfig(kernel=cfg_fmm.kernel, kahan_summation=True)
 
 @pytest.mark.parametrize("p", [2,3,4])
 def test_fmm_uniform(p):
@@ -20,7 +23,7 @@ def test_fmm_uniform(p):
 
     part = ics.uniform_particles(int(1e4))
 
-    fref = direct_summation.jit(part, kernel=cfg_fmm.kernel, kahan=True).force()
+    fref = direct_summation.jit(part, cfg_direct=_cfg_direct(cfg_fmm)).force()
     ffmm = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).force()
 
     ferr = jnp.linalg.norm(fref - ffmm, axis=-1)
@@ -38,7 +41,7 @@ def test_dim(dim):
 
     part = ics.uniform_particles(int(1e4), dim=dim)
 
-    fref = direct_summation.jit(part, kernel=cfg_fmm.kernel, kahan=True).force()
+    fref = direct_summation.jit(part, cfg_direct=_cfg_direct(cfg_fmm)).force()
     ffmm = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).force()
 
     ferr = jnp.linalg.norm(fref - ffmm, axis=-1)
@@ -88,7 +91,7 @@ def test_other_kernels(kernel):
 
     part = ics.uniform_particles(int(4096), dim=2)
 
-    fref = direct_summation.jit(part, kernel=cfg_fmm.kernel, kahan=True).force()
+    fref = direct_summation.jit(part, cfg_direct=_cfg_direct(cfg_fmm)).force()
     ffmm = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).force()
 
     ferr = jnp.linalg.norm(fref - ffmm, axis=-1)

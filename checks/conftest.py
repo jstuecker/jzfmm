@@ -4,7 +4,7 @@ import pytest
 import os
 import sys
 from jztree.comm import should_init_jax_distributed
-from fmdj import SimConfig
+from fmdj import FMMConfig
 from fmdj.data import Particles, PosMass, LocalExpansion
 from jztree.tree import zsort, build_tree_hierarchy
 
@@ -122,10 +122,6 @@ def get_particles(N = 1024*1024):
     return jax.block_until_ready((pos0, mass))
 
 @pytest.fixture
-def cfg():
-    return SimConfig()
-
-@pytest.fixture
 def npart(request):    
     return getattr(request, "param", 1024*1024)
 
@@ -141,8 +137,9 @@ def pos_mass_z(npart):
     return PosMass(pos=posz, mass=1.)
 
 @pytest.fixture
-def tree_hierarchy(pos_mass_z, cfg):
-    th = jax.block_until_ready(build_tree_hierarchy.jit(pos_mass_z, cfg_tree=cfg.force.tree))
+def tree_hierarchy(pos_mass_z):
+    cfg_fmm = FMMConfig()
+    th = jax.block_until_ready(build_tree_hierarchy.jit(pos_mass_z, cfg_tree=cfg_fmm.tree))
     return th
 
 @pytest.fixture

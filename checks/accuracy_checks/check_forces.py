@@ -6,7 +6,7 @@ import time
 from dataclasses import replace
 from fmdj_utils.ics import gaussian_blob
 from fmdj.data import LocalExpansion
-from fmdj.config import FMMConfig, PlummerKernel, UnitConfig
+from fmdj.config import DirectSummationConfig, FMMConfig, PlummerKernel, UnitConfig
 from fmdj.fmm import direct_summation, fast_multipole_method
 
 part = gaussian_blob(N=int(512*1024), scale=1.0, mass=1.)
@@ -16,6 +16,7 @@ cfg_fmm = FMMConfig(
     kahan_summation=True,
     p_extra_m2l=1,
 )
+cfg_direct = DirectSummationConfig(kernel=cfg_fmm.kernel, kahan_summation=True)
 G = UnitConfig().G()
 
 def rerr_force(a: LocalExpansion, b: LocalExpansion):
@@ -29,7 +30,7 @@ def rel_mom_cons(a: LocalExpansion):
 
 t0 = time.time()
 
-loc_ref = direct_summation.jit(part, kernel=cfg_fmm.kernel, kahan=True, G=G)
+loc_ref = direct_summation.jit(part, cfg_direct=cfg_direct, G=G)
 
 print(f"Direct sum. done, {time.time() - t0:.2f}s, rel. mom. cons = {rel_mom_cons(loc_ref):.2e}")
 

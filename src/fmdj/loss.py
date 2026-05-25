@@ -77,7 +77,7 @@ def maximum_mean_discrepancy(
     part: PosMass | Pos | jax.Array,
     part_target: PosMass | Pos | jax.Array,
     *,
-    cfg: FMMConfig | DirectSummationConfig,
+    cfg_fmm: FMMConfig | DirectSummationConfig,
     normalize: bool = True,
 ) -> jax.Array:
     """Maximum mean discrepancy between two weighted particle sets.
@@ -88,22 +88,17 @@ def maximum_mean_discrepancy(
     particles = _prepare_signed_particles(part, part_target, normalize=normalize)
     dim = particles.pos.shape[-1]
 
-    if isinstance(cfg, DirectSummationConfig):
-        loc = direct_summation(
-            particles,
-            kernel=cfg.kernel,
-            kahan=cfg.kahan_summation,
-            G=1.0,
-        )
-    elif isinstance(cfg, FMMConfig):
+    if isinstance(cfg_fmm, DirectSummationConfig):
+        loc = direct_summation(particles, cfg_direct=cfg_fmm, G=1.0)
+    elif isinstance(cfg_fmm, FMMConfig):
         if dim not in (2, 3):
             raise ValueError(
                 "FMM MMD is only supported for dim=2 or dim=3. "
                 "Use DirectSummationConfig(...) to use direct summation for dim=4-6."
             )
-        loc = fast_multipole_method(particles, cfg_fmm=cfg, G=1.0)
+        loc = fast_multipole_method(particles, cfg_fmm=cfg_fmm, G=1.0)
     else:
-        raise TypeError(f"Unsupported force config type {type(cfg)}")
+        raise TypeError(f"Unsupported force config type {type(cfg_fmm)}")
 
     loss = -jnp.sum(particles.mass * loc.potential())
     if in_shard_map_context():
@@ -112,11 +107,11 @@ def maximum_mean_discrepancy(
     return loss
 maximum_mean_discrepancy.jit = jax.jit(
     maximum_mean_discrepancy,
-    static_argnames=("cfg", "normalize"),
+    static_argnames=("cfg_fmm", "normalize"),
 )
 maximum_mean_discrepancy.smap = shard_map_constructor(
     maximum_mean_discrepancy,
     in_specs=(P(-1), P(-1), None, None),
     out_specs=P(),
-    static_argnames=("cfg", "normalize"),
+    static_argnames=("cfg_fmm", "normalize"),
 )

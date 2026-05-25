@@ -1,4 +1,4 @@
-from .config import Config, DirectSummationConfig, FMMConfig, KernelConfig, OpeningCriterionConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel, Plummer2DKernel, SimConfig, SoftenedDistanceKernel, UnitConfig
+from .config import DirectSummationConfig, FMMConfig, KernelConfig, OpeningCriterionConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel, Plummer2DKernel, SimConfig, SoftenedDistanceKernel, UnitConfig
 from . import data
 from . import multipoles
 from . import fmm

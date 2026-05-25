@@ -33,9 +33,9 @@ def my_check_gradient(f, x, epsrel=1e-4, rtol=5e-3, atol=0.):
     assert df2 == pytest.approx(df1, rel=rtol, abs=atol)
 
 @pytest.mark.skip_in_quick
-def test_m2m_gradients(pos_mass_z, tree_hierarchy, cfg):
-    cfg_fmm = cfg.force
-    spl = tree_hierarchy.th.splits_leaf_to_part()
+def test_m2m_gradients(pos_mass_z, tree_hierarchy):
+    cfg_fmm = FMMConfig()
+    spl = tree_hierarchy.splits_leaf_to_part()
     xnode = tree_hierarchy.center().get(0, tree_hierarchy.size())
 
     def m2m(x,m):
@@ -46,11 +46,11 @@ def test_m2m_gradients(pos_mass_z, tree_hierarchy, cfg):
     check_grads(m2m, (pos_mass_z.pos, pos_mass_z.mass), order=1, modes=("rev",), eps=1e-3)
 
 @pytest.mark.skip_in_quick
-def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
+def test_l2l_gradients(pos_mass_z, tree_hierarchy):
     th = tree_hierarchy
-    cfg_fmm = replace(cfg.force, kernel=PlummerKernel(softening=1e-1))
+    cfg_fmm = FMMConfig(kernel=PlummerKernel(softening=1e-1))
     mph = build_multipole_hierarchy.jit(th, pos_mass_z.pos, pos_mass_z.mass, cfg_fmm=cfg_fmm)
-    loc, ilist = _fmm_dual_walk.jit(th, mph, cfg_fmm)
+    loc, ilist = _fmm_dual_walk.jit(th, mph, cfg_fmm=cfg_fmm)
 
     ispl = th.splits_leaf_to_part()
     cent =  th.center().get(0, th.size())
@@ -63,8 +63,8 @@ def test_l2l_gradients(pos_mass_z, tree_hierarchy, cfg):
     my_check_gradient(lambda l: l2l(pos_mass_z.pos, l).sum(), loc, epsrel=5e-2)
 
 @pytest.mark.skip_in_quick
-def test_fmm_node_gradients(pos_mass_z, tree_hierarchy, cfg):
-    cfg_fmm = replace(cfg.force, p=4, kernel=PlummerKernel(softening=1e-1))
+def test_fmm_node_gradients(pos_mass_z, tree_hierarchy):
+    cfg_fmm = FMMConfig(p=4, kernel=PlummerKernel(softening=1e-1))
 
     def f(pos):
         pm = PosMass(pos=pos, mass=pos_mass_z.mass)
@@ -128,7 +128,8 @@ def test_force_gradients(dim):
     ispl = jnp.arange(part.pos.shape[0]//32 + 1, dtype=jnp.int32) * 32
     ilist = _dense_interaction_list.jit(len(ispl)-1, len(ispl)-1, (len(ispl)-1)**2)
 
-    fphi1 = direct_summation.jit(part, kernel=cfg_fmm.kernel, kahan=True).values
+    cfg_direct = DirectSummationConfig(kernel=cfg_fmm.kernel, kahan_summation=True)
+    fphi1 = direct_summation.jit(part, cfg_direct=cfg_direct).values
     fphi2 = leaf_leaf_summation.jit(part, ispl, ilist, cfg_fmm)
     fphi3 = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).values
 
@@ -138,7 +139,7 @@ def test_force_gradients(dim):
     assert fphi3 == pytest.approx(fphi1, abs=abstol)
 
     def f1(part): return leaf_leaf_summation(part, ispl, ilist, cfg_fmm=cfg_fmm).sum()
-    def f2(part): return direct_summation(part, kernel=cfg_fmm.kernel, kahan=True).values.sum()
+    def f2(part): return direct_summation(part, cfg_direct=cfg_direct).values.sum()
     def f3(part): return fast_multipole_method(part, cfg_fmm=cfg_fmm).values.sum()
     
     gposm1 = jax.jit(jax.grad(f1, allow_int=True))(part)

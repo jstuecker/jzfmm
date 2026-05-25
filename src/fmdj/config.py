@@ -152,5 +152,3 @@ class SimConfig:
 
     # Time integration
     centered : int = 100       # If > 0, express positions relative to the #N most bound particles
-
-Config = SimConfig

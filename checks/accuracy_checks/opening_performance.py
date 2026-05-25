@@ -11,7 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from fmdj.config import FMMConfig, OpeningByAngle, PlummerKernel, UnitConfig
+from fmdj.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, UnitConfig
 from fmdj.data import PosMass
 from fmdj.fmm import direct_summation, fast_multipole_method
 from jztree.config import TreeConfig
@@ -117,7 +117,8 @@ def direct_force_reference(setup: str, part: PosMass, cfg_fmm: FMMConfig, G: flo
 
     print(f"Calculating direct force reference with kahan summation and writing {path}")
     t0 = time.perf_counter()
-    force_ref = direct_summation.jit(part, kernel=cfg_fmm.kernel, kahan=True, G=G).force()
+    cfg_direct = DirectSummationConfig(kernel=cfg_fmm.kernel, kahan_summation=True)
+    force_ref = direct_summation.jit(part, cfg_direct=cfg_direct, G=G).force()
     force_ref = jax.block_until_ready(force_ref)
     np.savez(
         path,

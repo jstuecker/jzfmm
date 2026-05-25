@@ -6,8 +6,8 @@ import jax
 
 from jztree.tools import log
 from .data import Particles, LocalExpansion
-from .config import SimConfig
-from .fmm import force_and_potential
+from .config import DirectSummationConfig, FMMConfig, SimConfig
+from .fmm import direct_summation, fast_multipole_method
 
 def kick(vel, acc, dt, mask=None):
     if mask is not None:
@@ -20,6 +20,19 @@ def drift(pos, vel, dt, mask=None):
         return pos + jnp.where(mask[:,None], vel, 0) * dt
     else:
         return pos + vel * dt
+
+def force_and_potential(p: Particles, cfg: SimConfig) -> LocalExpansion:
+    cfg_force = cfg.force
+    if cfg_force is None:
+        dim = p.pos.shape[-1]
+        values = jnp.zeros(p.pos.shape[:-1] + (dim + 1,), dtype=p.pos.dtype)
+        return LocalExpansion(values, dim=dim)
+    if isinstance(cfg_force, DirectSummationConfig):
+        return direct_summation(p, cfg_direct=cfg_force, G=cfg.units.G())
+    if isinstance(cfg_force, FMMConfig):
+        return fast_multipole_method(p, cfg_fmm=cfg_force, G=cfg.units.G(), pout=1)
+    raise TypeError(f"Unsupported force cfg type {type(cfg_force)}")
+force_and_potential.jit = jax.jit(force_and_potential, static_argnames=("cfg",))
 
 def find_center(p : Particles, cfg: SimConfig = None):
     ebind = p.loc.potential() + 0.5 * jnp.sum(p.vel**2, axis=-1)

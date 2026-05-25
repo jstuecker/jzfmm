@@ -7,7 +7,7 @@ from dataclasses import replace
 from fmdj_utils.ics import gaussian_blob
 from fmdj.data import PosMass
 from fmdj.fmm import direct_summation, fast_multipole_method
-from fmdj.config import FMMConfig, PlummerKernel, UnitConfig
+from fmdj.config import DirectSummationConfig, FMMConfig, PlummerKernel, UnitConfig
 from jztree.config import TreeConfig
 
 part = gaussian_blob(N=int(512*1024), scale=1.0, mass=1.)
@@ -17,6 +17,7 @@ cfg_fmm = FMMConfig(
     tree=TreeConfig(mass_centered=True),
     kahan_summation=True,
 )
+cfg_direct = DirectSummationConfig(kernel=cfg_fmm.kernel, kahan_summation=True)
 G = UnitConfig().G()
 
 def rerr_pos(a: PosMass, b: PosMass):
@@ -25,7 +26,7 @@ def rerr_mass(a: PosMass, b: PosMass):
     return jnp.abs((a.mass - b.mass)/b.mass)
 
 def direct(part):
-    return direct_summation(part, kernel=cfg_fmm.kernel, kahan=True, G=G)
+    return direct_summation(part, cfg_direct=cfg_direct, G=G)
 def fmm(part, p):
     return fast_multipole_method(part, cfg_fmm=replace(cfg_fmm, p=p), G=G)
 

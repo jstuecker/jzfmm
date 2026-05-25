@@ -16,7 +16,7 @@ from jztree.comm import all_to_all_request_children, all_to_all_with_irank, get_
 from jztree.stats import AllocStats, stats_callback
 from jax.sharding import PartitionSpec as P
 
-from .config import DirectSummationConfig, FMMConfig, SimConfig
+from .config import DirectSummationConfig, FMMConfig
 from .data import LocalExpansion
 from .multipoles import _fmm_node_to_child, build_multipole_hierarchy, local_readout_pos_vjp, num_multi, p_of_num_multi, shift_local_to_children_vjp_x
 
@@ -368,23 +368,23 @@ leaf_leaf_summation.jit = jax.jit(leaf_leaf_summation, static_argnames=['cfg_fmm
 #                                      Direct Summation Forces                                     #
 # ------------------------------------------------------------------------------------------------ #
 
-def direct_summation(part: PosMass, kahan: bool = False,
-                     kernel = None, G = 1,
-                     remove_self_interaction: bool = True
-                     ) -> LocalExpansion:
+def direct_summation(
+        part: PosMass,
+        cfg_direct: DirectSummationConfig,
+        G=1,
+        remove_self_interaction: bool = True,
+    ) -> LocalExpansion:
     block_size = 64
     posm = get_pos_mass(part)
     out_type = jax.ShapeDtypeStruct(posm.shape, posm.dtype)
-    if kernel is None:
-        from .config import PlummerKernel
-        kernel = PlummerKernel()
+    kernel = cfg_direct.kernel
     kernel_params = kernel.params(dtype=posm.dtype)
     
     @jax.custom_vjp
     def eval(xm):
         loc = jax.ffi.ffi_call("DirectPairSummation", (out_type,))(
         xm, kernel_params, block_size=np.uint64(block_size),
-        radial_kernel_kind=np.int32(kernel.kind_id()), kahan=kahan,
+        radial_kernel_kind=np.int32(kernel.kind_id()), kahan=cfg_direct.kahan_summation,
         remove_self_interaction=bool(remove_self_interaction))[0]
         return loc
     def eval_fwd(xm):
@@ -392,7 +392,7 @@ def direct_summation(part: PosMass, kahan: bool = False,
     def eval_bwd(xm, gloc):
         gxm = jax.ffi.ffi_call("BwdDirectPairSummation", (out_type,))(
             gloc, xm, kernel_params, block_size=np.uint64(block_size),
-            radial_kernel_kind=np.int32(kernel.kind_id()), kahan=kahan,
+            radial_kernel_kind=np.int32(kernel.kind_id()), kahan=cfg_direct.kahan_summation,
             remove_self_interaction=bool(remove_self_interaction)
         )[0]
         return gxm,
@@ -400,7 +400,7 @@ def direct_summation(part: PosMass, kahan: bool = False,
     eval.defvjp(eval_fwd, eval_bwd)
 
     return LocalExpansion(eval(posm) * G, dim=part.pos.shape[-1])
-direct_summation.jit = jax.jit(direct_summation, static_argnames=['kahan', 'kernel', 'remove_self_interaction'])
+direct_summation.jit = jax.jit(direct_summation, static_argnames=['cfg_direct', 'remove_self_interaction'])
 
 def direct_potential_jax(x, m=1., softening=1e-2):
     rij2 = jnp.sum((x[:, None, :] - x[None, :, :]) ** 2, axis=-1)
@@ -580,21 +580,3 @@ fast_multipole_method.smap = shard_map_constructor(
     in_specs=(P(-1), None, P(-1), None, None, None),
     static_argnames=("cfg_fmm", "result", "G", "pout"),
 )
-
-def force_and_potential(p: PosMass, cfg: SimConfig) -> LocalExpansion:
-    cfg_force = cfg.force
-    if cfg_force is None:
-        dim = p.pos.shape[-1]
-        values = jnp.zeros(p.pos.shape[:-1] + (dim + 1,), dtype=p.pos.dtype)
-        return LocalExpansion(values, dim=dim)
-    if isinstance(cfg_force, DirectSummationConfig):
-        return direct_summation(
-            p,
-            kernel=cfg_force.kernel,
-            kahan=cfg_force.kahan_summation,
-            G=cfg.units.G(),
-        )
-    if isinstance(cfg_force, FMMConfig):
-        return fast_multipole_method(p, cfg_fmm=cfg_force, G=cfg.units.G(), pout=1)
-    raise TypeError(f"Unsupported force cfg type {type(cfg_force)}")
-force_and_potential.jit = jax.jit(force_and_potential, static_argnames=("cfg",))
