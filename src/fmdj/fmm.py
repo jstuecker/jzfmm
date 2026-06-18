@@ -10,7 +10,7 @@ from dataclasses import dataclass, field, replace
 from jztree.data import PosMass, InteractionList, get_pos_mass, TreeHierarchy, PosLvl, PackedArray, RankIdx, get_num
 from jztree.tree import grouped_dense_interaction_list, zsort_and_tree
 from jztree.tree import distr_grouped_dense_interaction_list, simplify_interaction_list
-from jztree.jax_ext import pcast_like, raise_if, shard_map_constructor
+from jztree.jax_ext import empty_like, pcast_like, raise_if, shard_map_constructor
 from jztree.tools import masked_inverse
 from jztree.comm import all_to_all_request_children, all_to_all_with_irank, get_rank_info, in_shard_map_context
 from jztree.stats import AllocStats, stats_callback
@@ -45,6 +45,9 @@ class FMMNodeData:
     cent: jax.Array
     loc: jax.Array
     num: jax.Array
+
+def _comm_buffer_size(base_size: int, factor: float) -> int:
+    return max(base_size, int(np.ceil(base_size * factor)))
 
 def _fmm_node_to_node(
         node_range: jax.Array,
@@ -170,12 +173,14 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg_fmm: FMMConfig):
 
     # define root level:
     size = th.size()
+    comm_size_nodes = _comm_buffer_size(size, cfg_fmm.alloc_fac_comm_nodes)
     center0 = th.center().get(0, size)
     dim = center0.shape[-1]
     if in_smap:
         spl, ilist, nsup = distr_grouped_dense_interaction_list(
             th.num(th.num_planes()-1), size,
             size_ilist=int(th.size_leaves*cfg_fmm.alloc_fac_ilist),
+            size_ids=comm_size_nodes,
             separate_query_and_source_indices=True,
         )
     else:
@@ -213,8 +218,9 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg_fmm: FMMConfig):
             (child_src, ids), parent_spl_src, dev_spl = all_to_all_request_children(
                 parent_ilist.dev_spl, parent_ilist.ids, parent_spl_recv,
                 (child_recv, jnp.arange(size)),
-                axis_name=axis_name, err_hint_child="\nHint: increase alloc_fac_nodes",
-                err_hint_parent="\nHint: increase alloc_fac_nodes"
+                output=empty_like((child_recv, jnp.arange(size)), new_size=comm_size_nodes),
+                axis_name=axis_name, err_hint_child="\nHint: increase alloc_fac_comm_nodes",
+                err_hint_parent="\nHint: increase alloc_fac_comm_nodes"
             )
             stats_callback(
                 "allocation", AllocStats.record_filled_nodes_interaction,
@@ -268,6 +274,7 @@ def leaf_leaf_summation(
     ) -> jax.Array:
     particles_recv = particles
     spl_recv = ispl
+    comm_size_particles = _comm_buffer_size(particles_recv.pos.shape[0], cfg_fmm.alloc_fac_comm_particles)
     in_smap = in_shard_map_context()
     if in_smap:
         rank, _, axis_name = get_rank_info()
@@ -289,9 +296,10 @@ def leaf_leaf_summation(
         if in_smap:
             particles_src, spl_src, _dev_spl_src = all_to_all_request_children(
                 ilist.dev_spl, ilist.ids, spl_recv, particles_recv,
+                output=empty_like(particles_recv, new_size=comm_size_particles),
                 axis_name=axis_name,
-                err_hint_parent="\nHint: increase alloc_fac_nodes.",
-                err_hint_child="\nHint: increase padding."
+                err_hint_parent="\nHint: increase alloc_fac_comm_nodes.",
+                err_hint_child="\nHint: increase alloc_fac_comm_particles."
             )
             stats_callback(
                 "allocation", AllocStats.record_filled_part_interactions,
@@ -326,10 +334,10 @@ def leaf_leaf_summation(
         if in_smap:
             gloc_src, _, _ = all_to_all_request_children(
                 ilist.dev_spl, ilist.ids, spl_recv, gloc,
-                output=jnp.zeros((particles_src.pos.shape[0], gloc.shape[1]), dtype=gloc.dtype),
+                output=empty_like(gloc, float_val=0., new_size=comm_size_particles),
                 axis_name=axis_name,
-                err_hint_parent="\nHint: increase alloc_fac_nodes",
-                err_hint_child="\nHint: increase padding."
+                err_hint_parent="\nHint: increase alloc_fac_comm_nodes",
+                err_hint_child="\nHint: increase alloc_fac_comm_particles."
             )
         else:
             gloc_src = gloc

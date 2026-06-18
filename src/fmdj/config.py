@@ -136,6 +136,8 @@ class FMMConfig:
 
     # Memory
     alloc_fac_ilist : float = 64.
+    alloc_fac_comm_nodes : float = 1.0
+    alloc_fac_comm_particles : float = 1.0
 
     # Other
     kahan_summation : bool = False
