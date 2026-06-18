@@ -121,7 +121,9 @@ class DirectSummationConfig:
 class FMMConfig:
     # Tree
     tree : TreeConfig = field(
-        default_factory=lambda: TreeConfig(mass_centered=False, alloc_fac_nodes=1.2)
+        default_factory=lambda: TreeConfig(
+            mass_centered=False, alloc_fac_nodes=1.2, regularization=None, coarse_fac=4.0
+        )
     )
 
     # Kernel
