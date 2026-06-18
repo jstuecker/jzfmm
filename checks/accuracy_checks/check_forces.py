@@ -9,12 +9,12 @@ from fmdj.data import LocalExpansion
 from fmdj.config import DirectSummationConfig, FMMConfig, PlummerKernel, UnitConfig
 from fmdj.fmm import direct_summation, fast_multipole_method
 
-part = gaussian_blob(N=int(512*1024), scale=1.0, mass=1.)
+part = gaussian_blob(N=int(1024*1024), scale=1.0, mass=1.)
 
 cfg_fmm = FMMConfig(
     kernel=PlummerKernel(softening=1e-2),
-    kahan_summation=True,
-    p_extra_m2l=1,
+    kahan_summation=False,
+    p_extra_m2l=0,
 )
 cfg_direct = DirectSummationConfig(kernel=cfg_fmm.kernel, kahan_summation=True)
 G = UnitConfig().G()
@@ -34,10 +34,10 @@ loc_ref = direct_summation.jit(part, cfg_direct=cfg_direct, G=G)
 
 print(f"Direct sum. done, {time.time() - t0:.2f}s, rel. mom. cons = {rel_mom_cons(loc_ref):.2e}")
 
-fig, axs = plt.subplots(1,2, figsize=(12,5))
+fig, axs = plt.subplots(1,2, figsize=(6.5,3.0))
 
 def hist(ax, rerr, p):
-    ax.hist(np.log10(rerr), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5, color="C%d"%(p-1), edgecolor='black')
+    ax.hist(np.log10(rerr), bins=np.linspace(-8, 0, num=81), label=f'p={p}', alpha=0.6, color="C%d"%(p-1), edgecolor='black', density=True, histtype="stepfilled")
 
 for p in (1,2,3,4,5): # 
     loc = fast_multipole_method.jit(part, cfg_fmm=replace(cfg_fmm, p=p), G=G)
@@ -47,16 +47,19 @@ for p in (1,2,3,4,5): #
 
     print(f"p={p} done, {time.time() - t0:.2f}s, rel. mom. cons = {rel_mom_cons(loc):.2e}")
 
-axs[0].set_title("Force Error Distribution")
-axs[0].set_xlim(-6, 0)
-axs[0].set_ylabel("count")
+# axs[0].set_title(r"$|\vec{F}_\mathrm{FMM} - \vec{F}_\mathrm{ref}| / |\vec{F}_\mathrm{ref}|$")
+axs[0].set_title("Force")
+axs[0].set_xlim(-5.2, 0.2)
+axs[0].set_ylabel(r"dn/dlog $\epsilon$")
 
-axs[1].set_title("Potential Error Distribution")
-axs[1].set_xlim(-7, -1)
+# axs[1].set_title("r"$|\phi_\mathrm{FMM} - \phi_\mathrm{ref}| / |\phi_\mathrm{ref}|$"")
+axs[1].set_title("Potential")
+axs[1].set_xlim(-7.0, 0)
 
 for ax in axs:
-    ax.legend()
     ax.set_xlabel("log10(relative error)")
 
-plt.savefig("logs/fphi_error_distribution.pdf")
+axs[1].legend()
+
+plt.savefig("logs/fphi_error_distribution.pdf", bbox_inches="tight")
 plt.show()

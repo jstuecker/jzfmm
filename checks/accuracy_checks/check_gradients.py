@@ -10,12 +10,15 @@ from fmdj.fmm import direct_summation, fast_multipole_method
 from fmdj.config import DirectSummationConfig, FMMConfig, PlummerKernel, UnitConfig
 from jztree.config import TreeConfig
 
-part = gaussian_blob(N=int(512*1024), scale=1.0, mass=1.)
+part = gaussian_blob(N=int(1e6), scale=1.0, mass=1.)
+part.mass = part.mass * jnp.ones(part.pos.shape[:-1], jnp.float32)
+part.num = None
+part.num_total = None
 
 cfg_fmm = FMMConfig(
     kernel=PlummerKernel(softening=1e-2),
-    tree=TreeConfig(mass_centered=True),
-    kahan_summation=True,
+    tree=TreeConfig(mass_centered=False),
+    kahan_summation=False,
 )
 cfg_direct = DirectSummationConfig(kernel=cfg_fmm.kernel, kahan_summation=True)
 G = UnitConfig().G()
@@ -38,12 +41,12 @@ gposm_acc_ref = jax.jit(jax.grad(lambda part: direct(part).force().sum()))(part)
 
 print(f"Direct sum. done, {time.time() - t0:.2f}s")
 
-fig, axs = plt.subplots(2,2, figsize=(10,9.5))
+fig, axs = plt.subplots(2,2, figsize=(6.5,6.))
 
 def hist(ax, rerr, p):
-    ax.hist(np.log10(rerr), bins=np.linspace(-7,0), label=f'p={p}', alpha=0.5, color="C%d"%(p-1), edgecolor='black')
+    ax.hist(np.log10(rerr), bins=np.linspace(-7, 0, num=57), label=f'p={p}', alpha=0.6, color="C%d"%(p-1), edgecolor='black', density=True, histtype="stepfilled")
 
-for p in (2,3,4,5):
+for p in (1,2,3,4,5):
     gposm_phi_fmm = jax.jit(jax.grad(lambda part: fmm(part, p).potential().sum()))(part)
     gposm_accabs_fmm = jax.jit(jax.grad(lambda part: jnp.abs(fmm(part, p).force()).sum()))(part)
 
@@ -59,9 +62,16 @@ axs[0,1].set_title(r"d$\sum |\vec{F}|$/d $m$")
 axs[1,0].set_title(r"d$\sum \phi$/d $\vec{x}$")
 axs[1,1].set_title(r"d$\sum \phi$/d $m$")
 
-for ax in axs.flatten():
-    ax.legend()
-    ax.set_xlabel("log10(relative error)")
+axs[0,0].set_ylim(0, 1.75)
 
-plt.savefig("logs/grad_error_distribution.pdf")
+for ax in axs[0,0], axs[1,0]:
+    ax.set_xlim(-5.2, 0.2)
+
+for ax in axs[1,:]:
+    ax.set_xlabel("log10(relative error)")
+for ax in axs[:,0]:
+    ax.set_ylabel(r"dn/dlog $\epsilon$")
+axs[1,1].legend()
+
+plt.savefig("logs/grad_error_distribution.pdf", bbox_inches="tight")
 plt.show()
