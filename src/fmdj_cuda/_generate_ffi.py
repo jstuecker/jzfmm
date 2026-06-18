@@ -9,6 +9,7 @@ dimensions = (2,3)
 direct_summation_dimensions = (2,3,4,5,6)
 # float_types = ("float", "double")
 float_types = ("float",) # by default don't compile double for now... doubles compilation time...
+float_types_direct = ("float", "double")
 p_instance_values = (1, 2, 3, 4, 5)
 p_l2l_instance_values = (1, 2, 3, 4, 5, 6)
 p_extra_m2l_instance_values = (0, 1)
@@ -50,13 +51,13 @@ for kname in ("DirectPairSummation", "BwdDirectPairSummation"):
     kernels[kname].template_par["dim"].instances = direct_summation_dimensions
     kernels[kname].template_par["dim"].expression = "xm.dimensions()[1] - 1"
     kernels[kname].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values
-    add_dtype_template(kernels[kname], "xm")
+    add_dtype_template(kernels[kname], "xm", float_types_direct)
 
 for kname in ("LeafLeafPairSummation", "BwdLeafLeafPairSummation"):
     kernels[kname].template_par["dim"].instances = dimensions
     kernels[kname].template_par["dim"].expression = "posm_recv.dimensions()[1] - 1"
     kernels[kname].template_par["radial_kernel_kind"].instances = radial_kernel_instance_values
-    add_dtype_template(kernels[kname], "posm_recv")
+    add_dtype_template(kernels[kname], "posm_recv", float_types_direct)
 
 gen.generate_ffi_module_file(
     output_file = str(HERE / "generated/ffi_pair_summation.cu"), 
