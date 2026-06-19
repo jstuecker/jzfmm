@@ -130,7 +130,7 @@ class FMMConfig:
     kernel : KernelConfig = field(default_factory=PlummerKernel)
 
     # Multipole order:
-    p : int = 4
+    p : int = 5
     p_extra_m2l : int = 0
 
     # Opening criterion
@@ -138,8 +138,8 @@ class FMMConfig:
 
     # Memory
     alloc_fac_ilist : float = 64.
-    alloc_fac_comm_nodes : float = 1.0
-    alloc_fac_comm_particles : float = 1.0
+    alloc_fac_comm_nodes : float = 1.5
+    alloc_fac_comm_particles : float = 1.5
 
     # Other
     kahan_summation : bool = False
