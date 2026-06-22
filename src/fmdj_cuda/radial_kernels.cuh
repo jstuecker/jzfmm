@@ -96,6 +96,11 @@ struct RadialKernel<RADIAL_KERNEL_QUARTIC_PLUMMER> {
     ) {
         // coeffs[n] = ((1/r) d/dr)^n K(r) = 2^n d^n K / d(r^2)^n
         // for the quartic Plummer kernel K(r) = -1 / (r^4 + eps^4)^(1/4).
+        //
+        // Numerical note: pval = P_n(r2) grows as r2^n for large r, while scale = q^{-(1/4+n)}
+        // decays as r^{-(1+4n)}. For large r in float32 (r > ~7000 with p=5), r2^5 overflows to
+        // inf while scale underflows to 0, giving inf*0 = NaN. The correct answer is zero (the
+        // coefficient is negligible at that scale). Guard with an isnan check.
         const tvec q = r2*r2 + params.softening4;
         const tvec qinv = tvec(1) / q;
 
@@ -120,7 +125,8 @@ struct RadialKernel<RADIAL_KERNEL_QUARTIC_PLUMMER> {
                 }
                 r2pow *= r2;
             }
-            coeffs[n] = -pval * scale;
+            const tvec val = -pval * scale;
+            coeffs[n] = isnan(val) ? tvec(0) : val;
 
             if(n < p) {
                 tvec next[p + 2];

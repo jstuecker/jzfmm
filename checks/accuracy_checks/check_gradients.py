@@ -41,7 +41,7 @@ gposm_acc_ref = jax.jit(jax.grad(lambda part: direct(part).force().sum()))(part)
 
 print(f"Direct sum. done, {time.time() - t0:.2f}s")
 
-fig, axs = plt.subplots(2,2, figsize=(6.5,6.))
+fig, axs = plt.subplots(2,2, figsize=(6.5,6.5))
 
 def hist(ax, rerr, p):
     ax.hist(np.log10(rerr), bins=np.linspace(-7, 0, num=57), label=f'p={p}', alpha=0.6, color="C%d"%(p-1), edgecolor='black', density=True, histtype="stepfilled")
