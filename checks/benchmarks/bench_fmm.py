@@ -5,6 +5,9 @@ from jztree.tree import build_tree_hierarchy, zsort, center_of_mass
 from fmdj.multipoles import build_multipole_hierarchy
 from fmdj.fmm import _fmm_dual_walk, leaf_leaf_summation, fast_multipole_method
 from fmdj.multipoles import _fmm_node_to_child, summarize_multipoles
+from fmdj.data import PosMass
+import jax
+from jztree_utils import ics
 
 @pytest.mark.shrink_in_quick(keep_index=2)
 @pytest.mark.parametrize("coarsen_fac", [2,4,6,8])
@@ -63,10 +66,14 @@ def bench_fmm_p(jax_bench, p, pos_mass_z):
 
 @pytest.mark.shrink_in_quick(keep_index=0)
 @pytest.mark.parametrize("p", [3,4,5])
-def bench_fmm_steps(jax_bench, p, pos_mass):
+def bench_fmm_steps(jax_bench, p):
     cfg_fmm = FMMConfig(p=p)
 
-    jb = jax_bench(jit_rounds=40, jit_warmup=10)
+    # jb = jax_bench(jit_rounds=40, jit_warmup=10) # for more timing accuracy
+    jb = jax_bench(jit_rounds=4, jit_warmup=1) 
+
+    pos_mass = ics.uniform_particles(int(1e6), total_mass=1.0, seed=0)
+    # pos_mass = ics.uniform_particles(int(1e7), total_mass=1.0, seed=0) # for comparing against multi-GPU
 
     pos_mass_z = jb.measure(fn_jit=zsort.jit, pos=pos_mass, tag="zsort")[1][0]
 
@@ -82,6 +89,14 @@ def bench_fmm_steps(jax_bench, p, pos_mass):
                       cfg_fmm=cfg_fmm, pout=1,tag="loc2loc")[1]
     fphi = jb.measure(fn_jit=leaf_leaf_summation.jit,
                       particles=pos_mass_z, ispl=th.splits_leaf_to_part(), ilist=ilist, cfg_fmm=cfg_fmm, tag="leaf2leaf")[1]
+    
+    jb.measure(fn_jit=fast_multipole_method.jit,
+        part=pos_mass, cfg_fmm=cfg_fmm, result="loc", tag=f"total"
+    )
+
+    jb.measure(fn_jit=fast_multipole_method.jit,
+        part=pos_mass, cfg_fmm=cfg_fmm, result="partz_locz", tag=f"totalrz"
+    )
 
 @pytest.mark.shrink_in_quick(keep_index=0)
 @pytest.mark.parametrize("p", [3,4,5])
