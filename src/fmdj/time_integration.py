@@ -119,9 +119,9 @@ def simulate(p: Particles, tend: float, nsteps: int, cfg: SimConfig, tstart: flo
             p, t, gp = carry
 
             p = timestep(p, dt=-dt, cfg=cfg, t=t)
-            _, vjp_fun = jax.vjp(lambda p: timestep(p, dt=dt, cfg=cfg, t=t), p)
+            _, vjp_fun = jax.vjp(lambda p: timestep(p, dt=dt, cfg=cfg, t=t-dt), p)
             gxp, = vjp_fun(gp)
-            return p, t + dt, gxp
+            return p, t - dt, gxp
 
         p_prev, t_prev, gp_prev = jax.lax.fori_loop(0, nsteps, step, (p, tend, gp))
         

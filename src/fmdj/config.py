@@ -8,14 +8,14 @@ from jztree.config import TreeConfig, LoggingConfig
 #                                              Kernels                                             #
 # ------------------------------------------------------------------------------------------------ #
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, slots=True)
 class KernelConfig:
     def kind_id(self) -> int:
         raise NotImplementedError
     def params(self, dtype=jnp.float32) -> jax.Array:
         raise NotImplementedError
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, slots=True)
 class PlummerKernel(KernelConfig):
     """K(r) = -1 / sqrt(r^2 + eps^2)."""
 
@@ -27,7 +27,7 @@ class PlummerKernel(KernelConfig):
     def params(self, dtype=jnp.float32) -> jax.Array:
         return jnp.asarray([self.softening], dtype=dtype)
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, slots=True)
 class QuarticPlummerKernel(KernelConfig):
     """K(r) = -1 / (r^4 + eps^4)^(1/4)."""
 
@@ -39,7 +39,7 @@ class QuarticPlummerKernel(KernelConfig):
     def params(self, dtype=jnp.float32) -> jax.Array:
         return jnp.asarray([self.softening], dtype=dtype)
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, slots=True)
 class Plummer2DKernel(KernelConfig):
     """K(r) = 0.5 * log(r^2 + eps^2)."""
 
@@ -51,7 +51,7 @@ class Plummer2DKernel(KernelConfig):
     def params(self, dtype=jnp.float32) -> jax.Array:
         return jnp.asarray([self.softening], dtype=dtype)
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, slots=True)
 class SoftenedDistanceKernel(KernelConfig):
     """K(r) = sqrt(r^2 + eps^2)."""
 
@@ -67,14 +67,14 @@ class SoftenedDistanceKernel(KernelConfig):
 #                                              Opening                                             #
 # ------------------------------------------------------------------------------------------------ #
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, slots=True)
 class OpeningCriterionConfig:
     def kind_id(self) -> int:
         raise NotImplementedError
     def params(self, dtype=jnp.float32) -> jax.Array:
         raise NotImplementedError
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, slots=True)
 class OpeningByAngle(OpeningCriterionConfig):
     theta : float = 0.8
 
@@ -84,7 +84,7 @@ class OpeningByAngle(OpeningCriterionConfig):
     def params(self, dtype=jnp.float32) -> jax.Array:
         return jnp.asarray([self.theta], dtype=dtype)
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, slots=True)
 class PotentialField:
     def potential(self, x, t=0., cfg=None):
         """External potential field"""
@@ -97,7 +97,7 @@ class PotentialField:
 #                                               Units                                              #
 # ------------------------------------------------------------------------------------------------ #
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, slots=True)
 class UnitConfig:
     """Simulation units relative to kpc, km/s, and solar masses."""
 
@@ -112,12 +112,12 @@ class UnitConfig:
 #                                               Force                                              #
 # ------------------------------------------------------------------------------------------------ #
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, slots=True)
 class DirectSummationConfig:
     kernel : KernelConfig = field(default_factory=PlummerKernel)
     kahan_summation : bool = True
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, slots=True)
 class FMMConfig:
     # Tree
     tree : TreeConfig = field(
@@ -144,7 +144,7 @@ class FMMConfig:
     # Other
     kahan_summation : bool = False
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, slots=True)
 class SimConfig:
     # Sub cfg objects
     force : FMMConfig | DirectSummationConfig | None = field(default_factory=FMMConfig)
