@@ -30,54 +30,84 @@ def setup_name(N: int, soft: float, dsteps: int) -> str:
     return f"N{N:g}_soft{_float_key(soft)}_dsteps{dsteps:g}"
 
 
-def cache_path(N: int, soft: float, ntc: float, dsteps: int) -> Path:
-    return LOG_DIR / setup_name(N, soft, dsteps) / f"eps_ntc{_float_key(ntc)}_seed42.npz"
+def precision_suffix(double: bool) -> str:
+    return "_double" if double else ""
 
 
-def get_err_estim(N: int = int(1e4), soft: float = 1e-1, ntc: float = 1.0, dsteps: int = 100) -> jax.Array:
+def cache_path(N: int, soft: float, ntc: float, dsteps: int, double: bool = False) -> Path:
+    return LOG_DIR / f"{setup_name(N, soft, dsteps)}{precision_suffix(double)}" / f"eps_ntc{_float_key(ntc)}_seed42.npz"
+
+
+def get_err_estim(
+    N: int = int(1e4),
+    soft: float = 1e-1,
+    ntc: float = 1.0,
+    dsteps: int = 100,
+    double: bool = False,
+) -> jax.Array:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    path = cache_path(N=N, soft=soft, ntc=ntc, dsteps=dsteps)
+    path = cache_path(N=N, soft=soft, ntc=ntc, dsteps=dsteps, double=double)
     path.parent.mkdir(parents=True, exist_ok=True)
     nsteps = int(dsteps * ntc)
+    dtype = np.float64 if double else np.float32
 
     if path.exists():
         print(f"Loading cached eps from {path}")
         with np.load(path) as data:
-            return jnp.asarray(data["eps"])
+            with jax.enable_x64(double):
+                return jnp.asarray(data["eps"])
 
     print(f"Running backward integration check and writing {path}")
-    prof = aegis.profiles.HernquistProfile(a=1.0, M=1.0)
-    np.random.seed(42)
-    pos, vel, mass = prof.sample_particles(N, "pos_vel_m")
-    part0 = fmdj.data.Particles(pos=pos, vel=vel, mass=mass)
+    with jax.enable_x64(double):
+        prof = aegis.profiles.HernquistProfile(a=1.0, M=1.0)
+        np.random.seed(42)
+        pos, vel, mass = prof.sample_particles(N, "pos_vel_m")
+        part0 = fmdj.data.Particles(
+            pos=np.asarray(pos, dtype=dtype),
+            vel=np.asarray(vel, dtype=dtype),
+            mass=np.asarray(mass, dtype=dtype),
+        )
 
-    cfg = fmdj.SimConfig()
-    cfg.force.kernel.softening = soft
-    cfg.centered = False
+        cfg = fmdj.SimConfig()
+        cfg.force.kernel.softening = soft
+        cfg.centered = False
+        if double:
+            cfg.force.p = 4
 
-    tend = prof.tcirc(1.0) * ntc
-    part = fmdj.time_integration.simulate.jit(part0, tend=tend, nsteps=nsteps, cfg=cfg)
-    part0b = fmdj.time_integration.simulate.jit(part, tstart=tend, tend=0.0, nsteps=nsteps, cfg=cfg)
+        tend = prof.tcirc(1.0) * ntc
+        part = fmdj.time_integration.simulate.jit(part0, tend=tend, nsteps=nsteps, cfg=cfg)
+        part0b = fmdj.time_integration.simulate.jit(part, tstart=tend, tend=0.0, nsteps=nsteps, cfg=cfg)
 
-    eps = (
-        2.0
-        * jnp.linalg.norm(part0.apos() - part0b.apos(), axis=-1)
-        / (jnp.linalg.norm(part0.apos(), axis=-1) + jnp.linalg.norm(part0b.apos(), axis=-1))
-    )
-    eps = jax.block_until_ready(eps)
+        eps = (
+            2.0
+            * jnp.linalg.norm(part0.apos() - part0b.apos(), axis=-1)
+            / (jnp.linalg.norm(part0.apos(), axis=-1) + jnp.linalg.norm(part0b.apos(), axis=-1))
+        )
+        eps = jax.block_until_ready(eps)
 
     np.savez_compressed(path, eps=np.asarray(eps))
     return eps
 
 
-def plot_hist(N: int = int(1e4), soft: float = 1e-1, dsteps: int = 100, title: str | None = None) -> None:
+def plot_hist(
+    N: int = int(1e4),
+    soft: float = 1e-1,
+    dsteps: int = 100,
+    title: str | None = None,
+    double: bool = False,
+) -> None:
     fig, ax = plt.subplots(1, 1, figsize=(6, 4))
 
+    if double:
+        bins = np.linspace(-18, 0, 101)
+    else:
+        bins = np.linspace(-9, 0, 101)
+
     for ntc in ntc_values:
-        eps = get_err_estim(N=N, soft=soft, ntc=ntc, dsteps=dsteps)
+        eps = get_err_estim(N=N, soft=soft, ntc=ntc, dsteps=dsteps, double=double)
         ax.hist(
-            np.log10(np.asarray(eps) + 1e-10),
-            bins=np.linspace(-9, 0, 101),
+            np.log10(np.asarray(eps) + 1e-19),
+            bins=bins,
             density=True,
             alpha=0.5,
             label=fr"{ntc:g} $t_c$",
@@ -89,15 +119,22 @@ def plot_hist(N: int = int(1e4), soft: float = 1e-1, dsteps: int = 100, title: s
     ax.set_title(title if title is not None else fr"N={N:g}, soft={soft:g}, dt={1 / dsteps:g}")
     fig.tight_layout()
 
-    path = LOG_DIR / f"backwards_{setup_name(N, soft, dsteps)}.pdf"
+    path = LOG_DIR / f"backwards_{setup_name(N, soft, dsteps)}{precision_suffix(double)}.pdf"
     fig.savefig(path, dpi=200, bbox_inches="tight")
     print(f"Wrote {path}")
     plt.close(fig)
 
-def plot_line(ax, N: int = int(1e4), soft: float = 1e-1, dsteps: int = 100, title: str | None = None) -> None:
+def plot_line(
+    ax,
+    N: int = int(1e4),
+    soft: float = 1e-1,
+    dsteps: int = 100,
+    title: str | None = None,
+    double: bool = False,
+) -> None:
     perc = []
     for ntc in ntc_values:
-        eps = get_err_estim(N=N, soft=soft, ntc=ntc, dsteps=dsteps)
+        eps = get_err_estim(N=N, soft=soft, ntc=ntc, dsteps=dsteps, double=double)
         perc.append(np.percentile(eps, 90))
     label = title if title is not None else fr"N={N:g}, soft={soft:g}, dt={1 / dsteps:g}"
     ax.plot(ntc_values, perc, label=label, marker="o")
@@ -108,6 +145,7 @@ def plot_line(ax, N: int = int(1e4), soft: float = 1e-1, dsteps: int = 100, titl
 if __name__ == "__main__":
     plot_hist(N=int(1e4), soft=0.05, dsteps=100, title=r"N=$10^4$, soft=0.05, dt=0.01")
     plot_hist(N=int(1e4), soft=1e-1, dsteps=100, title=r"N=$10^4$, soft=0.1, dt=0.01")
+    plot_hist(N=int(1e4), soft=1e-1, dsteps=100, title=r"N=$10^4$, soft=0.1, dt=0.01, double", double=True)
     plot_hist(N=int(1e4), soft=1e-1, dsteps=200, title=r"N=$10^4$, soft=0.1, dt=0.005")
     plot_hist(N=int(1e5), soft=1e-1, dsteps=100, title=r"N=$10^5$, soft=0.1, dt=0.01")
     plot_hist(N=int(1e5), soft=1e-2, dsteps=100, title=r"N=$10^5$, soft=0.01, dt=0.01")
