@@ -1,6 +1,7 @@
 from dataclasses import replace
 from typing import Generator
 import time
+import warnings
 import jax.numpy as jnp
 import jax
 
@@ -113,6 +114,13 @@ def simulate(p: Particles, tend: float, nsteps: int, cfg: SimConfig, tstart: flo
         pfin = _simulate(p, tend, nsteps, cfg, tstart)
         return pfin, pfin
     def eval_bwd(p: Particles, gp: jax.Array):
+        if cfg.centered:
+            warnings.warn(
+                "centering makes the simulation poorly reversible and should be avoided in "
+                "simmulations with gradients",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         dt = (tend - tstart) / nsteps
 
         def step(i, carry):

@@ -90,6 +90,14 @@ def _fmm_node_to_node(
             stacklevel=2,
         )
 
+    if child_src.mp.dtype == jnp.float64 and cfg_fmm.p + cfg_fmm.p_extra_m2l >= 5:
+        warnings.warn(
+            "For double precision, p=5 is not properly supported, will be very slow, "
+            "and p=4 should be preferred. This is caused by register spilling.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
     assert ilist_alloc_size < 2**31, "So far only int32 supported {ilist_alloc_size/2**31}"
     assert len(spl_recv) == len(node_ilist.ispl)
 
