@@ -62,7 +62,7 @@ def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg_fmm, block_size=3
     """Summarizes multipoles from child nodes to parent nodes"""
     mp = _as_particle_multipoles(mp, xchild)
 
-    assert ispl.dtype == jnp.int32
+    ispl = jnp.asarray(ispl, dtype=jnp.int32)
     dtype = mp.dtype
     dim = xnode.shape[-1]
     p_in = p_of_num_multi(mp.shape[1], dim=dim)
@@ -85,6 +85,7 @@ def summarize_multipoles(
         *, cfg_fmm: FMMConfig
     ) -> jax.Array:
 
+    ispl = jnp.asarray(ispl, dtype=jnp.int32)
     mp = _as_particle_multipoles(mp, xchild)
     dim = xnode.shape[-1]
     pin = p_of_num_multi(mp.shape[-1], dim=dim)
@@ -145,6 +146,7 @@ def _shift_local_to_children_impl(
         block_size=32
     ) -> jnp.array:
     """Shifts local expansions to child nodes"""
+    ispl = jnp.asarray(ispl, dtype=jnp.int32)
     dtype = loc.dtype
 
     dim = xnode.shape[-1]
@@ -172,6 +174,7 @@ def shift_local_to_children_vjp_x(
         block_size=32
     ) -> jnp.array:
     """Shifts local expansions to child nodes"""
+    ispl = jnp.asarray(ispl, dtype=jnp.int32)
     dtype = loc.dtype
 
     gloc_child = _as_particle_multipoles(gloc_child, xchild)
@@ -199,6 +202,7 @@ def _fmm_node_to_child(
         pout: int = None
     ) -> jax.Array:
     assert len(ispl) == len(loc) + 1 == len(xnode) + 1
+    ispl = jnp.asarray(ispl, dtype=jnp.int32)
 
     if loc.ndim == 1:
         loc = loc.reshape(-1,1)

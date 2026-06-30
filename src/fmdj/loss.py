@@ -32,7 +32,7 @@ def _as_posmass(part: PosMass | Pos | jax.Array) -> PosMass:
 def _mass_array(part: PosMass) -> jax.Array:
     mass = jnp.broadcast_to(part.mass, part.pos.shape[:-1])
     if part.num is not None:
-        mass = jnp.where(jnp.arange(len(mass)) < part.num, mass, 0)
+        mass = jnp.where(jnp.arange(len(mass), dtype=jnp.int32) < part.num, mass, 0)
     return mass
 
 def _normalize_mass(part: PosMass) -> PosMass:

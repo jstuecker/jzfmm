@@ -76,6 +76,13 @@ def _fmm_node_to_node(
         child_src = child_recv
     if single_thread_per_receiver is None:
         single_thread_per_receiver = jnp.zeros(1, dtype=jnp.int32)
+    else:
+        single_thread_per_receiver = jnp.asarray(single_thread_per_receiver, dtype=jnp.int32)
+    node_range = jnp.asarray(node_range, dtype=jnp.int32)
+    spl_recv = jnp.asarray(spl_recv, dtype=jnp.int32)
+    spl_src = jnp.asarray(spl_src, dtype=jnp.int32)
+    ilist_ispl = jnp.asarray(node_ilist.ispl, dtype=jnp.int32)
+    ilist_isrc = jnp.asarray(node_ilist.isrc, dtype=jnp.int32)
 
     size = len(child_recv.poslvl.pos)
     ilist_alloc_size = node_ilist.size()
@@ -124,7 +131,7 @@ def _fmm_node_to_node(
         (out_loc, out_interaction_count,),
         input_output_aliases={11: 0},
     )(
-        node_range, spl_recv, spl_src, node_ilist.ispl, node_ilist.isrc,
+        node_range, spl_recv, spl_src, ilist_ispl, ilist_isrc,
         children_recv, children_src, child_src.mp, kernel_params, opening_params,
         single_thread_per_receiver, loc_in,
         p=np.int32(cfg_fmm.p),
@@ -139,14 +146,14 @@ def _fmm_node_to_node(
     # interaction_counts = jnp.where(valid_child, interaction_counts, 0)
 
     # Insert interactions
-    ispl_child = jnp.pad(jnp.cumsum(interaction_counts), (1, 0))
+    ispl_child = jnp.pad(jnp.cumsum(interaction_counts), (1, 0)).astype(jnp.int32)
     out_child_ilist = jax.ShapeDtypeStruct((ilist_alloc_size,), jnp.int32)
 
     child_ilist = jax.ffi.ffi_call(
         "InsertInteractions",
         (out_child_ilist,)
     )(
-        node_range, spl_recv, spl_src, node_ilist.ispl, node_ilist.isrc,
+        node_range, spl_recv, spl_src, ilist_ispl, ilist_isrc,
         children_recv, children_src, ispl_child, opening_params,
         opening_criterion_kind=np.int32(opening.kind_id()),
     )[0]
@@ -225,8 +232,8 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg_fmm: FMMConfig):
             # This also runs in size-one shard maps as a syntax/shape test path.
             (child_src, ids), parent_spl_src, dev_spl = all_to_all_request_children(
                 parent_ilist.dev_spl, parent_ilist.ids, parent_spl_recv,
-                (child_recv, jnp.arange(size)),
-                output=empty_like((child_recv, jnp.arange(size)), new_size=comm_size_nodes),
+                (child_recv, jnp.arange(size, dtype=jnp.int32)),
+                output=empty_like((child_recv, jnp.arange(size, dtype=jnp.int32)), new_size=comm_size_nodes),
                 axis_name=axis_name, err_hint_child="\nHint: increase alloc_fac_comm_nodes",
                 err_hint_parent="\nHint: increase alloc_fac_comm_nodes"
             )
@@ -281,7 +288,7 @@ def leaf_leaf_summation(
         remove_self_interaction: bool = True,
     ) -> jax.Array:
     particles_recv = particles
-    spl_recv = ispl
+    spl_recv = jnp.asarray(ispl, dtype=jnp.int32)
     comm_size_particles = _comm_buffer_size(particles_recv.pos.shape[0], cfg_fmm.alloc_fac_comm_particles)
     in_smap = in_shard_map_context()
     if in_smap:
@@ -301,6 +308,12 @@ def leaf_leaf_summation(
     kernel_params = kernel.params(dtype=posm_recv.dtype)
 
     def eval_fwd(particles_recv, spl_recv, ilist, loc_in):
+        spl_recv = jnp.asarray(spl_recv, dtype=jnp.int32)
+        ilist = replace(
+            ilist,
+            ispl=jnp.asarray(ilist.ispl, dtype=jnp.int32),
+            isrc=jnp.asarray(ilist.isrc, dtype=jnp.int32),
+        )
         if in_smap:
             particles_src, spl_src, _dev_spl_src = all_to_all_request_children(
                 ilist.dev_spl, ilist.ids, spl_recv, particles_recv,
@@ -315,6 +328,7 @@ def leaf_leaf_summation(
             )
         else:
             particles_src, spl_src = particles_recv, spl_recv
+        spl_src = jnp.asarray(spl_src, dtype=jnp.int32)
 
         loc = jax.ffi.ffi_call(
             "LeafLeafPairSummation", (out_type,),
@@ -329,7 +343,7 @@ def leaf_leaf_summation(
         loc = pcast_like(loc, spl_recv)
         num = getattr(particles_recv, "num", None)
         if num is not None:
-            valid = jnp.arange(loc.shape[0]) < num
+            valid = jnp.arange(loc.shape[0], dtype=jnp.int32) < num
             loc = jnp.where(valid[:, None], loc, jnp.nan)
         return loc, (particles_recv, spl_recv, ilist, particles_src, spl_src)
 
@@ -339,6 +353,13 @@ def leaf_leaf_summation(
     
     def eval_bwd(res, gloc):
         particles_recv, spl_recv, ilist, particles_src, spl_src = res
+        spl_recv = jnp.asarray(spl_recv, dtype=jnp.int32)
+        spl_src = jnp.asarray(spl_src, dtype=jnp.int32)
+        ilist = replace(
+            ilist,
+            ispl=jnp.asarray(ilist.ispl, dtype=jnp.int32),
+            isrc=jnp.asarray(ilist.isrc, dtype=jnp.int32),
+        )
         if in_smap:
             gloc_src, _, _ = all_to_all_request_children(
                 ilist.dev_spl, ilist.ids, spl_recv, gloc,
@@ -579,7 +600,7 @@ def fast_multipole_method(
             )
         else:
             loc_values, idx = locz.values, origin_z.idx
-        inv_sort = masked_inverse(idx, mask=jnp.arange(len(idx)) < num_origin)
+        inv_sort = masked_inverse(idx, mask=jnp.arange(len(idx), dtype=idx.dtype) < num_origin)
         loc = LocalExpansion(loc_values[inv_sort], dim=part.pos.shape[-1])
 
     out = {
