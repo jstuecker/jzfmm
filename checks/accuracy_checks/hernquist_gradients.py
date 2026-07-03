@@ -192,17 +192,40 @@ def plot_loss_experiment(
     softening: float = 0.1,
     disp: float = 0.5,
     double: bool = False,
+    include_double: bool = True,
 ):
     fig, ax = plt.subplots(1, 1, figsize=(6, 4))
 
-    for mode in ("pos", "mass"):
-        times = ts[1:] if mode == "mass" else ts
-        res = [
-            loss_experiment(N=N, mode=mode, ntc=t, ltfrac=ltfrac, softening=softening, disp=disp, double=double)
-            for t in times
-        ]
-        target_dloss, actual_dloss = np.transpose(res)
-        ax.plot(times, actual_dloss / target_dloss, marker="o", label=mode)
+    precision_cases = [(False, "-")]
+    if include_double:
+        precision_cases.append((True, "--"))
+    elif double:
+        precision_cases = [(True, "-")]
+
+    for use_double, linestyle in precision_cases:
+        precision_label = "double" if use_double else "float"
+        for mode in ("pos", "mass"):
+            times = ts[1:] if mode == "mass" else ts
+            res = [
+                loss_experiment(
+                    N=N,
+                    mode=mode,
+                    ntc=t,
+                    ltfrac=ltfrac,
+                    softening=softening,
+                    disp=disp,
+                    double=use_double,
+                )
+                for t in times
+            ]
+            target_dloss, actual_dloss = np.transpose(res)
+            ax.plot(
+                times,
+                actual_dloss / target_dloss,
+                marker="o",
+                linestyle=linestyle,
+                label=f"{mode} ({precision_label})",
+            )
 
     ax.axhline(1.0, linestyle="dashed", color="black")
     ax.axhline(0.0, linestyle="dashed", color="black")
@@ -214,9 +237,10 @@ def plot_loss_experiment(
     fig.tight_layout()
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+    precision_tag = "_float_double" if include_double else precision_suffix(double)
     path = LOG_DIR / (
         f"loss_experiment_N{N:g}_ltfrac{_key_value(ltfrac)}_soft{_key_value(softening)}"
-        f"_disp{_key_value(disp)}{precision_suffix(double)}.pdf"
+        f"_disp{_key_value(disp)}{precision_tag}.pdf"
     )
     fig.savefig(path, dpi=200, bbox_inches="tight")
     print(f"Wrote {path}")
@@ -225,6 +249,6 @@ def plot_loss_experiment(
 
 if __name__ == "__main__":
     plot_loss_experiment(N=int(1e4), ltfrac=0.01)
-    plot_loss_experiment(N=int(1e4), ltfrac=0.01, double=True)
+    plot_loss_experiment(N=int(1e5), ltfrac=0.01)
     plot_loss_experiment(N=int(1e4), ltfrac=0.001)
     # plot_loss_experiment(N=int(1e5), ltfrac=0.01)
