@@ -24,10 +24,11 @@ def stripping_cfg():
 def bench_simulate(jax_bench, particles_nfw: Particles, stripping_cfg):
     jb = jax_bench(jit_rounds=1, jit_warmup=0, eager_rounds=0, eager_warmup=0)
     cfg, host = stripping_cfg
+    ts = jnp.linspace(0.0, host.tcirc(150.)*1., 201, dtype=particles_nfw.pos.dtype)
 
     jb.measure(
         fn=simulate, fn_jit=simulate.jit, 
-        p=particles_nfw, tend=host.tcirc(150.)*1., nsteps=200, cfg=cfg
+        p=particles_nfw, ts=ts, cfg=cfg
     )
 
 @pytest.mark.skip_in_quick
@@ -37,14 +38,15 @@ def bench_sim_direct_sum(jax_bench, particles_nfw, stripping_cfg):
     
     cfg, host = stripping_cfg
     cfg = replace(cfg, force=DirectSummationConfig())
+    ts = jnp.linspace(0.0, host.tcirc(150.)*1., 1001, dtype=particles_nfw.pos.dtype)
 
     jb.measure(
         fn=simulate, fn_jit=simulate.jit, 
-        p=particles_nfw, tend=host.tcirc(150.)*1., nsteps=1000, cfg=cfg, tag="sim"
+        p=particles_nfw, ts=ts, cfg=cfg, tag="sim"
     )
 
     def loss(p):
-        pfin = simulate(p, tend=host.tcirc(150.)*1., nsteps=1000, cfg=cfg)
+        pfin = simulate(p, ts=ts, cfg=cfg)
         return jnp.sum(jnp.mean(pfin.apos(), axis=0)**2) + jnp.sum(jnp.mean(pfin.avel(), axis=0)**2)
     
     @jax.jit

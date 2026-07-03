@@ -158,7 +158,8 @@ def loss_experiment(
             if ntc == 0.0:
                 part = part0
             else:
-                part = fmdj.time_integration.simulate(part0, tend=ntc*prof.tcirc(1.0), nsteps=int(ntc * 100), cfg=cfg)
+                ts = jnp.linspace(0.0, ntc * prof.tcirc(1.0), int(ntc * 100) + 1, dtype=part0.pos.dtype)
+                part = fmdj.time_integration.simulate(part0, ts=ts, cfg=cfg)
 
             ex = part_ref.pos / jnp.linalg.norm(part_ref.pos, axis=-1, keepdims=True)
             return loss(part.pos, jax.lax.stop_gradient(part_ref.pos + disp * ex))

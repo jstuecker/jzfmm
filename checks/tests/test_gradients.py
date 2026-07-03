@@ -95,7 +95,8 @@ def test_sim_com(particles_blob, mode):
         cfg.force = DirectSummationConfig(kernel=PlummerKernel(softening=0.3))
 
     def loss(p):
-        pfin = simulate(p, tend=1e2, nsteps=100, cfg=cfg)
+        ts = jnp.linspace(0.0, 1e2, 101, dtype=p.pos.dtype)
+        pfin = simulate(p, ts=ts, cfg=cfg)
         return jnp.sum(jnp.mean(pfin.apos(), axis=0)**2) + jnp.sum(jnp.mean(pfin.avel(), axis=0)**2), pfin
     
     loss_grad = jax.jit(jax.value_and_grad(loss, has_aux=True))

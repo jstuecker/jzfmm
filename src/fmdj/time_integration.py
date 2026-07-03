@@ -78,8 +78,7 @@ def ext_acc(p : Particles, t, cfg: SimConfig):
 def timestep(p : Particles, dt, cfg: SimConfig, t=0., mask=None):
     p = replace(p)  # Make a copy to avoid modifying the input
 
-    if p.loc is None:
-        p.loc = force_and_potential(p, cfg=cfg)
+    assert p.loc is not None
 
     vh = kick(p.vel, p.loc.force() + ext_acc(p, t, cfg), 0.5*dt, mask=mask)
     p.pos = drift(p.pos, vh, dt, mask=mask)
@@ -95,23 +94,37 @@ def timestep(p : Particles, dt, cfg: SimConfig, t=0., mask=None):
     return p
 timestep.jit = jax.jit(timestep, static_argnames=("cfg",))
 
-def _simulate(p: Particles, tend: float, nsteps: int, cfg: SimConfig, tstart: float = 0.) -> Particles:
-    # Make an initial dt=0 step to get the correct initial acceleration
-    p = timestep(p, dt=0., cfg=cfg, t=tstart)
-    dt = (tend - tstart) / nsteps
+def _simulate(p: Particles, ts: jax.Array, cfg: SimConfig, loc_initialized: bool = False) -> Particles:
+    if p.loc is None:
+        assert not loc_initialized, "You provided loc_initialized=True, but there is no .loc on particles"
+        dim = p.pos.shape[-1]
+        loc = LocalExpansion(jnp.zeros(p.pos.shape[:-1] + (dim + 1,), dtype=p.pos.dtype), dim=dim)
+        p = replace(p, loc=loc)
+
+    ts = jnp.asarray(ts)
+    if not loc_initialized:
+        ts = jnp.concatenate((ts[:1], ts))
+
     def step(i, carry):
-        p, t = carry
-        return timestep(p, dt=dt, cfg=cfg, t=t), t + dt
+        p = carry
+        return timestep(p, dt=ts[i+1] - ts[i], cfg=cfg, t=ts[i])
 
-    p, t = jax.lax.fori_loop(0, nsteps, step, (p, tstart))
-    return p
+    return jax.lax.fori_loop(0, ts.shape[0] - 1, step, p)
 
-def simulate(p: Particles, tend: float, nsteps: int, cfg: SimConfig, tstart: float = 0.) -> Particles:
+def simulate(
+        p: Particles,
+        ts: jax.Array,
+        cfg: SimConfig,
+        loc_initialized: bool = False,
+    ) -> Particles:
+    ts = jnp.asarray(ts)
+    nsteps = ts.shape[0] - 1
+
     @jax.custom_vjp
     def eval(p):
-        return _simulate(p, tend, nsteps, cfg, tstart)
+        return _simulate(p, ts, cfg, loc_initialized=loc_initialized)
     def eval_fwd(p):
-        pfin = _simulate(p, tend, nsteps, cfg, tstart)
+        pfin = _simulate(p, ts, cfg, loc_initialized=loc_initialized)
         return pfin, pfin
     def eval_bwd(p: Particles, gp: jax.Array):
         if cfg.centered:
@@ -121,23 +134,24 @@ def simulate(p: Particles, tend: float, nsteps: int, cfg: SimConfig, tstart: flo
                 RuntimeWarning,
                 stacklevel=2,
             )
-        dt = (tend - tstart) / nsteps
 
         def step(i, carry):
-            p, t, gp = carry
+            p, gp = carry
+            t0, t1 = ts[nsteps - i - 1], ts[nsteps - i]
+            dt = t1 - t0
 
-            p = timestep(p, dt=-dt, cfg=cfg, t=t)
-            _, vjp_fun = jax.vjp(lambda p: timestep(p, dt=dt, cfg=cfg, t=t-dt), p)
+            p = timestep(p, dt=-dt, cfg=cfg, t=t1)
+            _, vjp_fun = jax.vjp(lambda p: timestep(p, dt=dt, cfg=cfg, t=t0), p)
             gxp, = vjp_fun(gp)
-            return p, t - dt, gxp
+            return p, gxp
 
-        p_prev, t_prev, gp_prev = jax.lax.fori_loop(0, nsteps, step, (p, tend, gp))
+        p_prev, gp_prev = jax.lax.fori_loop(0, nsteps, step, (p, gp))
         
         return (gp_prev,)
     eval.defvjp(eval_fwd, eval_bwd)
     
     return eval(p)
-simulate.jit = jax.jit(simulate, static_argnames=("cfg",))
+simulate.jit = jax.jit(simulate, static_argnames=("cfg", "loc_initialized"))
 
 def clean_particles(p: Particles) -> Particles:
     p = replace(p)  # Make a copy to avoid modifying the input
@@ -148,7 +162,7 @@ def clean_particles(p: Particles) -> Particles:
 
     if p.loc is None:
         dim = p.pos.shape[-1]
-        p.loc = LocalExpansion(jnp.zeros((p.pos.shape[0], dim + 1), dtype=p.pos.dtype), dim=dim)
+        p.loc = LocalExpansion(jnp.zeros(p.pos.shape[:-1] + (dim + 1,), dtype=p.pos.dtype), dim=dim)
     
     return p
 
@@ -158,7 +172,8 @@ def simulate_with_outputs(
         nout: int, 
         steps_per_output: int,
         cfg: SimConfig,
-        tstart: float = 0.
+        tstart: float = 0.,
+        loc_initialized: bool = False,
     ) -> Generator[Particles, None, None]:
     """Don't jit this function!"""
     p = clean_particles(p) # This helps avoiding double jit-compilations
@@ -166,7 +181,18 @@ def simulate_with_outputs(
     tp0 = time.perf_counter()
     log("Compiling jitted simulation...", level=1, cfg_log=cfg.logging)
     time_dtype = p.pos.dtype
-    simulate.jit.lower(p, tend=jnp.asarray(0.1, dtype=time_dtype), nsteps=steps_per_output, cfg=cfg, tstart=jnp.asarray(0.1, dtype=time_dtype)).compile()
+    ts_compile = jnp.linspace(
+        jnp.asarray(0.1, dtype=time_dtype),
+        jnp.asarray(0.2, dtype=time_dtype),
+        steps_per_output + 1,
+        dtype=time_dtype,
+    )
+    simulate.jit.lower(
+        p,
+        ts=ts_compile,
+        cfg=cfg,
+        loc_initialized=loc_initialized,
+    ).compile()
     log("Compilation done after {:.2f}s", time.perf_counter()-tp0, level=1, cfg_log=cfg.logging)
 
     yield tstart, p
@@ -174,8 +200,15 @@ def simulate_with_outputs(
     for isnap in range(nout):
         t0 = jnp.asarray(tstart + isnap * (tend/nout), dtype=time_dtype)
         t1 = jnp.asarray(tstart + (isnap+1) * (tend/nout), dtype=time_dtype)
+        ts = jnp.linspace(t0, t1, steps_per_output + 1, dtype=time_dtype)
         tpa = time.perf_counter()
-        p = simulate.jit(p, tend=t1, nsteps=steps_per_output, cfg=cfg, tstart=t0)
+        p = simulate.jit(
+            p,
+            ts=ts,
+            cfg=cfg,
+            loc_initialized=loc_initialized,
+        )
+        loc_initialized = True
         log("Reached output {} ({:.2f}s for {} steps)",
             isnap+1, time.perf_counter()-tpa, steps_per_output, level=1, cfg_log=cfg.logging)
         yield t1, p

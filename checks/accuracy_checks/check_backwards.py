@@ -75,8 +75,9 @@ def get_err_estim(
             cfg.force.p = 4
 
         tend = prof.tcirc(1.0) * ntc
-        part = fmdj.time_integration.simulate.jit(part0, tend=tend, nsteps=nsteps, cfg=cfg)
-        part0b = fmdj.time_integration.simulate.jit(part, tstart=tend, tend=0.0, nsteps=nsteps, cfg=cfg)
+        ts = jnp.linspace(0.0, tend, nsteps + 1, dtype=part0.pos.dtype)
+        part = fmdj.time_integration.simulate.jit(part0, ts=ts, cfg=cfg)
+        part0b = fmdj.time_integration.simulate.jit(part, ts=ts[::-1], cfg=cfg)
 
         eps = (
             2.0
