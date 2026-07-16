@@ -31,6 +31,26 @@ def bench_simulate(jax_bench, particles_nfw: Particles, stripping_cfg):
         p=particles_nfw, ts=ts, cfg=cfg
     )
 
+@pytest.mark.shrink_in_quick(keep_index=0)
+@pytest.mark.parametrize("npart", [1024*128, 1024*1024], indirect=True)
+def bench_sim_grad(jax_bench, particles_nfw: Particles, stripping_cfg):
+    jb = jax_bench(jit_rounds=1, jit_warmup=0, eager_rounds=0, eager_warmup=0)
+    cfg, host = stripping_cfg
+    ts = jnp.linspace(0.0, host.tcirc(150.)*1., 201, dtype=particles_nfw.pos.dtype)
+
+    def loss(p):
+        pfin = simulate(p, ts=ts, cfg=cfg)
+        return jnp.mean(jnp.sum(pfin.apos()**2, axis=-1))
+
+    @jax.jit
+    def lossgrad(p):
+        return jax.grad(loss)(p)
+
+    jb.measure(
+        fn_jit=lossgrad,
+        p=particles_nfw,
+    )
+
 @pytest.mark.skip_in_quick
 @pytest.mark.parametrize("npart", [1024*8], indirect=True)
 def bench_sim_direct_sum(jax_bench, particles_nfw, stripping_cfg):
