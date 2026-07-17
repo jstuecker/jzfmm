@@ -34,7 +34,7 @@ def force_and_potential(p: Particles, cfg: SimConfig) -> LocalExpansion:
     raise TypeError(f"Unsupported force cfg type {type(cfg_force)}")
 force_and_potential.jit = jax.jit(force_and_potential, static_argnames=("cfg",))
 
-def find_center(p: Particles, npot: int = 1, nbind: int | None = None):
+def find_center(p: Particles, npot: int = 50, nbind: int | None = None):
     if p.loc is None:
         raise ValueError("find_center needs p.loc to contain potentials.")
     if nbind is None:
