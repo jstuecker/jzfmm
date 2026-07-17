@@ -3,7 +3,11 @@ from fmdj.data import Particles
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import jax.numpy as jnp
 
-def plot_particles_inset(t: float, p: Particles, previous=None, skip=1):
+def plot_particles_inset(t: float, p: Particles, previous=None, skip=1, center=None):
+    if center is None:
+        center = jnp.zeros(p.pos.shape[-1], dtype=p.pos.dtype)
+    rpos = p.pos - center
+
     if previous is None:
         fig, ax = plt.subplots(1, 1, figsize=[6, 6])
         axin = inset_axes(ax, width="40%", height="40%", loc="lower left")
@@ -26,14 +30,14 @@ def plot_particles_inset(t: float, p: Particles, previous=None, skip=1):
         ax.scatter(0, 0, s=20, c="black", marker="o")
         
         s1 = ax.scatter(p.pos[::skip,0], p.pos[::skip,1], s=1, alpha=0.05, label=f't={t:.2f}')
-        s2 = axin.scatter(p.pos[:,0], p.pos[:,1], s=4, alpha=0.01, label=f't={t:.2f}')
+        s2 = axin.scatter(rpos[:,0], rpos[:,1], s=4, alpha=0.01, label=f't={t:.2f}')
     else:
         fig, ax, axin, s1, s2, title = previous
 
         title.set_text(f't={time_in_years(t)/1e9:.1f} Gyr')
         
         s1.set_offsets(jnp.array([p.pos[::skip,0], p.pos[::skip,1]]).T)
-        s2.set_offsets(jnp.array([p.pos[:,0], p.pos[:,1]]).T)
+        s2.set_offsets(jnp.array([rpos[:,0], rpos[:,1]]).T)
 
     return fig, ax, axin, s1, s2, title
 

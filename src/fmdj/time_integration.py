@@ -76,6 +76,30 @@ def timestep_dkd(p : Particles, dt, cfg: SimConfig, t=0.):
 
     return p
 
+def reverse_timestep_dkd_vjp(p_next: Particles, gp_next: Particles, dt, cfg: SimConfig, tend=0.):
+    xmid = p_next.pos - 0.5 * dt * p_next.vel
+    p_mid = replace(p_next, pos=xmid, loc=None)
+
+    def mid_acc(p):
+        return force_and_potential(p, cfg=cfg).force() + ext_acc(p, tend - 0.5 * dt, cfg)
+
+    acc_mid, acc_vjp = jax.vjp(mid_acc, p_mid)
+    v_prev = p_next.vel - dt * acc_mid
+    p_prev = replace(p_next, pos=xmid - 0.5 * dt * v_prev, vel=v_prev, loc=None)
+
+    gv = gp_next.vel + 0.5 * dt * gp_next.pos
+    gmid, = acc_vjp(dt * gv) # dt * gv corresponds to the gradient w.r.t. to the output force
+
+    gp_prev = replace(
+        gp_next,
+        pos=gp_next.pos + gmid.pos,
+        vel=gv + 0.5 * dt * (gp_next.pos + gmid.pos),
+        mass=gp_next.mass + gmid.mass,
+        loc=None,
+    )
+
+    return p_prev, gp_prev
+
 def timestep(p : Particles, dt, cfg: SimConfig, t=0.):
     if cfg.integrator == "kdk":
         return timestep_kdk(p, dt=dt, cfg=cfg, t=t)
@@ -119,15 +143,17 @@ def simulate(
         pfin = _simulate(p, ts, cfg)
         return pfin, pfin
     def eval_bwd(p: Particles, gp: jax.Array):
+        assert cfg.integrator == "dkd", (
+            f'Differentiation through simulate is only supported with the "dkd" integrator, '
+            f'but cfg.integrator is {cfg.integrator!r}.'
+        )
+
         def step(i, carry):
             p, gp = carry
             t0, t1 = ts[nsteps - i - 1], ts[nsteps - i]
             dt = t1 - t0
 
-            p = timestep(p, dt=-dt, cfg=cfg, t=t1)
-            _, vjp_fun = jax.vjp(lambda p: timestep(p, dt=dt, cfg=cfg, t=t0), p)
-            gxp, = vjp_fun(gp)
-            return p, gxp
+            return reverse_timestep_dkd_vjp(p, gp, dt=dt, cfg=cfg, tend=t1)
 
         p_prev, gp_prev = jax.lax.fori_loop(0, nsteps, step, (p, gp))
         

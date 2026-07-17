@@ -155,4 +155,4 @@ class SimConfig:
     external_potential : PotentialField | None = None
 
     # Time integration
-    integrator: str = "kdk"
+    integrator: str = "dkd"

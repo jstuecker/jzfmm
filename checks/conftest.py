@@ -5,7 +5,7 @@ import os
 import sys
 from jztree.comm import should_init_jax_distributed
 from fmdj import FMMConfig
-from fmdj.data import Particles, PosMass, LocalExpansion
+from fmdj.data import Particles, PosMass
 from jztree.tree import zsort, build_tree_hierarchy
 
 # ------------------------------------------------------------------------------------------------ #
@@ -147,9 +147,7 @@ def particles_blob(npart):
     x = jax.random.normal(jax.random.PRNGKey(0), (npart,3))
     vel = jnp.zeros_like(x)
 
-    loc = LocalExpansion(jnp.zeros((npart,4), dtype=jnp.float32))
-
-    return Particles(pos=x, mass=1., vel=vel, loc=loc)
+    return Particles(pos=x, mass=1., vel=vel)
 
 @pytest.fixture
 def particles_nfw(npart):
@@ -162,7 +160,6 @@ def particles_nfw(npart):
         mass=jnp.array(m),
         vel=jnp.array(vel0) + jnp.array((0.,prof.vcirc(150.),0.)),
     )
-    part.loc = LocalExpansion(jnp.zeros((npart,4), dtype=jnp.float32))
 
     return part
 

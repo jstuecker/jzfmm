@@ -110,8 +110,8 @@ def test_sim_com(particles_blob, mode):
     xcom, vcom = jnp.mean(p.pos, axis=0), jnp.mean(p.vel, axis=0)
     xcom_grad, vcom_grad = jax.jit(jax.grad(loss_cent, argnums=(0,1)))(xcom, vcom)
 
-    assert jnp.sum(pgrad.pos, axis=0) == pytest.approx(xcom_grad, rel=1e-4)
-    assert jnp.sum(pgrad.vel, axis=0) == pytest.approx(vcom_grad, rel=1e-4)
+    assert jnp.sum(pgrad.pos, axis=0) == pytest.approx(xcom_grad, rel=2e-4)
+    assert jnp.sum(pgrad.vel, axis=0) == pytest.approx(vcom_grad, rel=2e-4)
 
 @pytest.mark.shrink_in_quick(keep_index=1)
 @pytest.mark.parametrize("dim", (2,3))

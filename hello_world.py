@@ -2,10 +2,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import jax.numpy as jnp
 import aegis
+from dataclasses import replace
 from fmdj.data import Particles
 from fmdj.config import FMMConfig, PlummerKernel, SimConfig
 from fmdj.external_potential import NFWPotential
-from fmdj.time_integration import simulate_with_outputs
+from fmdj.time_integration import find_center, force_and_potential, simulate_with_outputs
 
 import argparse
 
@@ -24,20 +25,27 @@ print(args.show)
 prof = aegis.profiles.NFWProfile(conc=10., r200c=10.)
 pos0, vel0, m = prof.sample_particles(1024*128, result="pos_vel_m", rpmin=1e-3, ramax=10.)
 
-p0 = Particles(pos=jnp.array(pos0), mass=jnp.array(m), vel=jnp.array(vel0))
+host = aegis.profiles.NFWProfile(conc=6., m200c=1e12)
+pos0 = jnp.array(pos0) + jnp.array((150., 0., 0.))
+vel0 = jnp.array(vel0) + jnp.array((0., host.vcirc(150.) * 0.9, 0.))
+
+p0 = Particles(pos=pos0, mass=jnp.array(m), vel=vel0)
 cfg_fmm = FMMConfig(kernel=PlummerKernel(softening=1e-2))
 cfg = SimConfig(force=cfg_fmm)
-
-host = aegis.profiles.NFWProfile(conc=6., m200c=1e12)
+cfg.integrator = "kdk"
 cfg.external_potential = NFWPotential(host.rs, host.rhoc)
+p0 = replace(p0, loc=force_and_potential.jit(p0, cfg=cfg))
 
-p0.cpos = jnp.array((150.,0.,0.))
-p0.cvel = jnp.array((0.,host.vcirc(150.)*0.9,0.))
-
-fig, ax, axins, s1, s2, title = plot_particles_inset(0., p0, skip=10)
+fig, ax, axins, s1, s2, title = plot_particles_inset(
+    0., p0, skip=10, center=find_center.jit(p0, npot=50, nbind=200)[0]
+)
 
 def update(t_and_p):
-    plot_particles_inset(*t_and_p, previous=(fig, ax, axins, s1, s2, title), skip=10)
+    t, p = t_and_p
+    plot_particles_inset(
+        t, p, previous=(fig, ax, axins, s1, s2, title),
+        skip=10, center=find_center.jit(p, npot=50, nbind=200)[0],
+    )
     return [s1,s2,title]
 
 sim_iter = simulate_with_outputs(
