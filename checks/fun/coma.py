@@ -89,7 +89,7 @@ def myplot(t: float, p: fmdj.data.Particles, previous=None, skip=10, dm=True):
         
         color = plt.get_cmap("afmhot")(0.4 + 0.5 * (igal / len(gpos)))
 
-        s1 = ax.scatter(p.apos()[::skip,0], p.apos()[::skip,1], s=1, alpha=0.1, label=f't={t:.2f}', c = color[::skip])
+        s1 = ax.scatter(p.pos[::skip,0], p.pos[::skip,1], s=1, alpha=0.1, label=f't={t:.2f}', c = color[::skip])
 
         fig.subplots_adjust(left=0.14, right=0.96, top=0.96, bottom=0.09)
     else:
@@ -97,7 +97,7 @@ def myplot(t: float, p: fmdj.data.Particles, previous=None, skip=10, dm=True):
 
         title.set_text(f't={time_in_years(t)/1e9:.1f} Gyr')
         
-        s1.set_offsets(jnp.array([p.apos()[::skip,0], p.apos()[::skip,1]]).T)
+        s1.set_offsets(jnp.array([p.pos[::skip,0], p.pos[::skip,1]]).T)
     
     return fig, ax, s1, title
 

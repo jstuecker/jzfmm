@@ -70,7 +70,6 @@ def get_err_estim(
 
         cfg = fmdj.SimConfig()
         cfg.force.kernel.softening = soft
-        cfg.centered = False
         if double:
             cfg.force.p = 4
 
@@ -81,8 +80,8 @@ def get_err_estim(
 
         eps = (
             2.0
-            * jnp.linalg.norm(part0.apos() - part0b.apos(), axis=-1)
-            / (jnp.linalg.norm(part0.apos(), axis=-1) + jnp.linalg.norm(part0b.apos(), axis=-1))
+            * jnp.linalg.norm(part0.pos - part0b.pos, axis=-1)
+            / (jnp.linalg.norm(part0.pos, axis=-1) + jnp.linalg.norm(part0b.pos, axis=-1))
         )
         eps = jax.block_until_ready(eps)
 
@@ -156,6 +155,7 @@ if __name__ == "__main__":
     plot_line(ax, N=int(1e4), soft=1e-1, dsteps=100, title=r"N=$10^4$, soft=0.1")
     # plot_line(ax, N=int(1e4), soft=1e-1, dsteps=10, title=r"N=$10^4$, soft=0.1, dt=0.1")
     # plot_line(ax, N=int(1e4), soft=1e-1, dsteps=200, title=r"N=$10^4$, soft=0.1, dt=0.005")
+    plot_line(ax, N=int(1e4), soft=1e-1, dsteps=100, title=r"N=$10^4$, soft=0.1, dt=0.01, double", double=True)
     plot_line(ax, N=int(1e5), soft=1e-1, dsteps=100, title=r"N=$10^5$, soft=0.1")
     plot_line(ax, N=int(1e6), soft=1e-1, dsteps=100, title=r"N=$10^6$, soft=0.1")
     plot_line(ax, N=int(1e5), soft=5e-2, dsteps=100, title=r"N=$10^5$, soft=0.05")

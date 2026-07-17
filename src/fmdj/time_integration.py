@@ -1,7 +1,6 @@
 from dataclasses import replace
 from typing import Generator
 import time
-import warnings
 import jax.numpy as jnp
 import jax
 
@@ -35,44 +34,33 @@ def force_and_potential(p: Particles, cfg: SimConfig) -> LocalExpansion:
     raise TypeError(f"Unsupported force cfg type {type(cfg_force)}")
 force_and_potential.jit = jax.jit(force_and_potential, static_argnames=("cfg",))
 
-def find_center(p : Particles, cfg: SimConfig = None):
-    ebind = p.loc.potential() + 0.5 * jnp.sum(p.vel**2, axis=-1)
-    if cfg.centered > 1:
-        # sort by most boundedness
-        i = jnp.argsort(ebind)
-        # average over the N=cfg.centered most bound particles
-        cpos = jnp.mean(p.pos[i[:cfg.centered]], axis=0)
-        cvel = jnp.mean(p.vel[i[:cfg.centered]], axis=0)
-    elif cfg.centered == 1:
-        i = jnp.argmin(ebind)
-        cpos = p.pos[i]
-        cvel = p.vel[i]
-    else:
-        cpos = jnp.zeros(p.pos.shape[-1], dtype=p.pos.dtype)
-        cvel = jnp.zeros(p.vel.shape[-1], dtype=p.vel.dtype)
+def find_center(p: Particles, npot: int = 1, nbind: int | None = None):
+    if p.loc is None:
+        raise ValueError("find_center needs p.loc to contain potentials.")
+    if nbind is None:
+        nbind = npot
+
+    mass = jnp.broadcast_to(p.mass, p.pos.shape[:-1])
+
+    ipot = jnp.argsort(p.loc.potential())[:npot]
+    wpot = mass[ipot]
+    cpos = jnp.sum(wpot[:, None] * p.pos[ipot], axis=0) / jnp.sum(wpot)
+    cvel0 = jnp.sum(wpot[:, None] * p.vel[ipot], axis=0) / jnp.sum(wpot)
+
+    ebind = p.loc.potential() + 0.5 * jnp.sum((p.vel - cvel0) ** 2, axis=-1)
+    ibind = jnp.argsort(ebind)[:nbind]
+    wbind = mass[ibind]
+    cvel = jnp.sum(wbind[:, None] * p.vel[ibind], axis=0) / jnp.sum(wbind)
 
     return cpos, cvel
-find_center.jit = jax.jit(find_center, static_argnames=("cfg",))
-
-def shift_reference_center(p : Particles, cfg: SimConfig = None):
-    dcpos, dcvel = find_center(p, cfg=cfg)
-
-    cpos = p.cpos + dcpos if p.cpos is not None else dcpos
-    cvel = p.cvel + dcvel if p.cvel is not None else dcvel
-    
-    # Shift to the new frame
-    p = replace(p, pos=p.pos-dcpos, vel=p.vel-dcvel, cpos=cpos, cvel=cvel)
-
-    return p
+find_center.jit = jax.jit(find_center, static_argnames=("npot", "nbind"))
 
 def ext_acc(p : Particles, t, cfg: SimConfig):
     if cfg.external_potential is None:
         return jnp.zeros_like(p.pos)
     else:
-        acc = cfg.external_potential.acceleration(p.apos(), t=t, cfg=cfg)
+        acc = cfg.external_potential.acceleration(p.pos, t=t, cfg=cfg)
 
-        ## Later also think about centering here
-        
         return acc
 
 def timestep(p : Particles, dt, cfg: SimConfig, t=0., mask=None):
@@ -82,14 +70,9 @@ def timestep(p : Particles, dt, cfg: SimConfig, t=0., mask=None):
 
     vh = kick(p.vel, p.loc.force() + ext_acc(p, t, cfg), 0.5*dt, mask=mask)
     p.pos = drift(p.pos, vh, dt, mask=mask)
-    if p.cpos is not None:
-        p.cpos = p.cpos + p.cvel * dt
 
     p.loc = force_and_potential(p, cfg=cfg)
     p.vel = kick(vh, p.loc.force() + ext_acc(p, t + dt, cfg), 0.5*dt, mask=mask)
-
-    if cfg.centered:
-        p = shift_reference_center(p, cfg=cfg)
 
     return p
 timestep.jit = jax.jit(timestep, static_argnames=("cfg",))
@@ -127,14 +110,6 @@ def simulate(
         pfin = _simulate(p, ts, cfg, loc_initialized=loc_initialized)
         return pfin, pfin
     def eval_bwd(p: Particles, gp: jax.Array):
-        if cfg.centered:
-            warnings.warn(
-                "centering makes the simulation poorly reversible and should be avoided in "
-                "simmulations with gradients",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-
         def step(i, carry):
             p, gp = carry
             t0, t1 = ts[nsteps - i - 1], ts[nsteps - i]

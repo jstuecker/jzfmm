@@ -51,8 +51,7 @@ for N in Ns:
         print(f"[N={N:g}] Sampling initial conditions...")
         np.random.seed(42)
         pos, vel, mass = prof.sample_particles(ntot=N, result="pos_vel_m")
-        part = fmdj.data.Particles(pos=jnp.array(pos), mass=jnp.array(mass), vel=jnp.array(vel),
-                                   cpos=jnp.array((0.,0.,0.)), cvel=jnp.array((0.,0.,0.)))
+        part = fmdj.data.Particles(pos=jnp.array(pos), mass=jnp.array(mass), vel=jnp.array(vel))
 
         prof_0 = aegis.profiles.ParticleProfile((pos, vel, mass), rbins=rbins)
         save_profile(prof_0, N, 0)

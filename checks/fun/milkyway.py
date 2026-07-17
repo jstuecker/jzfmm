@@ -70,13 +70,13 @@ def myplot(t: float, p: fmdj.data.Particles, previous=None, skip=10, dm=True):
         
         color = plt.get_cmap("afmhot")(0.5 + 0.5*np.random.uniform(size=len(p.pos)))[::skip] # 0.4 + 0.6 * 
 
-        s1 = ax.scatter(p.apos()[::skip,0], p.apos()[::skip,1], s=4, alpha=0.1, label=f't={t:.2f}', c = color)
+        s1 = ax.scatter(p.pos[::skip,0], p.pos[::skip,1], s=4, alpha=0.1, label=f't={t:.2f}', c = color)
     else:
         fig, ax, s1, title = previous
 
         title.set_text(f't={time_in_years(t)/1e6:.0f} Myr')
         
-        s1.set_offsets(jnp.array([p.apos()[::skip,0], p.apos()[::skip,1]]).T)
+        s1.set_offsets(jnp.array([p.pos[::skip,0], p.pos[::skip,1]]).T)
     
     return fig, ax, s1, title
 

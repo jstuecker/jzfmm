@@ -40,7 +40,7 @@ def bench_sim_grad(jax_bench, particles_nfw: Particles, stripping_cfg):
 
     def loss(p):
         pfin = simulate(p, ts=ts, cfg=cfg)
-        return jnp.mean(jnp.sum(pfin.apos()**2, axis=-1))
+        return jnp.mean(jnp.sum(pfin.pos**2, axis=-1))
 
     @jax.jit
     def lossgrad(p):
@@ -67,7 +67,7 @@ def bench_sim_direct_sum(jax_bench, particles_nfw, stripping_cfg):
 
     def loss(p):
         pfin = simulate(p, ts=ts, cfg=cfg)
-        return jnp.sum(jnp.mean(pfin.apos(), axis=0)**2) + jnp.sum(jnp.mean(pfin.avel(), axis=0)**2)
+        return jnp.sum(jnp.mean(pfin.pos, axis=0)**2) + jnp.sum(jnp.mean(pfin.vel, axis=0)**2)
     
     @jax.jit
     def lossgrad(p):

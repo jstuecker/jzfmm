@@ -37,16 +37,8 @@ class Particles():
 
     loc : LocalExpansion | None = None
 
-    cpos : jax.Array | None = None
-    cvel : jax.Array | None = None
-
     num: jax.Array | None = None
     num_total: int | None = static_field(default=None)
-
-    def apos(self):
-        return self.pos if self.cpos is None else self.pos + self.cpos
-    def avel(self):
-        return self.vel if self.cvel is None else self.vel + self.cvel
 
 
 @jax.tree_util.register_dataclass

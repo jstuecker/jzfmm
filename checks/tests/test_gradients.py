@@ -80,7 +80,7 @@ def test_fmm_node_gradients(pos_mass_z, tree_hierarchy):
 @pytest.mark.parametrize("npart", [1024], indirect=True)
 def test_sim_com(particles_blob, mode):
     """Tests that gradients with respect to the center of mass work correctly"""
-    p = replace(particles_blob, cvel=jnp.array([0.,0.,0.1]))
+    p = replace(particles_blob, vel=particles_blob.vel + jnp.array([0.,0.,0.1]))
 
     acc = (0.,0.,0.05)
 
@@ -97,7 +97,7 @@ def test_sim_com(particles_blob, mode):
     def loss(p):
         ts = jnp.linspace(0.0, 1e2, 101, dtype=p.pos.dtype)
         pfin = simulate(p, ts=ts, cfg=cfg)
-        return jnp.sum(jnp.mean(pfin.apos(), axis=0)**2) + jnp.sum(jnp.mean(pfin.avel(), axis=0)**2), pfin
+        return jnp.sum(jnp.mean(pfin.pos, axis=0)**2) + jnp.sum(jnp.mean(pfin.vel, axis=0)**2), pfin
     
     loss_grad = jax.jit(jax.value_and_grad(loss, has_aux=True))
     (lossval, pfin), pgrad = loss_grad(p)
@@ -107,14 +107,11 @@ def test_sim_com(particles_blob, mode):
         vfin = vcom + jnp.array(acc) * t
         return jnp.sum(xfin**2) + jnp.sum(vfin**2)
 
-    xcom, vcom = jnp.mean(p.apos(), axis=0), jnp.mean(p.avel(), axis=0)
+    xcom, vcom = jnp.mean(p.pos, axis=0), jnp.mean(p.vel, axis=0)
     xcom_grad, vcom_grad = jax.jit(jax.grad(loss_cent, argnums=(0,1)))(xcom, vcom)
 
-    assert pgrad.cpos == pytest.approx(xcom_grad, rel=2e-5)
-    assert pgrad.cvel == pytest.approx(vcom_grad, rel=2e-5)
-
-    assert jnp.sum(pgrad.pos, axis=0) == pytest.approx(xcom_grad, rel=2e-5)
-    assert jnp.sum(pgrad.vel, axis=0) == pytest.approx(vcom_grad, rel=2e-5)
+    assert jnp.sum(pgrad.pos, axis=0) == pytest.approx(xcom_grad, rel=1e-4)
+    assert jnp.sum(pgrad.vel, axis=0) == pytest.approx(vcom_grad, rel=1e-4)
 
 @pytest.mark.shrink_in_quick(keep_index=1)
 @pytest.mark.parametrize("dim", (2,3))

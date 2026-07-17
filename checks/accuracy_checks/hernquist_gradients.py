@@ -151,7 +151,6 @@ def loss_experiment(
 
         def mysim_loss(part0):
             cfg = fmdj.SimConfig()
-            cfg.centered = False
             cfg.force.kernel.softening = softening
             if double:
                 cfg.force.p = 4

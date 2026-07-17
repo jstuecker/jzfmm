@@ -25,14 +25,14 @@ def plot_particles_inset(t: float, p: Particles, previous=None, skip=1):
 
         ax.scatter(0, 0, s=20, c="black", marker="o")
         
-        s1 = ax.scatter(p.apos()[::skip,0], p.apos()[::skip,1], s=1, alpha=0.05, label=f't={t:.2f}')
+        s1 = ax.scatter(p.pos[::skip,0], p.pos[::skip,1], s=1, alpha=0.05, label=f't={t:.2f}')
         s2 = axin.scatter(p.pos[:,0], p.pos[:,1], s=4, alpha=0.01, label=f't={t:.2f}')
     else:
         fig, ax, axin, s1, s2, title = previous
 
         title.set_text(f't={time_in_years(t)/1e9:.1f} Gyr')
         
-        s1.set_offsets(jnp.array([p.apos()[::skip,0], p.apos()[::skip,1]]).T)
+        s1.set_offsets(jnp.array([p.pos[::skip,0], p.pos[::skip,1]]).T)
         s2.set_offsets(jnp.array([p.pos[:,0], p.pos[:,1]]).T)
 
     return fig, ax, axin, s1, s2, title
