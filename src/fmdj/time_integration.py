@@ -9,18 +9,6 @@ from .data import Particles, LocalExpansion
 from .config import DirectSummationConfig, FMMConfig, SimConfig
 from .fmm import direct_summation, fast_multipole_method
 
-def kick(vel, acc, dt, mask=None):
-    if mask is not None:
-        return vel + jnp.where(mask[:,None], acc, 0) * dt
-    else:
-        return vel + acc * dt
-
-def drift(pos, vel, dt, mask=None):
-    if mask is not None:
-        return pos + jnp.where(mask[:,None], vel, 0) * dt
-    else:
-        return pos + vel * dt
-
 def force_and_potential(p: Particles, cfg: SimConfig) -> LocalExpansion:
     cfg_force = cfg.force
     if cfg_force is None:
@@ -63,16 +51,16 @@ def ext_acc(p : Particles, t, cfg: SimConfig):
 
         return acc
 
-def timestep(p : Particles, dt, cfg: SimConfig, t=0., mask=None):
+def timestep(p : Particles, dt, cfg: SimConfig, t=0.):
     p = replace(p)  # Make a copy to avoid modifying the input
 
     assert p.loc is not None
 
-    vh = kick(p.vel, p.loc.force() + ext_acc(p, t, cfg), 0.5*dt, mask=mask)
-    p.pos = drift(p.pos, vh, dt, mask=mask)
+    vh = p.vel + (p.loc.force() + ext_acc(p, t, cfg)) * (0.5 * dt)
+    p.pos = p.pos + vh * dt
 
     p.loc = force_and_potential(p, cfg=cfg)
-    p.vel = kick(vh, p.loc.force() + ext_acc(p, t + dt, cfg), 0.5*dt, mask=mask)
+    p.vel = vh + (p.loc.force() + ext_acc(p, t + dt, cfg)) * (0.5 * dt)
 
     return p
 timestep.jit = jax.jit(timestep, static_argnames=("cfg",))
