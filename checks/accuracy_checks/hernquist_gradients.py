@@ -143,11 +143,10 @@ def loss_experiment(
         np.random.seed(43)
         pos, vel, mass = prof.sample_particles(N, "pos_vel_m", ramax=1e3)
         part0 = fmdj.data.Particles(
-            pos=np.asarray(pos, dtype=dtype),
-            vel=np.asarray(vel, dtype=dtype),
-            mass=np.asarray(mass, dtype=dtype),
+            pos=jnp.asarray(pos, dtype=dtype),
+            vel=jnp.asarray(vel, dtype=dtype),
+            mass=jnp.asarray(mass, dtype=dtype),
         )
-        part0 = fmdj.time_integration.clean_particles(part0)
 
         def mysim_loss(part0):
             cfg = fmdj.SimConfig()

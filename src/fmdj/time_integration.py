@@ -51,10 +51,10 @@ def ext_acc(p : Particles, t, cfg: SimConfig):
 
         return acc
 
-def timestep(p : Particles, dt, cfg: SimConfig, t=0.):
+def timestep_kdk(p : Particles, dt, cfg: SimConfig, t=0.):
     p = replace(p)  # Make a copy to avoid modifying the input
 
-    assert p.loc is not None
+    assert p.loc is not None, "need to have previous acceleration for KDK"
 
     vh = p.vel + (p.loc.force() + ext_acc(p, t, cfg)) * (0.5 * dt)
     p.pos = p.pos + vh * dt
@@ -63,18 +63,40 @@ def timestep(p : Particles, dt, cfg: SimConfig, t=0.):
     p.vel = vh + (p.loc.force() + ext_acc(p, t + dt, cfg)) * (0.5 * dt)
 
     return p
+
+def timestep_dkd(p : Particles, dt, cfg: SimConfig, t=0.):
+    p = replace(p)  # Make a copy to avoid modifying the input
+
+    assert p.loc is None, "Should not have p.loc on particles for DKD, it is internal and temporary"
+
+    p.pos = p.pos + p.vel * (0.5 * dt)
+    loc = force_and_potential(p, cfg=cfg)
+    p.vel = p.vel + (loc.force() + ext_acc(p, t + 0.5 * dt, cfg)) * dt
+    p.pos = p.pos + p.vel * (0.5 * dt)
+
+    return p
+
+def timestep(p : Particles, dt, cfg: SimConfig, t=0.):
+    if cfg.integrator == "kdk":
+        return timestep_kdk(p, dt=dt, cfg=cfg, t=t)
+    if cfg.integrator == "dkd":
+        return timestep_dkd(p, dt=dt, cfg=cfg, t=t)
+    raise ValueError(f"Unknown integrator {cfg.integrator!r}. Expected 'kdk' or 'dkd'.")
 timestep.jit = jax.jit(timestep, static_argnames=("cfg",))
 
-def _simulate(p: Particles, ts: jax.Array, cfg: SimConfig, loc_initialized: bool = False) -> Particles:
-    if p.loc is None:
-        assert not loc_initialized, "You provided loc_initialized=True, but there is no .loc on particles"
-        dim = p.pos.shape[-1]
-        loc = LocalExpansion(jnp.zeros(p.pos.shape[:-1] + (dim + 1,), dtype=p.pos.dtype), dim=dim)
-        p = replace(p, loc=loc)
-
+def _simulate(p: Particles, ts: jax.Array, cfg: SimConfig) -> Particles:
     ts = jnp.asarray(ts)
-    if not loc_initialized:
-        ts = jnp.concatenate((ts[:1], ts))
+    if cfg.integrator == "kdk":
+        if p.loc is None:
+            # prepend a zero-size time-step to initialize p.loc properly.
+            dim = p.pos.shape[-1]
+            loc = LocalExpansion(jnp.zeros(p.pos.shape[:-1] + (dim + 1,), dtype=p.pos.dtype), dim=dim)
+            p = replace(p, loc=loc)
+            ts = jnp.concatenate((ts[:1], ts))
+    elif cfg.integrator == "dkd":
+        assert p.loc is None
+    else:
+        raise ValueError(f"Unknown integrator {cfg.integrator!r}. Expected 'kdk' or 'dkd'.")
 
     def step(i, carry):
         p = carry
@@ -86,16 +108,15 @@ def simulate(
         p: Particles,
         ts: jax.Array,
         cfg: SimConfig,
-        loc_initialized: bool = False,
     ) -> Particles:
     ts = jnp.asarray(ts)
     nsteps = ts.shape[0] - 1
 
     @jax.custom_vjp
     def eval(p):
-        return _simulate(p, ts, cfg, loc_initialized=loc_initialized)
+        return _simulate(p, ts, cfg)
     def eval_fwd(p):
-        pfin = _simulate(p, ts, cfg, loc_initialized=loc_initialized)
+        pfin = _simulate(p, ts, cfg)
         return pfin, pfin
     def eval_bwd(p: Particles, gp: jax.Array):
         def step(i, carry):
@@ -114,20 +135,7 @@ def simulate(
     eval.defvjp(eval_fwd, eval_bwd)
     
     return eval(p)
-simulate.jit = jax.jit(simulate, static_argnames=("cfg", "loc_initialized"))
-
-def clean_particles(p: Particles) -> Particles:
-    p = replace(p)  # Make a copy to avoid modifying the input
-
-    p.pos = jnp.asarray(p.pos)
-    p.vel = jnp.asarray(p.vel)
-    p.mass = jnp.asarray(p.mass)
-
-    if p.loc is None:
-        dim = p.pos.shape[-1]
-        p.loc = LocalExpansion(jnp.zeros(p.pos.shape[:-1] + (dim + 1,), dtype=p.pos.dtype), dim=dim)
-    
-    return p
+simulate.jit = jax.jit(simulate, static_argnames=("cfg",))
 
 def simulate_with_outputs(
         p : Particles, 
@@ -136,11 +144,8 @@ def simulate_with_outputs(
         steps_per_output: int,
         cfg: SimConfig,
         tstart: float = 0.,
-        loc_initialized: bool = False,
     ) -> Generator[Particles, None, None]:
     """Don't jit this function!"""
-    p = clean_particles(p) # This helps avoiding double jit-compilations
-
     tp0 = time.perf_counter()
     log("Compiling jitted simulation...", level=1, cfg_log=cfg.logging)
     time_dtype = p.pos.dtype
@@ -154,7 +159,6 @@ def simulate_with_outputs(
         p,
         ts=ts_compile,
         cfg=cfg,
-        loc_initialized=loc_initialized,
     ).compile()
     log("Compilation done after {:.2f}s", time.perf_counter()-tp0, level=1, cfg_log=cfg.logging)
 
@@ -169,9 +173,7 @@ def simulate_with_outputs(
             p,
             ts=ts,
             cfg=cfg,
-            loc_initialized=loc_initialized,
         )
-        loc_initialized = True
         log("Reached output {} ({:.2f}s for {} steps)",
             isnap+1, time.perf_counter()-tpa, steps_per_output, level=1, cfg_log=cfg.logging)
         yield t1, p
