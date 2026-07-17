@@ -1,10 +1,9 @@
 import matplotlib.pyplot as plt
-import numpy as np
 import jax.numpy as jnp
 import aegis
 from dataclasses import replace
 from fmdj.data import Particles
-from fmdj.config import FMMConfig, PlummerKernel, SimConfig
+from fmdj.config import FMMConfig, KDKConfig, PlummerKernel, SimConfig
 from fmdj.external_potential import NFWPotential
 from fmdj.time_integration import find_center, force_and_potential, simulate_with_outputs
 
@@ -32,7 +31,7 @@ vel0 = jnp.array(vel0) + jnp.array((0., host.vcirc(150.) * 0.9, 0.))
 p0 = Particles(pos=pos0, mass=jnp.array(m), vel=vel0)
 cfg_fmm = FMMConfig(kernel=PlummerKernel(softening=1e-2))
 cfg = SimConfig(force=cfg_fmm)
-cfg.integrator = "kdk"
+cfg.integrator = KDKConfig()
 cfg.external_potential = NFWPotential(host.rs, host.rhoc)
 p0 = replace(p0, loc=force_and_potential.jit(p0, cfg=cfg))
 

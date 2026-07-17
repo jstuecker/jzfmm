@@ -6,7 +6,7 @@ import jax
 
 from jztree.tools import log
 from .data import Particles, LocalExpansion
-from .config import DirectSummationConfig, FMMConfig, SimConfig
+from .config import DirectSummationConfig, DKDConfig, DKDLatticeConfig, FMMConfig, KDKConfig, SimConfig
 from .fmm import direct_summation, fast_multipole_method
 
 def force_and_potential(p: Particles, cfg: SimConfig) -> LocalExpansion:
@@ -51,6 +51,28 @@ def ext_acc(p : Particles, t, cfg: SimConfig):
 
         return acc
 
+def quantize_particles(p: Particles, integrator: DKDLatticeConfig) -> Particles:
+    dtype = jnp.result_type(p.mass, jnp.float32)
+    with jax.enable_x64(integrator.int_dtype == jnp.int64):
+        pos = jnp.rint(p.pos / jnp.asarray(integrator.dx, dtype=dtype)).astype(integrator.int_dtype)
+        vel = jnp.rint(p.vel / jnp.asarray(integrator.dv, dtype=dtype)).astype(integrator.int_dtype)
+    return replace(
+        p,
+        pos=pos,
+        vel=vel,
+    )
+
+def dequantize_particles(p: Particles, integrator: DKDLatticeConfig) -> Particles:
+    dtype = jnp.result_type(p.mass, jnp.float32)
+    with jax.enable_x64(integrator.int_dtype == jnp.int64):
+        pos = p.pos.astype(dtype) * jnp.asarray(integrator.dx, dtype=dtype)
+        vel = p.vel.astype(dtype) * jnp.asarray(integrator.dv, dtype=dtype)
+    return replace(
+        p,
+        pos=pos,
+        vel=vel,
+    )
+
 def timestep_kdk(p : Particles, dt, cfg: SimConfig, t=0.):
     p = replace(p)  # Make a copy to avoid modifying the input
 
@@ -73,6 +95,29 @@ def timestep_dkd(p : Particles, dt, cfg: SimConfig, t=0.):
     loc = force_and_potential(p, cfg=cfg)
     p.vel = p.vel + (loc.force() + ext_acc(p, t + 0.5 * dt, cfg)) * dt
     p.pos = p.pos + p.vel * (0.5 * dt)
+
+    return p
+
+def timestep_dkd_lattice(p : Particles, dt, cfg: SimConfig, t=0.):
+    p = replace(p)  # Make a copy to avoid modifying the input
+
+    assert p.loc is None, "Should not have p.loc on particles for DKD, it is internal and temporary"
+    assert jnp.issubdtype(p.pos.dtype, jnp.integer)
+    assert jnp.issubdtype(p.vel.dtype, jnp.integer)
+
+    dx, dv, int_dtype = cfg.integrator.dx, cfg.integrator.dv, cfg.integrator.int_dtype
+
+    with jax.enable_x64(int_dtype == jnp.int64):
+        p.pos = p.pos + jnp.rint(p.vel * (0.5 * dt * dv / dx)).astype(int_dtype)
+
+    p_float = dequantize_particles(p, cfg.integrator)
+    loc = force_and_potential(p_float, cfg=cfg)
+    acc = loc.force() + ext_acc(p_float, t + 0.5 * dt, cfg)
+    with jax.enable_x64(int_dtype == jnp.int64):
+        p.vel = p.vel + jnp.rint(dt * acc / dv).astype(int_dtype)
+
+    with jax.enable_x64(int_dtype == jnp.int64):
+        p.pos = p.pos + jnp.rint(p.vel * (0.5 * dt * dv / dx)).astype(int_dtype)
 
     return p
 
@@ -101,32 +146,40 @@ def reverse_timestep_dkd_vjp(p_next: Particles, gp_next: Particles, dt, cfg: Sim
     return p_prev, gp_prev
 
 def timestep(p : Particles, dt, cfg: SimConfig, t=0.):
-    if cfg.integrator == "kdk":
+    if isinstance(cfg.integrator, KDKConfig):
         return timestep_kdk(p, dt=dt, cfg=cfg, t=t)
-    if cfg.integrator == "dkd":
+    if isinstance(cfg.integrator, DKDConfig):
         return timestep_dkd(p, dt=dt, cfg=cfg, t=t)
-    raise ValueError(f"Unknown integrator {cfg.integrator!r}. Expected 'kdk' or 'dkd'.")
+    if isinstance(cfg.integrator, DKDLatticeConfig):
+        return timestep_dkd_lattice(p, dt=dt, cfg=cfg, t=t)
+    raise TypeError(f"Unknown integrator config {cfg.integrator!r}. Expected KDKConfig, DKDConfig, or DKDLatticeConfig.")
 timestep.jit = jax.jit(timestep, static_argnames=("cfg",))
 
 def _simulate(p: Particles, ts: jax.Array, cfg: SimConfig) -> Particles:
     ts = jnp.asarray(ts)
-    if cfg.integrator == "kdk":
+    if isinstance(cfg.integrator, KDKConfig):
         if p.loc is None:
             # prepend a zero-size time-step to initialize p.loc properly.
             dim = p.pos.shape[-1]
             loc = LocalExpansion(jnp.zeros(p.pos.shape[:-1] + (dim + 1,), dtype=p.pos.dtype), dim=dim)
             p = replace(p, loc=loc)
             ts = jnp.concatenate((ts[:1], ts))
-    elif cfg.integrator == "dkd":
+    elif isinstance(cfg.integrator, DKDConfig):
         assert p.loc is None
+    elif isinstance(cfg.integrator, DKDLatticeConfig):
+        assert p.loc is None
+        p = quantize_particles(p, cfg.integrator)
     else:
-        raise ValueError(f"Unknown integrator {cfg.integrator!r}. Expected 'kdk' or 'dkd'.")
+        raise TypeError(f"Unknown integrator config {cfg.integrator!r}. Expected KDKConfig, DKDConfig, or DKDLatticeConfig.")
 
     def step(i, carry):
         p = carry
         return timestep(p, dt=ts[i+1] - ts[i], cfg=cfg, t=ts[i])
 
-    return jax.lax.fori_loop(0, ts.shape[0] - 1, step, p)
+    p = jax.lax.fori_loop(0, ts.shape[0] - 1, step, p)
+    if isinstance(cfg.integrator, DKDLatticeConfig):
+        p = dequantize_particles(p, cfg.integrator)
+    return p
 
 def simulate(
         p: Particles,
@@ -143,9 +196,9 @@ def simulate(
         pfin = _simulate(p, ts, cfg)
         return pfin, pfin
     def eval_bwd(p: Particles, gp: jax.Array):
-        assert cfg.integrator == "dkd", (
-            f'Differentiation through simulate is only supported with the "dkd" integrator, '
-            f'but cfg.integrator is {cfg.integrator!r}.'
+        assert isinstance(cfg.integrator, DKDConfig), (
+            f"Differentiation through simulate is only supported with DKDConfig, "
+            f"but cfg.integrator is {cfg.integrator!r}."
         )
 
         def step(i, carry):

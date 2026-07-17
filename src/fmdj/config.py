@@ -108,6 +108,24 @@ class UnitConfig:
     def G(self) -> float:
         return 4.30071057317063e-06 * self.mass_in_msol / self.pos_in_kpc / self.vel_in_kmps**2
 
+@dataclass(unsafe_hash=True, slots=True)
+class IntegratorConfig:
+    pass
+
+@dataclass(unsafe_hash=True, slots=True)
+class DKDConfig(IntegratorConfig):
+    pass
+
+@dataclass(unsafe_hash=True, slots=True)
+class KDKConfig(IntegratorConfig):
+    pass
+
+@dataclass(unsafe_hash=True, slots=True)
+class DKDLatticeConfig(IntegratorConfig):
+    dx: float = 1e-4
+    dv: float = 1e-4
+    int_dtype: type = jnp.int32
+
 # ------------------------------------------------------------------------------------------------ #
 #                                               Force                                              #
 # ------------------------------------------------------------------------------------------------ #
@@ -155,4 +173,4 @@ class SimConfig:
     external_potential : PotentialField | None = None
 
     # Time integration
-    integrator: str = "dkd"
+    integrator: IntegratorConfig = field(default_factory=DKDConfig)

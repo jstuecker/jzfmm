@@ -26,16 +26,16 @@ def _float_key(value: float) -> str:
     return f"{value:.12g}".replace("-", "m").replace(".", "p").replace("+", "")
 
 
-def setup_name(N: int, soft: float, dsteps: int) -> str:
-    return f"N{N:g}_soft{_float_key(soft)}_dsteps{dsteps:g}"
+def setup_name(N: int, soft: float, dsteps: int, integrator: str = "float") -> str:
+    return f"N{N:g}_soft{_float_key(soft)}_dsteps{dsteps:g}_{integrator}"
 
 
 def precision_suffix(double: bool) -> str:
     return "_double" if double else ""
 
 
-def cache_path(N: int, soft: float, ntc: float, dsteps: int, double: bool = False) -> Path:
-    return LOG_DIR / f"{setup_name(N, soft, dsteps)}{precision_suffix(double)}" / f"eps_ntc{_float_key(ntc)}_seed42.npz"
+def cache_path(N: int, soft: float, ntc: float, dsteps: int, double: bool = False, integrator: str = "float") -> Path:
+    return LOG_DIR / f"{setup_name(N, soft, dsteps, integrator)}{precision_suffix(double)}" / f"eps_ntc{_float_key(ntc)}_seed42.npz"
 
 
 def get_err_estim(
@@ -44,9 +44,10 @@ def get_err_estim(
     ntc: float = 1.0,
     dsteps: int = 100,
     double: bool = False,
+    integrator: str = "float",
 ) -> jax.Array:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    path = cache_path(N=N, soft=soft, ntc=ntc, dsteps=dsteps, double=double)
+    path = cache_path(N=N, soft=soft, ntc=ntc, dsteps=dsteps, double=double, integrator=integrator)
     path.parent.mkdir(parents=True, exist_ok=True)
     nsteps = int(dsteps * ntc)
     dtype = np.float64 if double else np.float32
@@ -72,6 +73,14 @@ def get_err_estim(
         cfg.force.kernel.softening = soft
         if double:
             cfg.force.p = 4
+        if integrator == "int32":
+            cfg.integrator = fmdj.DKDLatticeConfig(dx=1e-5, dv=1e-5, int_dtype=jnp.int32)
+        elif integrator == "int64":
+            cfg.integrator = fmdj.DKDLatticeConfig(dx=1e-5, dv=1e-5, int_dtype=jnp.int64)
+        elif integrator == "kdk":
+            cfg.integrator = fmdj.KDKConfig()
+        elif integrator != "float":
+            raise ValueError(f"Unknown integrator {integrator!r}. Expected 'float', 'kdk', 'int32', or 'int64'.")
 
         tend = prof.tcirc(1.0) * ntc
         ts = jnp.linspace(0.0, tend, nsteps + 1, dtype=part0.pos.dtype)
@@ -95,6 +104,7 @@ def plot_hist(
     dsteps: int = 100,
     title: str | None = None,
     double: bool = False,
+    integrator: str = "float",
 ) -> None:
     fig, ax = plt.subplots(1, 1, figsize=(6, 4))
 
@@ -104,7 +114,7 @@ def plot_hist(
         bins = np.linspace(-9, 0, 101)
 
     for ntc in ntc_values:
-        eps = get_err_estim(N=N, soft=soft, ntc=ntc, dsteps=dsteps, double=double)
+        eps = get_err_estim(N=N, soft=soft, ntc=ntc, dsteps=dsteps, double=double, integrator=integrator)
         ax.hist(
             np.log10(np.asarray(eps) + 1e-19),
             bins=bins,
@@ -119,7 +129,7 @@ def plot_hist(
     ax.set_title(title if title is not None else fr"N={N:g}, soft={soft:g}, dt={1 / dsteps:g}")
     fig.tight_layout()
 
-    path = LOG_DIR / f"backwards_{setup_name(N, soft, dsteps)}{precision_suffix(double)}.pdf"
+    path = LOG_DIR / f"backwards_{setup_name(N, soft, dsteps, integrator)}{precision_suffix(double)}.pdf"
     fig.savefig(path, dpi=200, bbox_inches="tight")
     print(f"Wrote {path}")
     plt.close(fig)
@@ -131,10 +141,11 @@ def plot_line(
     dsteps: int = 100,
     title: str | None = None,
     double: bool = False,
+    integrator: str = "float",
 ) -> None:
     perc = []
     for ntc in ntc_values:
-        eps = get_err_estim(N=N, soft=soft, ntc=ntc, dsteps=dsteps, double=double)
+        eps = get_err_estim(N=N, soft=soft, ntc=ntc, dsteps=dsteps, double=double, integrator=integrator)
         perc.append(np.percentile(eps, 90))
     label = title if title is not None else fr"N={N:g}, soft={soft:g}, dt={1 / dsteps:g}"
     ax.plot(ntc_values, perc, label=label, marker="o")
@@ -145,6 +156,8 @@ def plot_line(
 if __name__ == "__main__":
     plot_hist(N=int(1e4), soft=0.05, dsteps=100, title=r"N=$10^4$, soft=0.05, dt=0.01")
     plot_hist(N=int(1e4), soft=1e-1, dsteps=100, title=r"N=$10^4$, soft=0.1, dt=0.01")
+    plot_hist(N=int(1e4), soft=1e-1, dsteps=100, title=r"N=$10^4$, soft=0.1, dt=0.01, DKD int32", double=False, integrator="int32")
+    plot_hist(N=int(1e4), soft=1e-1, dsteps=100, title=r"N=$10^4$, soft=0.1, dt=0.01, DKD int64", double=False, integrator="int64")
     plot_hist(N=int(1e4), soft=1e-1, dsteps=100, title=r"N=$10^4$, soft=0.1, dt=0.01, double", double=True)
     plot_hist(N=int(1e4), soft=1e-1, dsteps=200, title=r"N=$10^4$, soft=0.1, dt=0.005")
     plot_hist(N=int(1e5), soft=1e-1, dsteps=100, title=r"N=$10^5$, soft=0.1, dt=0.01")
@@ -161,6 +174,8 @@ if __name__ == "__main__":
     plot_line(ax, N=int(1e5), soft=5e-2, dsteps=100, title=r"N=$10^5$, soft=0.05")
     # plot_line(ax, N=int(1e5), soft=1e-2, dsteps=100, title=r"N=$10^5$, soft=0.01, dt=0.01")
     plot_line(ax, N=int(1e6), soft=5e-2, dsteps=100, title=r"N=$10^6$, soft=0.01")
+    plot_line(ax, N=int(1e4), soft=1e-1, dsteps=100, title=r"N=$10^4$, soft=0.1, dt=0.01, DKD int32", double=False, integrator="int32")
+    plot_line(ax, N=int(1e4), soft=1e-1, dsteps=100, title=r"N=$10^4$, soft=0.1, dt=0.01, DKD int64", double=False, integrator="int64")
     ax.loglog()
     ax.legend(loc="upper left")
     plt.axhline(1., linestyle="dashed", color="black")
