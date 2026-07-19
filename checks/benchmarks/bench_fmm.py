@@ -65,12 +65,12 @@ def bench_fmm_p(jax_bench, p, pos_mass_z):
                part=pos_mass_z, cfg_fmm=cfg_fmm)
 
 @pytest.mark.shrink_in_quick(keep_index=0)
-@pytest.mark.parametrize("p", [3,4,5])
+@pytest.mark.parametrize("p", [3,4,5,6])
 def bench_fmm_steps(jax_bench, p):
     cfg_fmm = FMMConfig(p=p)
 
     # jb = jax_bench(jit_rounds=40, jit_warmup=10) # for more timing accuracy
-    jb = jax_bench(jit_rounds=4, jit_warmup=1) 
+    jb = jax_bench(jit_rounds=12, jit_warmup=1) 
 
     pos_mass = ics.uniform_particles(int(1e6), total_mass=1.0, seed=0)
     # pos_mass = ics.uniform_particles(int(1e7), total_mass=1.0, seed=0) # for comparing against multi-GPU

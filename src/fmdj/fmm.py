@@ -97,10 +97,10 @@ def _fmm_node_to_node(
             stacklevel=2,
         )
 
-    if child_src.mp.dtype == jnp.float64 and cfg_fmm.p + cfg_fmm.p_extra_m2l >= 5:
+    if child_src.mp.dtype == jnp.float64 and cfg_fmm.p + cfg_fmm.p_extra_m2l >= 6:
         warnings.warn(
-            "For double precision, p=5 is not properly supported, will be very slow, "
-            "and p=4 should be preferred. This is caused by register spilling.",
+            "For double precision, M2L order 6 and above currently spills registers "
+            "and can be substantially slower than order 5.",
             RuntimeWarning,
             stacklevel=2,
         )

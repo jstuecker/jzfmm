@@ -102,42 +102,26 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         { {0, 1, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 0, 2, double>) },
         { {0, 1, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 0, 3, float>) },
         { {0, 1, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 0, 3, double>) },
-        { {0, 1, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 1, 2, float>) },
-        { {0, 1, 1, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 1, 2, double>) },
-        { {0, 1, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 1, 3, float>) },
-        { {0, 1, 1, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 1, 3, double>) },
         { {0, 2, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 0, 2, float>) },
         { {0, 2, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 0, 2, double>) },
         { {0, 2, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 0, 3, float>) },
         { {0, 2, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 0, 3, double>) },
-        { {0, 2, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 1, 2, float>) },
-        { {0, 2, 1, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 1, 2, double>) },
-        { {0, 2, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 1, 3, float>) },
-        { {0, 2, 1, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 1, 3, double>) },
         { {0, 3, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 0, 2, float>) },
         { {0, 3, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 0, 2, double>) },
         { {0, 3, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 0, 3, float>) },
         { {0, 3, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 0, 3, double>) },
-        { {0, 3, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 1, 2, float>) },
-        { {0, 3, 1, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 1, 2, double>) },
-        { {0, 3, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 1, 3, float>) },
-        { {0, 3, 1, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 1, 3, double>) },
         { {0, 4, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 0, 2, float>) },
         { {0, 4, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 0, 2, double>) },
         { {0, 4, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 0, 3, float>) },
         { {0, 4, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 0, 3, double>) },
-        { {0, 4, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 1, 2, float>) },
-        { {0, 4, 1, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 1, 2, double>) },
-        { {0, 4, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 1, 3, float>) },
-        { {0, 4, 1, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 1, 3, double>) },
         { {0, 5, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 0, 2, float>) },
         { {0, 5, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 0, 2, double>) },
         { {0, 5, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 0, 3, float>) },
         { {0, 5, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 0, 3, double>) },
-        { {0, 5, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 1, 2, float>) },
-        { {0, 5, 1, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 1, 2, double>) },
-        { {0, 5, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 1, 3, float>) },
-        { {0, 5, 1, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 1, 3, double>) }
+        { {0, 6, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 0, 2, float>) },
+        { {0, 6, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 0, 2, double>) },
+        { {0, 6, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 0, 3, float>) },
+        { {0, 6, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 0, 3, double>) }
     };
 
     const TTuple key = TTuple(opening_criterion_kind, p, p_extra_m2l, dim, tvec);
@@ -147,7 +131,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (opening_criterion_kind, p, p_extra_m2l, dim, tvec)"\
             " in CountInteractionsAndM2LFFIHost -- Only supporting:\n"\
-            "(0, 1, 0, 2, float), (0, 1, 0, 2, double), (0, 1, 0, 3, float), (0, 1, 0, 3, double), (0, 1, 1, 2, float), (0, 1, 1, 2, double), (0, 1, 1, 3, float), (0, 1, 1, 3, double), (0, 2, 0, 2, float), (0, 2, 0, 2, double), (0, 2, 0, 3, float), (0, 2, 0, 3, double), (0, 2, 1, 2, float), (0, 2, 1, 2, double), (0, 2, 1, 3, float), (0, 2, 1, 3, double), (0, 3, 0, 2, float), (0, 3, 0, 2, double), (0, 3, 0, 3, float), (0, 3, 0, 3, double), (0, 3, 1, 2, float), (0, 3, 1, 2, double), (0, 3, 1, 3, float), (0, 3, 1, 3, double), (0, 4, 0, 2, float), (0, 4, 0, 2, double), (0, 4, 0, 3, float), (0, 4, 0, 3, double), (0, 4, 1, 2, float), (0, 4, 1, 2, double), (0, 4, 1, 3, float), (0, 4, 1, 3, double), (0, 5, 0, 2, float), (0, 5, 0, 2, double), (0, 5, 0, 3, float), (0, 5, 0, 3, double), (0, 5, 1, 2, float), (0, 5, 1, 2, double), (0, 5, 1, 3, float), (0, 5, 1, 3, double)"
+            "(0, 1, 0, 2, float), (0, 1, 0, 2, double), (0, 1, 0, 3, float), (0, 1, 0, 3, double), (0, 2, 0, 2, float), (0, 2, 0, 2, double), (0, 2, 0, 3, float), (0, 2, 0, 3, double), (0, 3, 0, 2, float), (0, 3, 0, 2, double), (0, 3, 0, 3, float), (0, 3, 0, 3, double), (0, 4, 0, 2, float), (0, 4, 0, 2, double), (0, 4, 0, 3, float), (0, 4, 0, 3, double), (0, 5, 0, 2, float), (0, 5, 0, 2, double), (0, 5, 0, 3, float), (0, 5, 0, 3, double), (0, 6, 0, 2, float), (0, 6, 0, 2, double), (0, 6, 0, 3, float), (0, 6, 0, 3, double)"
         );
     }
     const void* instance = it->second;

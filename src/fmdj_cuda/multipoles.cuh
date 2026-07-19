@@ -441,6 +441,13 @@ __global__ void TranslateLocalToLocal_XVJP(
 /* ---------------------------------------------------------------------------------------------- */
 
 template<int p, int p_extra_m2l, int dim, typename tvec>
+struct GeneratedM2L {
+    static constexpr bool available = false;
+};
+
+#include "generated/m2l_specializations.cuh"
+
+template<int p, int p_extra_m2l, int dim, typename tvec>
 __device__ __forceinline__ void m2l_translator(
     Vec<dim,tvec> dx,
     const Vec<NCOMB(p, dim),tvec>& Mp,
@@ -453,10 +460,14 @@ __device__ __forceinline__ void m2l_translator(
     constexpr int pD = p > p_local ? p : p_local;
     constexpr int ncombD = NCOMB(pD, dim);
 
-    Vec<ncombD,tvec> Dn;
-    setupDnG<pD,dim,tvec>(dx, radial_kernel_kind, radial_kernel_params, Dn);
+    using SpecializedM2L = GeneratedM2L<p,p_extra_m2l,dim,tvec>;
+    if constexpr (SpecializedM2L::available) {
+        SpecializedM2L::apply(dx, Mp, loc, radial_kernel_kind, radial_kernel_params);
+    } else {
+        Vec<ncombD,tvec> Dn;
+        setupDnG<pD,dim,tvec>(dx, radial_kernel_kind, radial_kernel_params, Dn);
 
-    for_each_multiindex<p_local,dim>([&](int kflat, int ksum, int (&k)[dim]) {
+        for_each_multiindex<p_local,dim>([&](int kflat, int ksum, int (&k)[dim]) {
         tvec Lnew = tvec(0);
 
         for_each_multiindex<p,dim>([&](int nflat, int nsum, int (&n)[dim]) {
@@ -494,7 +505,8 @@ __device__ __forceinline__ void m2l_translator(
             fac = sign / multiindex_factorial<dim,tvec>(k);
 
         loc[kflat] += Lnew * fac;
-    });
+        });
+    }
 }
 
 #endif // MULTIPOLES_H
