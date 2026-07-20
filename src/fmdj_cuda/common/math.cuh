@@ -150,16 +150,6 @@ tvec powi_upto6(tvec x, int n) {
     }
 }
 
-__device__ __forceinline__ float fact_upto6f(unsigned k) {
-    float f = 1.f;
-    f *= (k >= 2) ? 2.f : 1.f;
-    f *= (k >= 3) ? 3.f : 1.f;
-    f *= (k >= 4) ? 4.f : 1.f;
-    f *= (k >= 5) ? 5.f : 1.f;
-    f *= (k >= 6) ? 6.f : 1.f;
-    return f;
-}
-
 __device__ __forceinline__ float binomial(unsigned n, unsigned k) {
     if (k > n) return 0.f;
     float res = 1.f;
@@ -167,10 +157,6 @@ __device__ __forceinline__ float binomial(unsigned n, unsigned k) {
         res *= float(n - (k - i)) / float(i);
     }
     return res;
-}
-
-__device__ __forceinline__ float fact3f(unsigned kx, unsigned ky, unsigned kz) {
-    return fact_upto6f(kx) * fact_upto6f(ky) * fact_upto6f(kz);
 }
 
 __host__ __device__ __forceinline__ constexpr int binomial_int(int n, int k) {

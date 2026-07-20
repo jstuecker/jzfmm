@@ -120,16 +120,6 @@ __device__ __forceinline__ void copy_multiindex(const int (&src)[dim], int (&dst
     }
 }
 
-template<int dim, typename tvec>
-__device__ __forceinline__ tvec multiindex_factorial(const int (&k)[dim]) {
-    tvec f = tvec(1);
-    #pragma unroll
-    for(int d = 0; d < dim; d++) {
-        f *= tvec(fact_upto6f(k[d]));
-    }
-    return f;
-}
-
 /* ---------------------------------------------------------------------------------------------- */
 /*                                  Derivatives of Radial Kernel                                  */
 /* ---------------------------------------------------------------------------------------------- */
@@ -609,6 +599,13 @@ __device__ __forceinline__ void m2l_translator(
     evaluate_radial_kernel_derivatives<p,tvec>(
         radial_kernel_kind, dx.norm2(), radial_kernel_params, G
     );
+
+    #pragma unroll
+    for(int q = 0; q <= p; q++) {
+        // handle overflows for small separations and large orders p ~ 7
+        if(!isfinite(G[q]))
+            G[q] = tvec(0);
+    }
 
     RegisterArray<ncomb,tvec> Dn;
     Dn.template get<0>() = G[p];
