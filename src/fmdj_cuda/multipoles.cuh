@@ -400,6 +400,49 @@ __global__ __launch_bounds__(32, 1) void SummarizeMultipoles(
 /*                                         L2L Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
+template<int p, int dim=3, typename tvec>
+__device__ __forceinline__ void shift_local_to_local_inplace(
+    RegisterArray<NCOMB(p, dim),tvec>& loc, const Vec<dim,tvec> dpos
+) {
+    constexpr int ncomb = NCOMB(p, dim);
+    ct_static_for<0, dim>([&](auto ax_constant) {
+        constexpr int ax = decltype(ax_constant)::value;
+        // Ascending degree keeps every higher-order source coefficient unmodified
+        // until it has contributed to all lower-order outputs.
+        ct_static_for<0, ncomb>([&](auto iflat_constant) {
+            constexpr int iflat = decltype(iflat_constant)::value;
+            constexpr int kx = ct_flat_component<iflat, dim, 0>();
+            constexpr int ky = ct_flat_component<iflat, dim, 1>();
+            constexpr int kz = []() constexpr {
+                if constexpr (dim == 3)
+                    return ct_flat_component<iflat, dim, 2>();
+                else
+                    return 0;
+            }();
+            constexpr int ksum = kx + ky + kz;
+            constexpr int kax = ax == 0 ? kx : (ax == 1 ? ky : kz);
+            constexpr int imax = p - ksum + kax;
+            tvec lnew = tvec(0);
+
+            ct_static_for<0, p + 1>([&](auto i_constant) {
+                constexpr int i = decltype(i_constant)::value;
+                if constexpr (i >= kax && i <= imax) {
+                    constexpr int from_kx = ax == 0 ? i : kx;
+                    constexpr int from_ky = ax == 1 ? i : ky;
+                    constexpr int from_kz = ax == 2 ? i : kz;
+                    constexpr int ifrom =
+                        ct_multi_to_flat<dim, from_kx, from_ky, from_kz>();
+                    constexpr int displacement_power = i - kax;
+                    lnew += tvec(binomial(i, kax))
+                        * powi_upto6(dpos[ax], displacement_power)
+                        * loc.template get<ifrom>();
+                }
+            });
+            loc.template get<iflat>() = lnew;
+        });
+    });
+}
+
 
 template<int p, int dim=3, typename tvec>
 __device__ __forceinline__ void shift_local_to_local(Vec<NCOMB(p, dim),tvec>& loc, Vec<NCOMB(p, dim),tvec>& loc_out, Vec<dim,tvec> dpos) {
@@ -451,29 +494,29 @@ __global__ void TranslateLocalToLocal(
         return;
     
     Vec<dim,tvec> xn = xnode[inode];
-    Vec<ncomb,tvec> loc_in;
-    #pragma unroll
-    for (int iM = 0; iM < ncomb; iM++) {
-        loc_in[iM] = loc_node[inode * ncomb + iM];
-    }
+    RegisterArray<ncomb,tvec> loc_in;
+    ct_static_for<0, ncomb>([&](auto iM_constant) {
+        constexpr int iM = decltype(iM_constant)::value;
+        loc_in.template get<iM>() = loc_node[inode * ncomb + iM];
+    });
     
     for(int ichild = istart; ichild < iend; ichild++) {
         Vec<dim,tvec> dpos = xchild[ichild] - xn;
 
-        Vec<ncomb,tvec> loc_out;
+        RegisterArray<ncomb,tvec> loc_work;
+        ct_static_for<0, ncomb>([&](auto iM_constant) {
+            constexpr int iM = decltype(iM_constant)::value;
+            loc_work.template get<iM>() = loc_in.template get<iM>();
+        });
 
-        Vec<ncomb,tvec> loc_src;
-        #pragma unroll
-        for (int i = 0; i < ncomb; i++) {
-            loc_src[i] = loc_in[i];
-        }
+        shift_local_to_local_inplace<p,dim,tvec>(loc_work, dpos);
 
-        shift_local_to_local<p,dim,tvec>(loc_src, loc_out, dpos);
-
-        #pragma unroll
-        for (int iM = 0; iM < min(ncomb, NCOMB(pout, dim)); iM++) {
-            loc_child[ichild * NCOMB(pout, dim) + iM] = loc_out[iM];
-        }
+        ct_static_for<0, ncomb>([&](auto iM_constant) {
+            constexpr int iM = decltype(iM_constant)::value;
+            if(iM < NCOMB(pout, dim))
+                loc_child[ichild * NCOMB(pout, dim) + iM] =
+                    loc_work.template get<iM>();
+        });
     }
 }
 
