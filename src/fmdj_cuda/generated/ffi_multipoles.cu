@@ -1,6 +1,6 @@
 // This file was automatically generated
-// You can modify it, but I recommend automatically regenerating this code whenever you adapt 
-// one of the kernels. The FFI Bindings are very tedious in jax and they involve a lot of 
+// You can modify it, but I recommend automatically regenerating this code whenever you adapt
+// one of the kernels. The FFI Bindings are very tedious in jax and they involve a lot of
 // boilerplate code that is easy to mess up.
 
 #include <map>
@@ -37,16 +37,15 @@ ffi::Error SummarizeMultipolesFFIHost(
     ffi::Result<ffi::AnyBuffer> mp_out,
     int p_in,
     bool kahan,
-    int p,
-    size_t block_size
+    int p
 ) {
     int nnodes = isplit.element_count() - 1;
     int dim = xnode.dimensions()[1];
     DT tvec = mp_in.element_type();
-    dim3 blockDim(block_size);
-    dim3 gridDim(div_ceil(isplit.element_count() - 1, block_size));
+    dim3 blockDim(32);
+    dim3 gridDim(div_ceil(isplit.element_count() - 1, 32));
     size_t smem = 0;
-    
+
     // Build a bundled argument list for cudaLaunchKernel
     void* isplit_arg = isplit.untyped_data();
     void* mp_in_arg = mp_in.untyped_data();
@@ -63,7 +62,7 @@ ffi::Error SummarizeMultipolesFFIHost(
         &p_in,
         &kahan
     };
-    
+
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
@@ -91,8 +90,6 @@ ffi::Error SummarizeMultipolesFFIHost(
         { {5, 2, DT::F64}, reinterpret_cast<TFunc>(&SummarizeMultipoles<5, 2, double>) },
         { {5, 3, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<5, 3, float>) },
         { {5, 3, DT::F64}, reinterpret_cast<TFunc>(&SummarizeMultipoles<5, 3, double>) },
-        { {6, 2, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<6, 2, float>) },
-        { {6, 2, DT::F64}, reinterpret_cast<TFunc>(&SummarizeMultipoles<6, 2, double>) },
         { {6, 3, DT::F32}, reinterpret_cast<TFunc>(&SummarizeMultipoles<6, 3, float>) },
         { {6, 3, DT::F64}, reinterpret_cast<TFunc>(&SummarizeMultipoles<6, 3, double>) }
     };
@@ -104,7 +101,7 @@ ffi::Error SummarizeMultipolesFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p, dim, tvec)"\
             " in SummarizeMultipolesFFIHost -- Only supporting:\n"\
-            "(1, 2, float), (1, 2, double), (1, 3, float), (1, 3, double), (2, 2, float), (2, 2, double), (2, 3, float), (2, 3, double), (3, 2, float), (3, 2, double), (3, 3, float), (3, 3, double), (4, 2, float), (4, 2, double), (4, 3, float), (4, 3, double), (5, 2, float), (5, 2, double), (5, 3, float), (5, 3, double), (6, 2, float), (6, 2, double), (6, 3, float), (6, 3, double)"
+            "(1, 2, float), (1, 2, double), (1, 3, float), (1, 3, double), (2, 2, float), (2, 2, double), (2, 3, float), (2, 3, double), (3, 2, float), (3, 2, double), (3, 3, float), (3, 3, double), (4, 2, float), (4, 2, double), (4, 3, float), (4, 3, double), (5, 2, float), (5, 2, double), (5, 3, float), (5, 3, double), (6, 3, float), (6, 3, double)"
         );
     }
     const void* instance = it->second;
@@ -136,8 +133,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ret<ffi::AnyBuffer>() // mp_out
         .Attr<int>("p_in")
         .Attr<bool>("kahan")
-        .Attr<int>("p")
-        .Attr<size_t>("block_size"),
+        .Attr<int>("p"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );
 
@@ -163,10 +159,10 @@ ffi::Error TranslateLocalToLocalFFIHost(
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(isplit.element_count() - 1, block_size));
     size_t smem = 0;
-    
+
     // Initialize output buffers
     cudaMemsetAsync(loc_child->untyped_data(), 0, loc_child->size_bytes(), stream);
-    
+
     // Build a bundled argument list for cudaLaunchKernel
     void* isplit_arg = isplit.untyped_data();
     void* loc_node_arg = loc_node.untyped_data();
@@ -182,7 +178,7 @@ ffi::Error TranslateLocalToLocalFFIHost(
         &nnodes,
         &pout
     };
-    
+
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
@@ -210,8 +206,6 @@ ffi::Error TranslateLocalToLocalFFIHost(
         { {5, 2, DT::F64}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<5, 2, double>) },
         { {5, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<5, 3, float>) },
         { {5, 3, DT::F64}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<5, 3, double>) },
-        { {6, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<6, 2, float>) },
-        { {6, 2, DT::F64}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<6, 2, double>) },
         { {6, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<6, 3, float>) },
         { {6, 3, DT::F64}, reinterpret_cast<TFunc>(&TranslateLocalToLocal<6, 3, double>) }
     };
@@ -223,7 +217,7 @@ ffi::Error TranslateLocalToLocalFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p, dim, tvec)"\
             " in TranslateLocalToLocalFFIHost -- Only supporting:\n"\
-            "(1, 2, float), (1, 2, double), (1, 3, float), (1, 3, double), (2, 2, float), (2, 2, double), (2, 3, float), (2, 3, double), (3, 2, float), (3, 2, double), (3, 3, float), (3, 3, double), (4, 2, float), (4, 2, double), (4, 3, float), (4, 3, double), (5, 2, float), (5, 2, double), (5, 3, float), (5, 3, double), (6, 2, float), (6, 2, double), (6, 3, float), (6, 3, double)"
+            "(1, 2, float), (1, 2, double), (1, 3, float), (1, 3, double), (2, 2, float), (2, 2, double), (2, 3, float), (2, 3, double), (3, 2, float), (3, 2, double), (3, 3, float), (3, 3, double), (4, 2, float), (4, 2, double), (4, 3, float), (4, 3, double), (5, 2, float), (5, 2, double), (5, 3, float), (5, 3, double), (6, 3, float), (6, 3, double)"
         );
     }
     const void* instance = it->second;
@@ -282,7 +276,7 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(isplit.element_count() - 1, block_size));
     size_t smem = 0;
-    
+
     // Build a bundled argument list for cudaLaunchKernel
     void* isplit_arg = isplit.untyped_data();
     void* loc_node_arg = loc_node.untyped_data();
@@ -300,7 +294,7 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
         &nnodes,
         &pout
     };
-    
+
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
@@ -328,8 +322,6 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
         { {5, 2, DT::F64}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<5, 2, double>) },
         { {5, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<5, 3, float>) },
         { {5, 3, DT::F64}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<5, 3, double>) },
-        { {6, 2, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<6, 2, float>) },
-        { {6, 2, DT::F64}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<6, 2, double>) },
         { {6, 3, DT::F32}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<6, 3, float>) },
         { {6, 3, DT::F64}, reinterpret_cast<TFunc>(&TranslateLocalToLocal_XVJP<6, 3, double>) }
     };
@@ -341,7 +333,7 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (p, dim, tvec)"\
             " in TranslateLocalToLocal_XVJPFFIHost -- Only supporting:\n"\
-            "(1, 2, float), (1, 2, double), (1, 3, float), (1, 3, double), (2, 2, float), (2, 2, double), (2, 3, float), (2, 3, double), (3, 2, float), (3, 2, double), (3, 3, float), (3, 3, double), (4, 2, float), (4, 2, double), (4, 3, float), (4, 3, double), (5, 2, float), (5, 2, double), (5, 3, float), (5, 3, double), (6, 2, float), (6, 2, double), (6, 3, float), (6, 3, double)"
+            "(1, 2, float), (1, 2, double), (1, 3, float), (1, 3, double), (2, 2, float), (2, 2, double), (2, 3, float), (2, 3, double), (3, 2, float), (3, 2, double), (3, 3, float), (3, 3, double), (4, 2, float), (4, 2, double), (4, 3, float), (4, 3, double), (5, 2, float), (5, 2, double), (5, 3, float), (5, 3, double), (6, 3, float), (6, 3, double)"
         );
     }
     const void* instance = it->second;

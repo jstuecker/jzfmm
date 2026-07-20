@@ -58,7 +58,7 @@ def _as_particle_multipoles(mp: jax.Array, xchild: jax.Array) -> jax.Array:
         return jnp.broadcast_to(mp, jnp.broadcast_shapes(xchild.shape[:-1] + (1,), jnp.shape(mp)))
     return mp
 
-def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg_fmm, block_size=32):
+def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg_fmm):
     """Summarizes multipoles from child nodes to parent nodes"""
     mp = _as_particle_multipoles(mp, xchild)
 
@@ -71,7 +71,6 @@ def _summarize_multipoles_impl(ispl, mp, xnode, xchild, *, cfg_fmm, block_size=3
         ispl, mp, xnode, xchild,
         p_in=np.int32(p_in),
         p=np.int32(cfg_fmm.p),
-        block_size=np.uint64(block_size),
         kahan = cfg_fmm.kahan_summation
     )[0]
 

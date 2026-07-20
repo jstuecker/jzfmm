@@ -1,6 +1,6 @@
 // This file was automatically generated
-// You can modify it, but I recommend automatically regenerating this code whenever you adapt 
-// one of the kernels. The FFI Bindings are very tedious in jax and they involve a lot of 
+// You can modify it, but I recommend automatically regenerating this code whenever you adapt
+// one of the kernels. The FFI Bindings are very tedious in jax and they involve a lot of
 // boilerplate code that is easy to mess up.
 
 #include <map>
@@ -44,7 +44,7 @@ ffi::Error DirectPairSummationFFIHost(
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(xm.dimensions()[0], block_size));
     size_t smem = blockDim.x * (dim + 1) * (xm.element_type() == DT::F64 ? sizeof(double) : sizeof(float));
-    
+
     // Build a bundled argument list for cudaLaunchKernel
     void* xm_arg = xm.untyped_data();
     void* radial_kernel_params_arg = radial_kernel_params.untyped_data();
@@ -56,7 +56,7 @@ ffi::Error DirectPairSummationFFIHost(
         &n,
         &remove_self_interaction
     };
-    
+
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
@@ -210,7 +210,7 @@ ffi::Error BwdDirectPairSummationFFIHost(
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(xm.dimensions()[0], block_size));
     size_t smem = 2 * blockDim.x * (dim + 1) * (xm.element_type() == DT::F64 ? sizeof(double) : sizeof(float));
-    
+
     // Build a bundled argument list for cudaLaunchKernel
     void* gloc_arg = gloc.untyped_data();
     void* xm_arg = xm.untyped_data();
@@ -224,7 +224,7 @@ ffi::Error BwdDirectPairSummationFFIHost(
         &n,
         &remove_self_interaction
     };
-    
+
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
@@ -384,7 +384,7 @@ ffi::Error LeafLeafPairSummationFFIHost(
     dim3 blockDim(block_size);
     dim3 gridDim(spl_recv.element_count() - 1);
     size_t smem = blockDim.x * (dim + 1) * (posm_src.element_type() == DT::F64 ? sizeof(double) : sizeof(float));
-    
+
     // Build a bundled argument list for cudaLaunchKernel
     void* node_range_arg = node_range.untyped_data();
     void* spl_recv_arg = spl_recv.untyped_data();
@@ -409,7 +409,7 @@ ffi::Error LeafLeafPairSummationFFIHost(
         &loc_recv_arg,
         &remove_self_interaction
     };
-    
+
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
@@ -528,7 +528,7 @@ ffi::Error BwdLeafLeafPairSummationFFIHost(
     dim3 blockDim(block_size);
     dim3 gridDim(spl_recv.element_count() - 1);
     size_t smem = 2 * blockDim.x * (dim + 1) * (posm_src.element_type() == DT::F64 ? sizeof(double) : sizeof(float));
-    
+
     // Build a bundled argument list for cudaLaunchKernel
     void* node_range_arg = node_range.untyped_data();
     void* spl_recv_arg = spl_recv.untyped_data();
@@ -555,7 +555,7 @@ ffi::Error BwdLeafLeafPairSummationFFIHost(
         &gposm_recv_arg,
         &remove_self_interaction
     };
-    
+
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.

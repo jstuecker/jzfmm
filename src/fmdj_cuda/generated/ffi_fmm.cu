@@ -1,6 +1,6 @@
 // This file was automatically generated
-// You can modify it, but I recommend automatically regenerating this code whenever you adapt 
-// one of the kernels. The FFI Bindings are very tedious in jax and they involve a lot of 
+// You can modify it, but I recommend automatically regenerating this code whenever you adapt
+// one of the kernels. The FFI Bindings are very tedious in jax and they involve a lot of
 // boilerplate code that is easy to mess up.
 
 #include <map>
@@ -54,10 +54,10 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     dim3 blockDim(32);
     dim3 gridDim(spl_nodes_recv.element_count() - 1);
     size_t smem = 0;
-    
+
     // Initialize output buffers
     cudaMemsetAsync(ilist_child_count_out->untyped_data(), 0, ilist_child_count_out->size_bytes(), stream);
-    
+
     // Build a bundled argument list for cudaLaunchKernel
     void* node_range_arg = node_range.untyped_data();
     void* spl_nodes_recv_arg = spl_nodes_recv.untyped_data();
@@ -90,7 +90,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         &ilist_child_count_out_arg,
         &radial_kernel_kind
     };
-    
+
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
@@ -118,8 +118,6 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         { {0, 5, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 0, 2, double>) },
         { {0, 5, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 0, 3, float>) },
         { {0, 5, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 0, 3, double>) },
-        { {0, 6, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 0, 2, float>) },
-        { {0, 6, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 0, 2, double>) },
         { {0, 6, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 0, 3, float>) },
         { {0, 6, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 0, 3, double>) }
     };
@@ -131,7 +129,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (opening_criterion_kind, p, p_extra_m2l, dim, tvec)"\
             " in CountInteractionsAndM2LFFIHost -- Only supporting:\n"\
-            "(0, 1, 0, 2, float), (0, 1, 0, 2, double), (0, 1, 0, 3, float), (0, 1, 0, 3, double), (0, 2, 0, 2, float), (0, 2, 0, 2, double), (0, 2, 0, 3, float), (0, 2, 0, 3, double), (0, 3, 0, 2, float), (0, 3, 0, 2, double), (0, 3, 0, 3, float), (0, 3, 0, 3, double), (0, 4, 0, 2, float), (0, 4, 0, 2, double), (0, 4, 0, 3, float), (0, 4, 0, 3, double), (0, 5, 0, 2, float), (0, 5, 0, 2, double), (0, 5, 0, 3, float), (0, 5, 0, 3, double), (0, 6, 0, 2, float), (0, 6, 0, 2, double), (0, 6, 0, 3, float), (0, 6, 0, 3, double)"
+            "(0, 1, 0, 2, float), (0, 1, 0, 2, double), (0, 1, 0, 3, float), (0, 1, 0, 3, double), (0, 2, 0, 2, float), (0, 2, 0, 2, double), (0, 2, 0, 3, float), (0, 2, 0, 3, double), (0, 3, 0, 2, float), (0, 3, 0, 2, double), (0, 3, 0, 3, float), (0, 3, 0, 3, double), (0, 4, 0, 2, float), (0, 4, 0, 2, double), (0, 4, 0, 3, float), (0, 4, 0, 3, double), (0, 5, 0, 2, float), (0, 5, 0, 2, double), (0, 5, 0, 3, float), (0, 5, 0, 3, double), (0, 6, 0, 3, float), (0, 6, 0, 3, double)"
         );
     }
     const void* instance = it->second;
@@ -201,7 +199,7 @@ ffi::Error InsertInteractionsFFIHost(
     dim3 blockDim(32);
     dim3 gridDim(spl_nodes_recv.element_count() - 1);
     size_t smem = 0;
-    
+
     // Build a bundled argument list for cudaLaunchKernel
     void* node_range_arg = node_range.untyped_data();
     void* spl_nodes_recv_arg = spl_nodes_recv.untyped_data();
@@ -225,7 +223,7 @@ ffi::Error InsertInteractionsFFIHost(
         &opening_criterion_params_arg,
         &child_ilist_out_arg
     };
-    
+
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.

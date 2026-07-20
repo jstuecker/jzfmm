@@ -2,6 +2,7 @@
 #define MULTIPOLES_H
 
 #include <math_constants.h>
+#include <type_traits>
 
 #include "common/data.cuh"
 #include "common/math.cuh"
@@ -186,40 +187,133 @@ __device__ __forceinline__ void setupDnG(
 /*                                         M2M Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int p, int dim=3, typename tvec>
-__device__ __forceinline__ void shift_multipoles(Vec<NCOMB(p, dim),tvec>& mp, Vec<NCOMB(p, dim),tvec>& mp_out, const Vec<dim,tvec> dpos) {
-    constexpr int ncomb = NCOMB(p, dim);
-    // Shift in x
-    #pragma unroll
-    for(int ax=0; ax<dim; ax++) {
-        // shift dimension by dimension
-        for_each_multiindex<p,dim>([&](int iflat, int, int (&k)[dim]) {
-            tvec mnew = tvec(0);
-            #pragma unroll
-            for(int i = 0; i <= p; i++) {
-                if(i <= k[ax]) { // not in loop boundaries to avoid dynamic indexing / local memory
-                    int kfrom[dim];
-                    copy_multiindex<dim>(k, kfrom);
-                    kfrom[ax] = i;
-
-                    tvec coeff = tvec(binomial(k[ax], i));
-                    mnew += coeff * powi_upto6(dpos[ax], k[ax] - i) * mp[multi_to_flat<dim>(kfrom)];
-                }
-            }
-
-            mp_out[iflat] = mnew;
-        });
-
-        if(ax < dim - 1) {
-            #pragma unroll
-            for(int i=0; i<ncomb; i++)
-                mp[i] = mp_out[i];
-        }
+template<int begin, int end, typename F>
+__device__ __forceinline__ void m2m_static_for(F&& f) {
+    if constexpr (begin < end) {
+        f(std::integral_constant<int, begin>{});
+        m2m_static_for<begin + 1, end>(static_cast<F&&>(f));
     }
 }
 
+template<int i, typename F>
+__device__ __forceinline__ void m2m_static_for_reverse(F&& f) {
+    if constexpr (i >= 0) {
+        f(std::integral_constant<int, i>{});
+        m2m_static_for_reverse<i - 1>(static_cast<F&&>(f));
+    }
+}
+
+// A C array remains runtime-addressable and NVCC places the full p=6 state in local memory.
+// Compile-time-only access lets NVCC scalarize this structure into independent registers.
+template<int n, typename tvec>
+struct M2MRegisterArray {
+    tvec value;
+    M2MRegisterArray<n - 1, tvec> tail;
+
+    template<int i>
+    __device__ __forceinline__ tvec& get() {
+        static_assert(i >= 0 && i < n);
+        if constexpr (i == n - 1)
+            return value;
+        else
+            return tail.template get<i>();
+    }
+};
+
+template<typename tvec>
+struct M2MRegisterArray<0, tvec> {};
+
+template<int iflat, int dim>
+__host__ __device__ constexpr int m2m_flat_degree() {
+    static_assert(dim == 2 || dim == 3);
+    int degree = 0;
+    while(iflat >= NCOMB(degree, dim))
+        degree++;
+    return degree;
+}
+
+template<int iflat, int dim, int axis>
+__host__ __device__ constexpr int m2m_flat_component() {
+    static_assert(dim == 2 || dim == 3);
+    static_assert(axis >= 0 && axis < dim);
+    constexpr int degree = m2m_flat_degree<iflat, dim>();
+    const int offset = degree == 0 ? 0 : NCOMB(degree - 1, dim);
+    int remaining = iflat - offset;
+
+    if constexpr (dim == 2) {
+        if constexpr (axis == 1)
+            return remaining;
+        else
+            return degree - remaining;
+    } else {
+        int kz = 0;
+        while(remaining >= degree - kz + 1) {
+            remaining -= degree - kz + 1;
+            kz++;
+        }
+        if constexpr (axis == 2)
+            return kz;
+        else if constexpr (axis == 1)
+            return remaining;
+        else
+            return degree - remaining - kz;
+    }
+}
+
+template<int dim, int kx, int ky, int kz=0>
+__host__ __device__ constexpr int m2m_multi_to_flat() {
+    constexpr int degree = kx + ky + kz;
+    if constexpr (dim == 2) {
+        return degree * (degree + 1) / 2 + ky;
+    } else {
+        const int offset = (degree + 2) * (degree + 1) * degree / 6;
+        return offset + kz * (2 * degree + 3 - kz) / 2 + ky;
+    }
+}
+
+template<int p, int dim=3, typename tvec>
+__device__ __forceinline__ void shift_multipoles(
+    M2MRegisterArray<NCOMB(p, dim),tvec>& mp, const Vec<dim,tvec> dpos
+) {
+    constexpr int ncomb = NCOMB(p, dim);
+    m2m_static_for<0, dim>([&](auto ax_constant) {
+        constexpr int ax = decltype(ax_constant)::value;
+        // Descending degree keeps every source coefficient unmodified until it is consumed.
+        m2m_static_for_reverse<ncomb - 1>([&](auto iflat_constant) {
+            constexpr int iflat = decltype(iflat_constant)::value;
+            constexpr int kx = m2m_flat_component<iflat, dim, 0>();
+            constexpr int ky = m2m_flat_component<iflat, dim, 1>();
+            constexpr int kz = []() constexpr {
+                if constexpr (dim == 3)
+                    return m2m_flat_component<iflat, dim, 2>();
+                else
+                    return 0;
+            }();
+            constexpr int kax = ax == 0 ? kx : (ax == 1 ? ky : kz);
+            tvec mnew = tvec(0);
+
+            m2m_static_for<0, p + 1>([&](auto i_constant) {
+                constexpr int i = decltype(i_constant)::value;
+                if constexpr (i <= kax) {
+                    constexpr int from_kx = ax == 0 ? i : kx;
+                    constexpr int from_ky = ax == 1 ? i : ky;
+                    constexpr int from_kz = ax == 2 ? i : kz;
+                    constexpr int ifrom =
+                        m2m_multi_to_flat<dim, from_kx, from_ky, from_kz>();
+                    constexpr int displacement_power = kax - i;
+                    mnew += tvec(binomial(kax, i))
+                        * powi_upto6(dpos[ax], displacement_power)
+                        * mp.template get<ifrom>();
+                }
+            });
+            mp.template get<iflat>() = mnew;
+        });
+    });
+}
+
 template<int p, int dim, typename tvec>
-__global__ void SummarizeMultipoles(
+// One warp per block leaves NVCC free to favor registers over occupancy.
+__global__ __launch_bounds__(32, 1) void SummarizeMultipoles(
     const int* __restrict__ isplit,
     const tvec* __restrict__ mp_in,
     const Vec<dim,tvec>* __restrict__ xnode,
@@ -245,9 +339,11 @@ __global__ void SummarizeMultipoles(
         }
         return;
     }
-    
-    Vec<ncomb,tvec> mp_sum;
-    Vec<ncomb,tvec> mp_kahan;
+
+    // These long-lived accumulators intentionally reside in local memory. The translated child
+    // state below stays in registers, where it is repeatedly reused by the recurrence.
+    volatile tvec mp_sum[ncomb];
+    volatile tvec mp_kahan[ncomb];
 
     #pragma unroll
     for(int iM=0; iM < ncomb; iM++) {
@@ -256,28 +352,34 @@ __global__ void SummarizeMultipoles(
     }
 
     for(int ip = istart; ip < iend; ip++) {
-        Vec<ncomb,tvec> mp_new_in;
-        for(int iM=0; iM < ncomb; iM++) {
+        M2MRegisterArray<ncomb,tvec> mp_new;
+        m2m_static_for<0, ncomb>([&](auto iM_constant) {
+            constexpr int iM = decltype(iM_constant)::value;
             if(iM < ncomb_in)
-                mp_new_in[iM] = mp_in[ip * ncomb_in + iM];
+                mp_new.template get<iM>() = mp_in[ip * ncomb_in + iM];
             else
-                mp_new_in[iM] = tvec(0);
-        }
+                mp_new.template get<iM>() = tvec(0);
+        });
 
-        Vec<ncomb,tvec> mp_new_out;
+        shift_multipoles<p,dim,tvec>(mp_new, xchild[ip] - xnode[inode]);
 
-        shift_multipoles<p,dim,tvec>(mp_new_in, mp_new_out, xchild[ip] - xnode[inode]);
-
-        if(kahan)
-            kahan_add_vec<ncomb,tvec>(mp_sum, mp_new_out, mp_kahan);
-        else {
-            #pragma unroll
-            for(int iM=0; iM < ncomb; iM++) {
-                mp_sum[iM] += mp_new_out[iM];
-            }
+        if(kahan) {
+            m2m_static_for<0, ncomb>([&](auto iM_constant) {
+                constexpr int iM = decltype(iM_constant)::value;
+                tvec sum = mp_sum[iM];
+                tvec compensation = mp_kahan[iM];
+                kahan_add<tvec>(sum, mp_new.template get<iM>(), compensation);
+                mp_sum[iM] = sum;
+                mp_kahan[iM] = compensation;
+            });
+        } else {
+            m2m_static_for<0, ncomb>([&](auto iM_constant) {
+                constexpr int iM = decltype(iM_constant)::value;
+                mp_sum[iM] += mp_new.template get<iM>();
+            });
         }
     }
-    
+
     for(int iM=0; iM < ncomb; iM++) {
         mp_out[inode * ncomb + iM] = mp_sum[iM];
     }

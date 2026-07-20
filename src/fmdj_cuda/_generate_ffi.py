@@ -33,6 +33,10 @@ def add_dtype_template(func, buf_from, pos_types=float_types):
 def dtype_size_expression(buf_from):
     return f"({buf_from}.element_type() == DT::F64 ? sizeof(double) : sizeof(float))"
 
+def fmm_order_filter(*, p, dim, tvec, **_):
+    """Limit expensive high orders to the configurations supported in practice."""
+    return (p <= 5 or dim == 3) and (p <= 6 or tvec == "float")
+
 # ------------------------------------------------------------------------------------------------ #
 #                                        pair_summation.cuh                                       #
 # ------------------------------------------------------------------------------------------------ #
@@ -92,6 +96,7 @@ kernels["CountInteractionsAndM2L"].template_par["opening_criterion_kind"].instan
 kernels["CountInteractionsAndM2L"].template_par["dim"].instances = dimensions
 kernels["CountInteractionsAndM2L"].template_par["dim"].expression = "children_recv.dimensions()[1] - 1"
 add_dtype_template(kernels["CountInteractionsAndM2L"], "children_recv")
+kernels["CountInteractionsAndM2L"].template_filter = fmm_order_filter
 
 kernels["InsertInteractions"].grid_size_expression = "spl_nodes_recv.element_count() - 1"
 # kernels["InsertInteractions"].init_outputs_zero = True # this is actually expensive and not needed
@@ -117,19 +122,24 @@ kernels = parse.get_functions_from_file(
 )
 
 kernels["SummarizeMultipoles"].template_par["p"].instances = p_instance_values
+kernels["SummarizeMultipoles"].block_size_expression = 32
+kernels["SummarizeMultipoles"].grid_size_expression = "div_ceil(isplit.element_count() - 1, 32)"
 for kname in ("TranslateLocalToLocal", "TranslateLocalToLocal_XVJP"):
     kernels[kname].template_par["p"].instances = p_l2l_instance_values
 
 for kname in ("TranslateLocalToLocal",):
     kernels[kname].init_outputs_zero = True
 
-for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
+for kname in ("TranslateLocalToLocal", "TranslateLocalToLocal_XVJP"):
     kernels[kname].grid_size_expression = "div_ceil(isplit.element_count() - 1, block_size)"
+
+for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
     kernels[kname].par["nnodes"].expression = "isplit.element_count() - 1"
 
 for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
     kernels[kname].template_par["dim"].instances = dimensions
     kernels[kname].template_par["dim"].expression = "xnode.dimensions()[1]"
+    kernels[kname].template_filter = fmm_order_filter
 
 add_dtype_template(kernels["SummarizeMultipoles"], "mp_in")
 add_dtype_template(kernels["TranslateLocalToLocal"], "loc_node")
