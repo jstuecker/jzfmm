@@ -184,31 +184,31 @@ __device__ __forceinline__ void setupDnG(
 }
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                                         M2M Translation                                        */
+/*                              Compile-time coefficient utilities                                */
 /* ---------------------------------------------------------------------------------------------- */
 
 template<int begin, int end, typename F>
-__device__ __forceinline__ void m2m_static_for(F&& f) {
+__device__ __forceinline__ void ct_static_for(F&& f) {
     if constexpr (begin < end) {
         f(std::integral_constant<int, begin>{});
-        m2m_static_for<begin + 1, end>(static_cast<F&&>(f));
+        ct_static_for<begin + 1, end>(static_cast<F&&>(f));
     }
 }
 
 template<int i, typename F>
-__device__ __forceinline__ void m2m_static_for_reverse(F&& f) {
+__device__ __forceinline__ void ct_static_for_reverse(F&& f) {
     if constexpr (i >= 0) {
         f(std::integral_constant<int, i>{});
-        m2m_static_for_reverse<i - 1>(static_cast<F&&>(f));
+        ct_static_for_reverse<i - 1>(static_cast<F&&>(f));
     }
 }
 
-// A C array remains runtime-addressable and NVCC places the full p=6 state in local memory.
-// Compile-time-only access lets NVCC scalarize this structure into independent registers.
+// Runtime-addressable C arrays can be placed wholesale in local memory. Compile-time-only access
+// lets NVCC scalarize this structure into independent registers.
 template<int n, typename tvec>
-struct M2MRegisterArray {
+struct RegisterArray {
     tvec value;
-    M2MRegisterArray<n - 1, tvec> tail;
+    RegisterArray<n - 1, tvec> tail;
 
     template<int i>
     __device__ __forceinline__ tvec& get() {
@@ -221,10 +221,10 @@ struct M2MRegisterArray {
 };
 
 template<typename tvec>
-struct M2MRegisterArray<0, tvec> {};
+struct RegisterArray<0, tvec> {};
 
 template<int iflat, int dim>
-__host__ __device__ constexpr int m2m_flat_degree() {
+__host__ __device__ constexpr int ct_flat_degree() {
     static_assert(dim == 2 || dim == 3);
     int degree = 0;
     while(iflat >= NCOMB(degree, dim))
@@ -233,10 +233,10 @@ __host__ __device__ constexpr int m2m_flat_degree() {
 }
 
 template<int iflat, int dim, int axis>
-__host__ __device__ constexpr int m2m_flat_component() {
+__host__ __device__ constexpr int ct_flat_component() {
     static_assert(dim == 2 || dim == 3);
     static_assert(axis >= 0 && axis < dim);
-    constexpr int degree = m2m_flat_degree<iflat, dim>();
+    constexpr int degree = ct_flat_degree<iflat, dim>();
     const int offset = degree == 0 ? 0 : NCOMB(degree - 1, dim);
     int remaining = iflat - offset;
 
@@ -261,7 +261,7 @@ __host__ __device__ constexpr int m2m_flat_component() {
 }
 
 template<int dim, int kx, int ky, int kz=0>
-__host__ __device__ constexpr int m2m_multi_to_flat() {
+__host__ __device__ constexpr int ct_multi_to_flat() {
     constexpr int degree = kx + ky + kz;
     if constexpr (dim == 2) {
         return degree * (degree + 1) / 2 + ky;
@@ -271,35 +271,46 @@ __host__ __device__ constexpr int m2m_multi_to_flat() {
     }
 }
 
+__host__ __device__ constexpr int ct_factorial(int n) {
+    int result = 1;
+    for(int i = 2; i <= n; i++)
+        result *= i;
+    return result;
+}
+
+/* ---------------------------------------------------------------------------------------------- */
+/*                                         M2M Translation                                        */
+/* ---------------------------------------------------------------------------------------------- */
+
 template<int p, int dim=3, typename tvec>
 __device__ __forceinline__ void shift_multipoles(
-    M2MRegisterArray<NCOMB(p, dim),tvec>& mp, const Vec<dim,tvec> dpos
+    RegisterArray<NCOMB(p, dim),tvec>& mp, const Vec<dim,tvec> dpos
 ) {
     constexpr int ncomb = NCOMB(p, dim);
-    m2m_static_for<0, dim>([&](auto ax_constant) {
+    ct_static_for<0, dim>([&](auto ax_constant) {
         constexpr int ax = decltype(ax_constant)::value;
         // Descending degree keeps every source coefficient unmodified until it is consumed.
-        m2m_static_for_reverse<ncomb - 1>([&](auto iflat_constant) {
+        ct_static_for_reverse<ncomb - 1>([&](auto iflat_constant) {
             constexpr int iflat = decltype(iflat_constant)::value;
-            constexpr int kx = m2m_flat_component<iflat, dim, 0>();
-            constexpr int ky = m2m_flat_component<iflat, dim, 1>();
+            constexpr int kx = ct_flat_component<iflat, dim, 0>();
+            constexpr int ky = ct_flat_component<iflat, dim, 1>();
             constexpr int kz = []() constexpr {
                 if constexpr (dim == 3)
-                    return m2m_flat_component<iflat, dim, 2>();
+                    return ct_flat_component<iflat, dim, 2>();
                 else
                     return 0;
             }();
             constexpr int kax = ax == 0 ? kx : (ax == 1 ? ky : kz);
             tvec mnew = tvec(0);
 
-            m2m_static_for<0, p + 1>([&](auto i_constant) {
+            ct_static_for<0, p + 1>([&](auto i_constant) {
                 constexpr int i = decltype(i_constant)::value;
                 if constexpr (i <= kax) {
                     constexpr int from_kx = ax == 0 ? i : kx;
                     constexpr int from_ky = ax == 1 ? i : ky;
                     constexpr int from_kz = ax == 2 ? i : kz;
                     constexpr int ifrom =
-                        m2m_multi_to_flat<dim, from_kx, from_ky, from_kz>();
+                        ct_multi_to_flat<dim, from_kx, from_ky, from_kz>();
                     constexpr int displacement_power = kax - i;
                     mnew += tvec(binomial(kax, i))
                         * powi_upto6(dpos[ax], displacement_power)
@@ -352,8 +363,8 @@ __global__ __launch_bounds__(32, 1) void SummarizeMultipoles(
     }
 
     for(int ip = istart; ip < iend; ip++) {
-        M2MRegisterArray<ncomb,tvec> mp_new;
-        m2m_static_for<0, ncomb>([&](auto iM_constant) {
+        RegisterArray<ncomb,tvec> mp_new;
+        ct_static_for<0, ncomb>([&](auto iM_constant) {
             constexpr int iM = decltype(iM_constant)::value;
             if(iM < ncomb_in)
                 mp_new.template get<iM>() = mp_in[ip * ncomb_in + iM];
@@ -364,7 +375,7 @@ __global__ __launch_bounds__(32, 1) void SummarizeMultipoles(
         shift_multipoles<p,dim,tvec>(mp_new, xchild[ip] - xnode[inode]);
 
         if(kahan) {
-            m2m_static_for<0, ncomb>([&](auto iM_constant) {
+            ct_static_for<0, ncomb>([&](auto iM_constant) {
                 constexpr int iM = decltype(iM_constant)::value;
                 tvec sum = mp_sum[iM];
                 tvec compensation = mp_kahan[iM];
@@ -373,7 +384,7 @@ __global__ __launch_bounds__(32, 1) void SummarizeMultipoles(
                 mp_kahan[iM] = compensation;
             });
         } else {
-            m2m_static_for<0, ncomb>([&](auto iM_constant) {
+            ct_static_for<0, ncomb>([&](auto iM_constant) {
                 constexpr int iM = decltype(iM_constant)::value;
                 mp_sum[iM] += mp_new.template get<iM>();
             });
@@ -542,12 +553,86 @@ __global__ void TranslateLocalToLocal_XVJP(
 /*                                         M2L Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int p, int p_extra_m2l, int dim, typename tvec>
-struct GeneratedM2L {
-    static constexpr bool available = false;
-};
+template<int p, typename tvec>
+__device__ __forceinline__ void m2l_translator_ct_3d(
+    const Vec<3,tvec>& dx,
+    const Vec<NCOMB(p, 3),tvec>& Mp,
+    Vec<NCOMB(p, 3),tvec>& loc,
+    int radial_kernel_kind,
+    const tvec* radial_kernel_params
+) {
+    constexpr int ncomb = NCOMB(p, 3);
+    Vec<p + 1,tvec> G;
+    evaluate_radial_kernel_derivatives<p,tvec>(
+        radial_kernel_kind, dx.norm2(), radial_kernel_params, G
+    );
 
-#include "generated/m2l_specializations.cuh"
+    RegisterArray<ncomb,tvec> Dn;
+    Dn.template get<0>() = G[p];
+
+    // Tausch recurrence in the same order used by the generated translators.
+    ct_static_for_reverse<p - 1>([&](auto q_constant) {
+        constexpr int q = decltype(q_constant)::value;
+        constexpr int max_flat = NCOMB(p - q, 3) - 1;
+        ct_static_for_reverse<max_flat>([&](auto iflat_constant) {
+            constexpr int iflat = decltype(iflat_constant)::value;
+            if constexpr (iflat > 0) {
+                constexpr int kx = ct_flat_component<iflat, 3, 0>();
+                constexpr int ky = ct_flat_component<iflat, 3, 1>();
+                constexpr int kz = ct_flat_component<iflat, 3, 2>();
+                constexpr int axis = kz > 0 ? 2 : (ky > 0 ? 1 : 0);
+                constexpr int count = axis == 2 ? kz : (axis == 1 ? ky : kx);
+                constexpr int prev_kx = axis == 0 ? kx - 1 : kx;
+                constexpr int prev_ky = axis == 1 ? ky - 1 : ky;
+                constexpr int prev_kz = axis == 2 ? kz - 1 : kz;
+                constexpr int previous =
+                    ct_multi_to_flat<3, prev_kx, prev_ky, prev_kz>();
+
+                tvec value = dx[axis] * Dn.template get<previous>();
+                if constexpr (count > 1) {
+                    constexpr int prev2_kx = axis == 0 ? kx - 2 : kx;
+                    constexpr int prev2_ky = axis == 1 ? ky - 2 : ky;
+                    constexpr int prev2_kz = axis == 2 ? kz - 2 : kz;
+                    constexpr int previous2 =
+                        ct_multi_to_flat<3, prev2_kx, prev2_ky, prev2_kz>();
+                    value += tvec(count - 1) * Dn.template get<previous2>();
+                }
+                Dn.template get<iflat>() = value;
+            }
+        });
+        Dn.template get<0>() = G[q];
+    });
+
+    ct_static_for<0, ncomb>([&](auto kflat_constant) {
+        constexpr int kflat = decltype(kflat_constant)::value;
+        constexpr int kx = ct_flat_component<kflat, 3, 0>();
+        constexpr int ky = ct_flat_component<kflat, 3, 1>();
+        constexpr int kz = ct_flat_component<kflat, 3, 2>();
+        constexpr int kdegree = kx + ky + kz;
+        tvec Lnew = tvec(0);
+
+        ct_static_for<0, ncomb>([&](auto nflat_constant) {
+            constexpr int nflat = decltype(nflat_constant)::value;
+            constexpr int nx = ct_flat_component<nflat, 3, 0>();
+            constexpr int ny = ct_flat_component<nflat, 3, 1>();
+            constexpr int nz = ct_flat_component<nflat, 3, 2>();
+            constexpr int ndegree = nx + ny + nz;
+            if constexpr (kdegree + ndegree <= p) {
+                constexpr int dflat =
+                    ct_multi_to_flat<3, kx + nx, ky + ny, kz + nz>();
+                constexpr int nfac =
+                    ct_factorial(nx) * ct_factorial(ny) * ct_factorial(nz);
+                constexpr double inv_nfac = 1.0 / static_cast<double>(nfac);
+                Lnew += Dn.template get<dflat>() * Mp[nflat] * tvec(inv_nfac);
+            }
+        });
+
+        constexpr int kfac = ct_factorial(kx) * ct_factorial(ky) * ct_factorial(kz);
+        constexpr int sign = kdegree % 2 == 0 ? 1 : -1;
+        constexpr double scale = static_cast<double>(sign) / static_cast<double>(kfac);
+        loc[kflat] += Lnew * tvec(scale);
+    });
+}
 
 template<int p, int p_extra_m2l, int dim, typename tvec>
 __device__ __forceinline__ void m2l_translator(
@@ -562,9 +647,10 @@ __device__ __forceinline__ void m2l_translator(
     constexpr int pD = p > p_local ? p : p_local;
     constexpr int ncombD = NCOMB(pD, dim);
 
-    using SpecializedM2L = GeneratedM2L<p,p_extra_m2l,dim,tvec>;
-    if constexpr (SpecializedM2L::available) {
-        SpecializedM2L::apply(dx, Mp, loc, radial_kernel_kind, radial_kernel_params);
+    if constexpr (dim == 3 && p_extra_m2l == 0) {
+        m2l_translator_ct_3d<p,tvec>(
+            dx, Mp, loc, radial_kernel_kind, radial_kernel_params
+        );
     } else {
         Vec<ncombD,tvec> Dn;
         setupDnG<pD,dim,tvec>(dx, radial_kernel_kind, radial_kernel_params, Dn);

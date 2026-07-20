@@ -2,13 +2,8 @@ from pathlib import Path
 import os
 
 from jax_ffi_gen import parse, generator as gen
-from generate_m2l import main as generate_m2l
 
 HERE = Path(__file__).resolve().parent
-
-# Generate explicitly scheduled device translators before the FFI translation
-# units that include them.
-generate_m2l()
 
 dimensions = (2,3)
 direct_summation_dimensions = (2,3,4,5,6)
