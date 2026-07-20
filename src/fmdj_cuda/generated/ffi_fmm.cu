@@ -46,8 +46,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
     ffi::Result<ffi::AnyBuffer> ilist_child_count_out,
     int radial_kernel_kind,
     int opening_criterion_kind,
-    int p,
-    int p_extra_m2l
+    int p
 ) {
     int dim = children_recv.dimensions()[1] - 1;
     DT tvec = children_recv.element_type();
@@ -94,42 +93,42 @@ ffi::Error CountInteractionsAndM2LFFIHost(
 
     // We have template parameters, so we need to instantiate all valid templates.
     // We select a function pointer through a map with a stable, type-erased signature.
-    using TTuple = std::tuple<int, int, int, int, DT>;
+    using TTuple = std::tuple<int, int, int, DT>;
     using TFunc = const void*;
 
     static const std::map<TTuple, TFunc> instance_map = {
-        { {0, 1, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 0, 2, float>) },
-        { {0, 1, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 0, 2, double>) },
-        { {0, 1, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 0, 3, float>) },
-        { {0, 1, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 0, 3, double>) },
-        { {0, 2, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 0, 2, float>) },
-        { {0, 2, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 0, 2, double>) },
-        { {0, 2, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 0, 3, float>) },
-        { {0, 2, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 0, 3, double>) },
-        { {0, 3, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 0, 2, float>) },
-        { {0, 3, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 0, 2, double>) },
-        { {0, 3, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 0, 3, float>) },
-        { {0, 3, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 0, 3, double>) },
-        { {0, 4, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 0, 2, float>) },
-        { {0, 4, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 0, 2, double>) },
-        { {0, 4, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 0, 3, float>) },
-        { {0, 4, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 0, 3, double>) },
-        { {0, 5, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 0, 2, float>) },
-        { {0, 5, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 0, 2, double>) },
-        { {0, 5, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 0, 3, float>) },
-        { {0, 5, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 0, 3, double>) },
-        { {0, 6, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 0, 3, float>) },
-        { {0, 6, 0, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 0, 3, double>) }
+        { {0, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 2, float>) },
+        { {0, 1, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 2, double>) },
+        { {0, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 3, float>) },
+        { {0, 1, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 1, 3, double>) },
+        { {0, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 2, float>) },
+        { {0, 2, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 2, double>) },
+        { {0, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 3, float>) },
+        { {0, 2, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 2, 3, double>) },
+        { {0, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 2, float>) },
+        { {0, 3, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 2, double>) },
+        { {0, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 3, float>) },
+        { {0, 3, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 3, 3, double>) },
+        { {0, 4, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 2, float>) },
+        { {0, 4, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 2, double>) },
+        { {0, 4, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 3, float>) },
+        { {0, 4, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 4, 3, double>) },
+        { {0, 5, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 2, float>) },
+        { {0, 5, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 2, double>) },
+        { {0, 5, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 3, float>) },
+        { {0, 5, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 3, double>) },
+        { {0, 6, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 3, float>) },
+        { {0, 6, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 3, double>) }
     };
 
-    const TTuple key = TTuple(opening_criterion_kind, p, p_extra_m2l, dim, tvec);
+    const TTuple key = TTuple(opening_criterion_kind, p, dim, tvec);
 
     const auto it = instance_map.find(key);
     if (it == instance_map.end()) {
         return ffi::Error::Internal(
-            "\nUnsupported template parameter combination for (opening_criterion_kind, p, p_extra_m2l, dim, tvec)"\
+            "\nUnsupported template parameter combination for (opening_criterion_kind, p, dim, tvec)"\
             " in CountInteractionsAndM2LFFIHost -- Only supporting:\n"\
-            "(0, 1, 0, 2, float), (0, 1, 0, 2, double), (0, 1, 0, 3, float), (0, 1, 0, 3, double), (0, 2, 0, 2, float), (0, 2, 0, 2, double), (0, 2, 0, 3, float), (0, 2, 0, 3, double), (0, 3, 0, 2, float), (0, 3, 0, 2, double), (0, 3, 0, 3, float), (0, 3, 0, 3, double), (0, 4, 0, 2, float), (0, 4, 0, 2, double), (0, 4, 0, 3, float), (0, 4, 0, 3, double), (0, 5, 0, 2, float), (0, 5, 0, 2, double), (0, 5, 0, 3, float), (0, 5, 0, 3, double), (0, 6, 0, 3, float), (0, 6, 0, 3, double)"
+            "(0, 1, 2, float), (0, 1, 2, double), (0, 1, 3, float), (0, 1, 3, double), (0, 2, 2, float), (0, 2, 2, double), (0, 2, 3, float), (0, 2, 3, double), (0, 3, 2, float), (0, 3, 2, double), (0, 3, 3, float), (0, 3, 3, double), (0, 4, 2, float), (0, 4, 2, double), (0, 4, 3, float), (0, 4, 3, double), (0, 5, 2, float), (0, 5, 2, double), (0, 5, 3, float), (0, 5, 3, double), (0, 6, 3, float), (0, 6, 3, double)"
         );
     }
     const void* instance = it->second;
@@ -170,8 +169,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ret<ffi::AnyBuffer>() // ilist_child_count_out
         .Attr<int>("radial_kernel_kind")
         .Attr<int>("opening_criterion_kind")
-        .Attr<int>("p")
-        .Attr<int>("p_extra_m2l"),
+        .Attr<int>("p"),
     {xla::ffi::Traits::kCmdBufferCompatible}
 );
 

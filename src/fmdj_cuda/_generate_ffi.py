@@ -13,10 +13,6 @@ float_types_direct = ("float", "double")
 p_instance_values = (1, 2, 3, 4, 5, 6)
 p_m2l_instance_values = (1, 2, 3, 4, 5, 6)
 p_l2l_instance_values = (1, 2, 3, 4, 5, 6)
-# Keep the M2L instantiation matrix focused on the orders used in practice. In
-# particular, (p=6, p_extra_m2l=1) is prohibitively expensive to compile and is
-# not part of the current register-pressure work.
-p_extra_m2l_instance_values = (0,)
 radial_kernel_instance_values = (0, 1, 2, 3)
 opening_criterion_instance_values = (0,)
 default_includes = ["../common/math.cuh"]
@@ -86,7 +82,6 @@ kernels["CountInteractionsAndM2L"].grid_size_expression = "spl_nodes_recv.elemen
 kernels["CountInteractionsAndM2L"].block_size_expression = 32
 kernels["CountInteractionsAndM2L"].par["ilist_child_count_out"].init_zero = True
 kernels["CountInteractionsAndM2L"].template_par["p"].instances = p_m2l_instance_values
-kernels["CountInteractionsAndM2L"].template_par["p_extra_m2l"].instances = p_extra_m2l_instance_values
 kernels["CountInteractionsAndM2L"].template_par["opening_criterion_kind"].instances = opening_criterion_instance_values
 kernels["CountInteractionsAndM2L"].template_par["dim"].instances = dimensions
 kernels["CountInteractionsAndM2L"].template_par["dim"].expression = "children_recv.dimensions()[1] - 1"

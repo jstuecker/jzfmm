@@ -14,7 +14,6 @@ part = gaussian_blob(N=int(1024*1024), scale=1.0, mass=1.)
 cfg_fmm = FMMConfig(
     kernel=PlummerKernel(softening=1e-2),
     kahan_summation=False,
-    p_extra_m2l=0,
 )
 cfg_direct = DirectSummationConfig(kernel=cfg_fmm.kernel, kahan_summation=True)
 G = UnitConfig().G()

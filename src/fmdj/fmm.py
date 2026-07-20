@@ -89,15 +89,7 @@ def _fmm_node_to_node(
     kernel = cfg_fmm.kernel
     dim = child_recv.poslvl.pos.shape[-1]
 
-    if cfg_fmm.p == 5 and cfg_fmm.p_extra_m2l == 1 and dim == 3:
-        warnings.warn(
-            "FMMConfig(p=5, p_extra_m2l=1) currently makes the CUDA M2L kernel use local memory "
-            "and will be extremely slow. Please prefer other p+p_extra_m2l <= 5.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-
-    if child_src.mp.dtype == jnp.float64 and cfg_fmm.p + cfg_fmm.p_extra_m2l >= 6:
+    if child_src.mp.dtype == jnp.float64 and cfg_fmm.p >= 6:
         warnings.warn(
             "For double precision, M2L order 6 and above currently spills registers "
             "and can be substantially slower than order 5.",
@@ -117,9 +109,7 @@ def _fmm_node_to_node(
     kernel_params = kernel.params(dtype=dtype)
     opening = cfg_fmm.opening
     opening_params = opening.params(dtype=dtype)
-    p_local = cfg_fmm.p + cfg_fmm.p_extra_m2l
-    assert p_local >= 0, "p + p_extra_m2l must be non-negative"
-    out_loc = jax.ShapeDtypeStruct((size, num_multi(p_local, dim=dim)), dtype)
+    out_loc = jax.ShapeDtypeStruct((size, num_multi(cfg_fmm.p, dim=dim)), dtype)
     if loc_in is None:
         loc_in = jnp.zeros(out_loc.shape, dtype=out_loc.dtype)
         loc_in = pcast_like(loc_in, spl_recv)
@@ -135,7 +125,6 @@ def _fmm_node_to_node(
         children_recv, children_src, child_src.mp, kernel_params, opening_params,
         single_thread_per_receiver, loc_in,
         p=np.int32(cfg_fmm.p),
-        p_extra_m2l=np.int32(cfg_fmm.p_extra_m2l),
         radial_kernel_kind=np.int32(kernel.kind_id()),
         opening_criterion_kind=np.int32(opening.kind_id()),
     )
@@ -204,9 +193,7 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg_fmm: FMMConfig):
             ngroup=32, size_super=size
         )
 
-    p_local = cfg_fmm.p + cfg_fmm.p_extra_m2l
-    assert p_local >= 0, "p + p_extra_m2l must be non-negative"
-    loc = jnp.zeros((size, num_multi(p_local, dim=dim)), dtype=mph.data.dtype)
+    loc = jnp.zeros((size, num_multi(cfg_fmm.p, dim=dim)), dtype=mph.data.dtype)
     if in_smap:
         loc = pcast_like(loc, mph.data)
 
@@ -499,10 +486,6 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg_fmm: FMMCon
         return (loc_part, ilist), (pos, mp, ispl, xnode, loc_node)
     
     def eval_bwd(pout, res, grads):
-        assert cfg_fmm.p_extra_m2l == 0, (
-            "Differentiating through p_extra_m2l != 0 is not supported yet. "
-            "The forward pass supports boosted M2L locals, but the rectangular M2L adjoint still needs to be added."
-        )
         pos, mp, ispl, xnode, loc_node = res
         gloc = grads[0]
 

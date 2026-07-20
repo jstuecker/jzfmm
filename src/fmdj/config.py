@@ -149,7 +149,6 @@ class FMMConfig:
 
     # Multipole order:
     p : int = 5
-    p_extra_m2l : int = 0
 
     # Opening criterion
     opening : OpeningCriterionConfig = field(default_factory=OpeningByAngle)

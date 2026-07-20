@@ -168,7 +168,6 @@ def run_benchmark(setup: str, reference: str, recompute_direct: bool = False) ->
         kahan_summation=False,
         alloc_fac_ilist=1024,
         opening=OpeningByAngle(),
-        p_extra_m2l=1,
     )
     G = UnitConfig().G()
 
@@ -185,7 +184,6 @@ def run_benchmark(setup: str, reference: str, recompute_direct: bool = False) ->
                 cfg_fmm,
                 p=p,
                 opening=OpeningByAngle(theta=float(theta)),
-                p_extra_m2l=1 if p<5 else 0
             )
             dt, force = time_fmm(part, cfg_fmm_p, G)
             rerr = relative_force_error(force, force_ref)

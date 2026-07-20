@@ -111,11 +111,11 @@ def bench_distr_steps(jax_bench):
     )
 
 @pytest.mark.skip_in_quick
-@pytest.mark.parametrize("p, pex", ((2, 1), (3, 0), (3, 1), (4, 0), (4, 1), (5,0)))
+@pytest.mark.parametrize("p", (2, 3, 4, 5))
 @pytest.mark.skipif(jax.device_count() <= 1, reason="Requires multiple devices")
-def bench_distr_p(jax_bench, p, pex):
+def bench_distr_p(jax_bench, p):
     N = int(1e7)
-    cfg_fmm = FMMConfig(fmm=FMMConfig(p=p, p_extra_m2l=pex))
+    cfg_fmm = FMMConfig(p=p)
     # cfg_fmm.tree.alloc_fac_nodes = 1.8
     # cfg_fmm.alloc_fac_ilist = 64.
 

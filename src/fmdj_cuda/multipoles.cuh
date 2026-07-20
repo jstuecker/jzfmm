@@ -634,63 +634,43 @@ __device__ __forceinline__ void m2l_translator_ct_3d(
     });
 }
 
-template<int p, int p_extra_m2l, int dim, typename tvec>
+template<int p, int dim, typename tvec>
 __device__ __forceinline__ void m2l_translator(
     Vec<dim,tvec> dx,
     const Vec<NCOMB(p, dim),tvec>& Mp,
-    Vec<NCOMB(p + p_extra_m2l, dim),tvec>& loc,
+    Vec<NCOMB(p, dim),tvec>& loc,
     int radial_kernel_kind,
     const tvec* radial_kernel_params
 ) {
-    constexpr int p_local = p + p_extra_m2l;
-    static_assert(p_local >= 0, "p + p_extra_m2l must be non-negative");
-    constexpr int pD = p > p_local ? p : p_local;
-    constexpr int ncombD = NCOMB(pD, dim);
-
-    if constexpr (dim == 3 && p_extra_m2l == 0) {
+    if constexpr (dim == 3) {
         m2l_translator_ct_3d<p,tvec>(
             dx, Mp, loc, radial_kernel_kind, radial_kernel_params
         );
     } else {
-        Vec<ncombD,tvec> Dn;
-        setupDnG<pD,dim,tvec>(dx, radial_kernel_kind, radial_kernel_params, Dn);
+        Vec<NCOMB(p, dim),tvec> Dn;
+        setupDnG<p,dim,tvec>(dx, radial_kernel_kind, radial_kernel_params, Dn);
 
-        for_each_multiindex<p_local,dim>([&](int kflat, int ksum, int (&k)[dim]) {
+        for_each_multiindex<p,dim>([&](int kflat, int ksum, int (&k)[dim]) {
         tvec Lnew = tvec(0);
 
         for_each_multiindex<p,dim>([&](int nflat, int nsum, int (&n)[dim]) {
-            if(ksum + nsum <= pD) {
-                if constexpr (dim == 3) {
-                    // This specialization helps with keeping the arrays in registers
-                    // for dim = 3 and p = 5. Why? I don't know. For that case it makes
-                    // a 40x performance difference
-                    const int dn[3] = {k[0] + n[0], k[1] + n[1], k[2] + n[2]};
-                    const tvec Dnk = Dn[multi_to_flat<3>(dn)];
-                    const tvec Mpn = Mp[nflat];
-                    const tvec infvac = tvec(1) / tvec(fact3f(n[0], n[1], n[2]));
-                    Lnew += Dnk * Mpn * infvac;
-                } else {
-                    // General case, stays in registers for most setups
-                    int dn[dim];
-                    #pragma unroll
-                    for(int d = 0; d < dim; d++) {
-                        dn[d] = k[d] + n[d];
-                    }
-                    tvec Dnk = Dn[multi_to_flat<dim>(dn)];
-                    tvec Mpn = Mp[nflat];
-
-                    const tvec infvac = tvec(1) / multiindex_factorial<dim,tvec>(n);
-                    Lnew += Dnk * Mpn * infvac;
+            if(ksum + nsum <= p) {
+                // General non-3D case, stays in registers for most setups.
+                int dn[dim];
+                #pragma unroll
+                for(int d = 0; d < dim; d++) {
+                    dn[d] = k[d] + n[d];
                 }
+                tvec Dnk = Dn[multi_to_flat<dim>(dn)];
+                tvec Mpn = Mp[nflat];
+
+                const tvec infvac = tvec(1) / multiindex_factorial<dim,tvec>(n);
+                Lnew += Dnk * Mpn * infvac;
             }
         });
 
         const tvec sign = ksum % 2 == 0 ? tvec(1) : tvec(-1);
-        tvec fac;
-        if constexpr (dim == 3)
-            fac = sign / tvec(fact3f(k[0], k[1], k[2]));
-        else
-            fac = sign / multiindex_factorial<dim,tvec>(k);
+        const tvec fac = sign / multiindex_factorial<dim,tvec>(k);
 
         loc[kflat] += Lnew * fac;
         });
