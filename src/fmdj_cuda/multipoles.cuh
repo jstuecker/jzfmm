@@ -596,15 +596,15 @@ __global__ void TranslateLocalToLocal_XVJP(
 /*                                         M2L Translation                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-template<int p, typename tvec>
-__device__ __forceinline__ void m2l_translator_ct_3d(
-    const Vec<3,tvec>& dx,
-    const Vec<NCOMB(p, 3),tvec>& Mp,
-    Vec<NCOMB(p, 3),tvec>& loc,
+template<int p, int dim, typename tvec>
+__device__ __forceinline__ void m2l_translator(
+    Vec<dim,tvec> dx,
+    const Vec<NCOMB(p, dim),tvec>& Mp,
+    Vec<NCOMB(p, dim),tvec>& loc,
     int radial_kernel_kind,
     const tvec* radial_kernel_params
 ) {
-    constexpr int ncomb = NCOMB(p, 3);
+    constexpr int ncomb = NCOMB(p, dim);
     Vec<p + 1,tvec> G;
     evaluate_radial_kernel_derivatives<p,tvec>(
         radial_kernel_kind, dx.norm2(), radial_kernel_params, G
@@ -616,20 +616,25 @@ __device__ __forceinline__ void m2l_translator_ct_3d(
     // Tausch recurrence in the same order used by the generated translators.
     ct_static_for_reverse<p - 1>([&](auto q_constant) {
         constexpr int q = decltype(q_constant)::value;
-        constexpr int max_flat = NCOMB(p - q, 3) - 1;
+        constexpr int max_flat = NCOMB(p - q, dim) - 1;
         ct_static_for_reverse<max_flat>([&](auto iflat_constant) {
             constexpr int iflat = decltype(iflat_constant)::value;
             if constexpr (iflat > 0) {
-                constexpr int kx = ct_flat_component<iflat, 3, 0>();
-                constexpr int ky = ct_flat_component<iflat, 3, 1>();
-                constexpr int kz = ct_flat_component<iflat, 3, 2>();
+                constexpr int kx = ct_flat_component<iflat, dim, 0>();
+                constexpr int ky = ct_flat_component<iflat, dim, 1>();
+                constexpr int kz = []() constexpr {
+                    if constexpr (dim == 3)
+                        return ct_flat_component<iflat, dim, 2>();
+                    else
+                        return 0;
+                }();
                 constexpr int axis = kz > 0 ? 2 : (ky > 0 ? 1 : 0);
                 constexpr int count = axis == 2 ? kz : (axis == 1 ? ky : kx);
                 constexpr int prev_kx = axis == 0 ? kx - 1 : kx;
                 constexpr int prev_ky = axis == 1 ? ky - 1 : ky;
                 constexpr int prev_kz = axis == 2 ? kz - 1 : kz;
                 constexpr int previous =
-                    ct_multi_to_flat<3, prev_kx, prev_ky, prev_kz>();
+                    ct_multi_to_flat<dim, prev_kx, prev_ky, prev_kz>();
 
                 tvec value = dx[axis] * Dn.template get<previous>();
                 if constexpr (count > 1) {
@@ -637,7 +642,7 @@ __device__ __forceinline__ void m2l_translator_ct_3d(
                     constexpr int prev2_ky = axis == 1 ? ky - 2 : ky;
                     constexpr int prev2_kz = axis == 2 ? kz - 2 : kz;
                     constexpr int previous2 =
-                        ct_multi_to_flat<3, prev2_kx, prev2_ky, prev2_kz>();
+                        ct_multi_to_flat<dim, prev2_kx, prev2_ky, prev2_kz>();
                     value += tvec(count - 1) * Dn.template get<previous2>();
                 }
                 Dn.template get<iflat>() = value;
@@ -648,21 +653,31 @@ __device__ __forceinline__ void m2l_translator_ct_3d(
 
     ct_static_for<0, ncomb>([&](auto kflat_constant) {
         constexpr int kflat = decltype(kflat_constant)::value;
-        constexpr int kx = ct_flat_component<kflat, 3, 0>();
-        constexpr int ky = ct_flat_component<kflat, 3, 1>();
-        constexpr int kz = ct_flat_component<kflat, 3, 2>();
+        constexpr int kx = ct_flat_component<kflat, dim, 0>();
+        constexpr int ky = ct_flat_component<kflat, dim, 1>();
+        constexpr int kz = []() constexpr {
+            if constexpr (dim == 3)
+                return ct_flat_component<kflat, dim, 2>();
+            else
+                return 0;
+        }();
         constexpr int kdegree = kx + ky + kz;
         tvec Lnew = tvec(0);
 
         ct_static_for<0, ncomb>([&](auto nflat_constant) {
             constexpr int nflat = decltype(nflat_constant)::value;
-            constexpr int nx = ct_flat_component<nflat, 3, 0>();
-            constexpr int ny = ct_flat_component<nflat, 3, 1>();
-            constexpr int nz = ct_flat_component<nflat, 3, 2>();
+            constexpr int nx = ct_flat_component<nflat, dim, 0>();
+            constexpr int ny = ct_flat_component<nflat, dim, 1>();
+            constexpr int nz = []() constexpr {
+                if constexpr (dim == 3)
+                    return ct_flat_component<nflat, dim, 2>();
+                else
+                    return 0;
+            }();
             constexpr int ndegree = nx + ny + nz;
             if constexpr (kdegree + ndegree <= p) {
                 constexpr int dflat =
-                    ct_multi_to_flat<3, kx + nx, ky + ny, kz + nz>();
+                    ct_multi_to_flat<dim, kx + nx, ky + ny, kz + nz>();
                 constexpr int nfac =
                     ct_factorial(nx) * ct_factorial(ny) * ct_factorial(nz);
                 constexpr double inv_nfac = 1.0 / static_cast<double>(nfac);
@@ -675,49 +690,6 @@ __device__ __forceinline__ void m2l_translator_ct_3d(
         constexpr double scale = static_cast<double>(sign) / static_cast<double>(kfac);
         loc[kflat] += Lnew * tvec(scale);
     });
-}
-
-template<int p, int dim, typename tvec>
-__device__ __forceinline__ void m2l_translator(
-    Vec<dim,tvec> dx,
-    const Vec<NCOMB(p, dim),tvec>& Mp,
-    Vec<NCOMB(p, dim),tvec>& loc,
-    int radial_kernel_kind,
-    const tvec* radial_kernel_params
-) {
-    if constexpr (dim == 3) {
-        m2l_translator_ct_3d<p,tvec>(
-            dx, Mp, loc, radial_kernel_kind, radial_kernel_params
-        );
-    } else {
-        Vec<NCOMB(p, dim),tvec> Dn;
-        setupDnG<p,dim,tvec>(dx, radial_kernel_kind, radial_kernel_params, Dn);
-
-        for_each_multiindex<p,dim>([&](int kflat, int ksum, int (&k)[dim]) {
-        tvec Lnew = tvec(0);
-
-        for_each_multiindex<p,dim>([&](int nflat, int nsum, int (&n)[dim]) {
-            if(ksum + nsum <= p) {
-                // General non-3D case, stays in registers for most setups.
-                int dn[dim];
-                #pragma unroll
-                for(int d = 0; d < dim; d++) {
-                    dn[d] = k[d] + n[d];
-                }
-                tvec Dnk = Dn[multi_to_flat<dim>(dn)];
-                tvec Mpn = Mp[nflat];
-
-                const tvec infvac = tvec(1) / multiindex_factorial<dim,tvec>(n);
-                Lnew += Dnk * Mpn * infvac;
-            }
-        });
-
-        const tvec sign = ksum % 2 == 0 ? tvec(1) : tvec(-1);
-        const tvec fac = sign / multiindex_factorial<dim,tvec>(k);
-
-        loc[kflat] += Lnew * fac;
-        });
-    }
 }
 
 #endif // MULTIPOLES_H
