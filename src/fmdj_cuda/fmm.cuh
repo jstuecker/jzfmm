@@ -49,6 +49,8 @@ __global__ void CountInteractionsAndM2L(
 ) {
     constexpr int ncomb_mp = NCOMB(p, dim);
     constexpr int ncomb_loc = NCOMB(p, dim);
+    constexpr int m2l_blocksize =
+        (p == 7 && std::is_same_v<tvec, double>) ? 16 : BLOCKSIZE;
     auto opening_criterion = OpeningCriterion<opening_criterion_kind>::template make_params<tvec>(opening_criterion_params);
 
     // Node A info:
@@ -88,21 +90,21 @@ __global__ void CountInteractionsAndM2L(
         // Child B info. This is transposed to reduce smem bank conflicts
         // Todo: BLOCKSIZE does not need to be a compile time constant here.
         //       Make it more flexible! (Need to adapt the warp communication scheme below though!)
-        __shared__ Vec<dim,tvec> posB[BLOCKSIZE];
-        __shared__ Vec<ncomb_mp,tvec> mpB[BLOCKSIZE];
+        __shared__ Vec<dim,tvec> posB[m2l_blocksize];
+        __shared__ Vec<ncomb_mp,tvec> mpB[m2l_blocksize];
         
         // Interaction list info:
         int2 ilist_range = {spl_ilist[nodeid], spl_ilist[nodeid + 1]};
         __syncthreads();
 
-        __shared__ int2 segments[BLOCKSIZE];
+        __shared__ int2 segments[m2l_blocksize];
         SegmentManager seg_mgr(
             ilist_isrc,
             spl_nodes_src,
             segments,
             ilist_range.x,
             ilist_range.y,
-            BLOCKSIZE
+            m2l_blocksize
         );
 
         // Todo:
@@ -164,9 +166,9 @@ __global__ void CountInteractionsAndM2L(
                 any_interacts = any_interacts || interact_now;
 
                 // Sum over all threads
-                num_open[i] += __popc(__ballot_sync(ALLTHREADS, actually_open));
+                num_open[i] += __popc(__ballot_sync(__activemask(), actually_open));
                 // Flag the active m2l interactions for this child
-                unsigned int interact_flags = __ballot_sync(ALLTHREADS, interact_now);
+                unsigned int interact_flags = __ballot_sync(__activemask(), interact_now);
                 // we only store the flag for the child that we need to write to later
                 interact_flags_wa = (valid_thread && (i == a_write)) ? interact_flags : interact_flags_wa;
             }
@@ -227,7 +229,7 @@ __global__ void CountInteractionsAndM2L(
 
         // Now we need to reduce the local terms accross threads
         // with the same output particle.
-        __shared__ Vec<ncomb_loc,tvec> loc_partials[BLOCKSIZE];
+        __shared__ Vec<ncomb_loc,tvec> loc_partials[m2l_blocksize];
         loc_partials[threadIdx.x] = LocA;
         __syncthreads();
 

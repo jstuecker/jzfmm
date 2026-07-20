@@ -26,7 +26,7 @@ def dtype_size_expression(buf_from):
 
 def fmm_order_filter(*, p, dim, tvec, **_):
     """Limit expensive high orders to the configurations supported in practice."""
-    return (p <= 5 or dim == 3) and (p <= 6 or tvec == "float")
+    return p <= 5 or dim == 3
 
 # ------------------------------------------------------------------------------------------------ #
 #                                        pair_summation.cuh                                       #
@@ -79,7 +79,8 @@ kernels = parse.get_functions_from_file(
 )
 
 kernels["CountInteractionsAndM2L"].grid_size_expression = "spl_nodes_recv.element_count() - 1"
-kernels["CountInteractionsAndM2L"].block_size_expression = 32
+kernels["CountInteractionsAndM2L"].block_size_expression = \
+    "(p == 7 && children_recv.element_type() == DT::F64 ? 16 : 32)"
 kernels["CountInteractionsAndM2L"].par["ilist_child_count_out"].init_zero = True
 kernels["CountInteractionsAndM2L"].template_par["p"].instances = p_m2l_instance_values
 kernels["CountInteractionsAndM2L"].template_par["opening_criterion_kind"].instances = opening_criterion_instance_values

@@ -46,7 +46,7 @@ fig, axs = plt.subplots(2,2, figsize=(6.5,6.5))
 def hist(ax, rerr, p):
     ax.hist(np.log10(rerr), bins=np.linspace(-7, 0, num=57), label=f'p={p}', alpha=0.6, color="C%d"%(p-1), edgecolor='black', density=True, histtype="stepfilled")
 
-for p in (1,2,3,4,5):
+for p in (1,2,3,4,5,6,7):
     gposm_phi_fmm = jax.jit(jax.grad(lambda part: fmm(part, p).potential().sum()))(part)
     gposm_accabs_fmm = jax.jit(jax.grad(lambda part: jnp.abs(fmm(part, p).force()).sum()))(part)
 

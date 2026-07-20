@@ -50,7 +50,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
 ) {
     int dim = children_recv.dimensions()[1] - 1;
     DT tvec = children_recv.element_type();
-    dim3 blockDim(32);
+    dim3 blockDim((p == 7 && children_recv.element_type() == DT::F64 ? 16 : 32));
     dim3 gridDim(spl_nodes_recv.element_count() - 1);
     size_t smem = 0;
 
@@ -119,7 +119,8 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         { {0, 5, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 5, 3, double>) },
         { {0, 6, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 3, float>) },
         { {0, 6, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 3, double>) },
-        { {0, 7, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 7, 3, float>) }
+        { {0, 7, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 7, 3, float>) },
+        { {0, 7, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 7, 3, double>) }
     };
 
     const TTuple key = TTuple(opening_criterion_kind, p, dim, tvec);
@@ -129,7 +130,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (opening_criterion_kind, p, dim, tvec)"\
             " in CountInteractionsAndM2LFFIHost -- Only supporting:\n"\
-            "(0, 1, 2, float), (0, 1, 2, double), (0, 1, 3, float), (0, 1, 3, double), (0, 2, 2, float), (0, 2, 2, double), (0, 2, 3, float), (0, 2, 3, double), (0, 3, 2, float), (0, 3, 2, double), (0, 3, 3, float), (0, 3, 3, double), (0, 4, 2, float), (0, 4, 2, double), (0, 4, 3, float), (0, 4, 3, double), (0, 5, 2, float), (0, 5, 2, double), (0, 5, 3, float), (0, 5, 3, double), (0, 6, 3, float), (0, 6, 3, double), (0, 7, 3, float)"
+            "(0, 1, 2, float), (0, 1, 2, double), (0, 1, 3, float), (0, 1, 3, double), (0, 2, 2, float), (0, 2, 2, double), (0, 2, 3, float), (0, 2, 3, double), (0, 3, 2, float), (0, 3, 2, double), (0, 3, 3, float), (0, 3, 3, double), (0, 4, 2, float), (0, 4, 2, double), (0, 4, 3, float), (0, 4, 3, double), (0, 5, 2, float), (0, 5, 2, double), (0, 5, 3, float), (0, 5, 3, double), (0, 6, 3, float), (0, 6, 3, double), (0, 7, 3, float), (0, 7, 3, double)"
         );
     }
     const void* instance = it->second;
