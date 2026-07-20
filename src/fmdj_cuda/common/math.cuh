@@ -140,6 +140,7 @@ tvec powi_upto6(tvec x, int n) {
         case 4: { tvec x2 = x * x; return x2 * x2; }
         case 5: { tvec x2 = x * x; tvec x4 = x2 * x2; return x4 * x; }
         case 6: { tvec x2 = x * x; tvec x3 = x2 * x; return x3 * x3; }
+        case 7: { tvec x2 = x * x; tvec x3 = x2 * x; return x3 * x3 * x; }
         default: // fallback if someone passes >6
             if constexpr (std::is_same_v<tvec, float>) {
                 return powf(x, float(n));

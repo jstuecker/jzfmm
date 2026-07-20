@@ -65,7 +65,7 @@ def bench_fmm_p(jax_bench, p, pos_mass_z):
                part=pos_mass_z, cfg_fmm=cfg_fmm)
 
 @pytest.mark.shrink_in_quick(keep_index=0)
-@pytest.mark.parametrize("p", [3,4,5,6])
+@pytest.mark.parametrize("p", [3,4,5,6,7])
 def bench_fmm_steps(jax_bench, p):
     cfg_fmm = FMMConfig(p=p)
 

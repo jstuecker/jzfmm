@@ -116,8 +116,9 @@ endif()
 
 message(STATUS "XLA include directory: ${XLA_DIR}")
 
-# The following flag is debug output, helping to diagnose local memory spilling in cuda kernels:
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xptxas=-v")
+# The p=7 compile-time M2L contraction exceeds NVCC's default template depth.
+# The following ptxas flag also reports register and local-memory usage.
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --ftemplate-depth=512 -Xptxas=-v")
 # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -L${_cuda_lib} -Xlinker -rpath,${_cuda_lib}")
 
 include_directories(SYSTEM ${XLA_DIR})
