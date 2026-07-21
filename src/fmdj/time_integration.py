@@ -145,6 +145,36 @@ def reverse_timestep_dkd_vjp(p_next: Particles, gp_next: Particles, dt, cfg: Sim
 
     return p_prev, gp_prev
 
+def reverse_timestep_dkd_lattice_vjp(p_next: Particles, gp_next: Particles, dt, cfg: SimConfig, tend=0.):
+    p_prev = replace(p_next)
+    dx, dv, int_dtype = cfg.integrator.dx, cfg.integrator.dv, cfg.integrator.int_dtype
+
+    with jax.enable_x64(int_dtype == jnp.int64):
+        p_prev.pos = p_prev.pos - jnp.rint(p_prev.vel * (0.5 * dt * dv / dx)).astype(int_dtype)
+
+    p_mid = dequantize_particles(p_prev, cfg.integrator)
+
+    def mid_acc(p):
+        return force_and_potential(p, cfg=cfg).force() + ext_acc(p, tend - 0.5 * dt, cfg)
+
+    acc_mid, acc_vjp = jax.vjp(mid_acc, p_mid)
+    with jax.enable_x64(int_dtype == jnp.int64):
+        p_prev.vel = p_prev.vel - jnp.rint(dt * acc_mid / dv).astype(int_dtype)
+        p_prev.pos = p_prev.pos - jnp.rint(p_prev.vel * (0.5 * dt * dv / dx)).astype(int_dtype)
+
+    gv = gp_next.vel + 0.5 * dt * gp_next.pos
+    gmid, = acc_vjp(dt * gv) # dt * gv corresponds to the gradient w.r.t. to the output force
+
+    gp_prev = replace(
+        gp_next,
+        pos=gp_next.pos + gmid.pos,
+        vel=gv + 0.5 * dt * (gp_next.pos + gmid.pos),
+        mass=gp_next.mass + gmid.mass,
+        loc=None,
+    )
+
+    return p_prev, gp_prev
+
 def timestep(p : Particles, dt, cfg: SimConfig, t=0.):
     if isinstance(cfg.integrator, KDKConfig):
         return timestep_kdk(p, dt=dt, cfg=cfg, t=t)
@@ -196,17 +226,21 @@ def simulate(
         pfin = _simulate(p, ts, cfg)
         return pfin, pfin
     def eval_bwd(p: Particles, gp: jax.Array):
-        assert isinstance(cfg.integrator, DKDConfig), (
-            f"Differentiation through simulate is only supported with DKDConfig, "
+        assert isinstance(cfg.integrator, (DKDConfig, DKDLatticeConfig)), (
+            f"Differentiation through simulate is only supported with DKDConfig or DKDLatticeConfig, "
             f"but cfg.integrator is {cfg.integrator!r}."
         )
+        if isinstance(cfg.integrator, DKDLatticeConfig):
+            p = quantize_particles(p, cfg.integrator)
 
         def step(i, carry):
             p, gp = carry
             t0, t1 = ts[nsteps - i - 1], ts[nsteps - i]
             dt = t1 - t0
 
-            return reverse_timestep_dkd_vjp(p, gp, dt=dt, cfg=cfg, tend=t1)
+            if isinstance(cfg.integrator, DKDConfig):
+                return reverse_timestep_dkd_vjp(p, gp, dt=dt, cfg=cfg, tend=t1)
+            return reverse_timestep_dkd_lattice_vjp(p, gp, dt=dt, cfg=cfg, tend=t1)
 
         p_prev, gp_prev = jax.lax.fori_loop(0, nsteps, step, (p, gp))
         
