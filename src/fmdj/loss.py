@@ -84,7 +84,15 @@ def maximum_mean_discrepancy(
 
     The MMD is evaluated as a signed kernel energy, using positive masses for
     ``part`` and negative masses for ``part_target``: ``-sum_i m_i phi_i``.
+    Self interactions must be enabled so that the kernel diagonal is included.
     """
+    if cfg_fmm.remove_self_interaction:
+        raise ValueError(
+            "maximum_mean_discrepancy requires self interactions so that the "
+            "kernel diagonal is included. Set remove_self_interaction=False "
+            "in the force configuration."
+        )
+
     particles = _prepare_signed_particles(part, part_target, normalize=normalize)
     dim = particles.pos.shape[-1]
 

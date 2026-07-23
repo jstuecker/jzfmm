@@ -134,6 +134,7 @@ class DKDLatticeConfig(IntegratorConfig):
 class DirectSummationConfig:
     kernel : KernelConfig = field(default_factory=PlummerKernel)
     kahan_summation : bool = True
+    remove_self_interaction : bool = True
 
 @dataclass(unsafe_hash=True, slots=True)
 class FMMConfig:
@@ -160,6 +161,7 @@ class FMMConfig:
 
     # Other
     kahan_summation : bool = False
+    remove_self_interaction : bool = True
 
 @dataclass(unsafe_hash=True, slots=True)
 class SimConfig:

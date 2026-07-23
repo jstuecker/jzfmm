@@ -272,7 +272,6 @@ def leaf_leaf_summation(
         ilist: InteractionList,
         cfg_fmm: FMMConfig = None,
         loc_in: jax.Array | None = None,
-        remove_self_interaction: bool = True,
     ) -> jax.Array:
     particles_recv = particles
     spl_recv = jnp.asarray(ispl, dtype=jnp.int32)
@@ -325,7 +324,7 @@ def leaf_leaf_summation(
             get_pos_mass(particles_recv), get_pos_mass(particles_src), kernel_params, loc_in,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg_fmm.kahan_summation),
-            remove_self_interaction=bool(remove_self_interaction),
+            remove_self_interaction=bool(cfg_fmm.remove_self_interaction),
         )[0]
         loc = pcast_like(loc, spl_recv)
         num = getattr(particles_recv, "num", None)
@@ -366,7 +365,7 @@ def leaf_leaf_summation(
             kernel_params, gloc, gloc_src,
             radial_kernel_kind=np.int32(kernel.kind_id()), block_size=np.uint64(block_size),
             kahan=bool(cfg_fmm.kahan_summation),
-            remove_self_interaction=bool(remove_self_interaction),
+            remove_self_interaction=bool(cfg_fmm.remove_self_interaction),
         )[0]
         gpos = pcast_like(gposm[:,:dim], particles_recv.pos)
         gmass = pcast_like(
@@ -385,7 +384,7 @@ def leaf_leaf_summation(
     eval.defvjp(eval_fwd, eval_bwd)
 
     return eval(particles_recv, spl_recv, ilist, loc_in)
-leaf_leaf_summation.jit = jax.jit(leaf_leaf_summation, static_argnames=['cfg_fmm', 'remove_self_interaction'])
+leaf_leaf_summation.jit = jax.jit(leaf_leaf_summation, static_argnames=['cfg_fmm'])
 
 
 # ------------------------------------------------------------------------------------------------ #
@@ -396,7 +395,6 @@ def direct_summation(
         part: PosMass,
         cfg_direct: DirectSummationConfig,
         G=1,
-        remove_self_interaction: bool = True,
     ) -> LocalExpansion:
     block_size = 64
     posm = get_pos_mass(part)
@@ -409,7 +407,7 @@ def direct_summation(
         loc = jax.ffi.ffi_call("DirectPairSummation", (out_type,))(
         xm, kernel_params, block_size=np.uint64(block_size),
         radial_kernel_kind=np.int32(kernel.kind_id()), kahan=cfg_direct.kahan_summation,
-        remove_self_interaction=bool(remove_self_interaction))[0]
+        remove_self_interaction=bool(cfg_direct.remove_self_interaction))[0]
         return loc
     def eval_fwd(xm):
         return eval(xm), xm
@@ -417,14 +415,14 @@ def direct_summation(
         gxm = jax.ffi.ffi_call("BwdDirectPairSummation", (out_type,))(
             gloc, xm, kernel_params, block_size=np.uint64(block_size),
             radial_kernel_kind=np.int32(kernel.kind_id()), kahan=cfg_direct.kahan_summation,
-            remove_self_interaction=bool(remove_self_interaction)
+            remove_self_interaction=bool(cfg_direct.remove_self_interaction)
         )[0]
         return gxm,
     
     eval.defvjp(eval_fwd, eval_bwd)
 
     return LocalExpansion(eval(posm) * G, dim=part.pos.shape[-1])
-direct_summation.jit = jax.jit(direct_summation, static_argnames=['cfg_direct', 'remove_self_interaction'])
+direct_summation.jit = jax.jit(direct_summation, static_argnames=['cfg_direct'])
 
 def direct_potential_jax(x, m=1., softening=1e-2):
     rij2 = jnp.sum((x[:, None, :] - x[None, :, :]) ** 2, axis=-1)
