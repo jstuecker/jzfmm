@@ -2,14 +2,7 @@
 Fast Multipoles Done with Jax
 
 # ToDo:
-* Add a unit test that compares the tree structure for different coarsening
-* Adapt code to use new tree hierarchy efficiently / Don't materialize tree-planes
-* Think about ztree in multi GPU
-* Make some config parameters differentible
-* Test forces in Hernquist potential
-* Improve opening criterion
-* Try out differently transposed multipoles
-* Other softening
+* Add a rigorous way of handling/avoiding overflows in high order expansions
 
 # Installation
 ## Dependencies:
@@ -73,14 +66,3 @@ pip install -e . --no-build-isolation
 ```
 or with the [dev] optional dependencies if you'd like to use unit tests and some optional features.
 
-
-
-# ToDo KNN:
- - Consider possibility of building interaction list partially to reduce memory usage
- - make double inputs work
- - remove radii fromn PosR?
-
- - noradii output option
- - subset option
- - Consider recursive summarization for large initial max_size or large rfac
-- test non-uniform distributions

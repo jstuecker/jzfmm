@@ -5,7 +5,7 @@ import argparse
 import functools
 import json
 import time
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import NamedTuple
 
@@ -14,6 +14,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+from jztree.config import LoggingConfig, TreeConfig
 
 import fmdj
 from aegis.profiles.analytical import RvirOfMvir
@@ -22,13 +23,21 @@ from aegis.profiles.analytical import RvirOfMvir
 POSITION_UNIT = 1e3  # kpc per Mpc
 VELOCITY_UNIT = 1e3  # km/s
 MASS_UNIT = 1e14
-SOFTENING = 10.0
+LOSS_SOFTENING = 10.0
 SAMPLING_RADIUS_MAX = 10.0
 LOG10_MASS_MIN = 11.5
 LOG10_MASS_MAX = 13.5
 SCALE_RADIUS_MIN = 0.01
 SCALE_RADIUS_MAX = 0.2
 MASS_WEIGHT = 1.0
+GYR_TO_SIMULATION_TIME = 1.022712165
+HOST_MASS = 1e14
+HOST_SCALE_RADIUS = 163.0  # kpc
+LATTICE_POSITION_LIMIT = 10_000.0  # kpc
+LATTICE_VELOCITY_LIMIT = 10_000.0  # km/s
+LATTICE_DX = LATTICE_POSITION_LIMIT / np.iinfo(np.int32).max
+LATTICE_DV = LATTICE_VELOCITY_LIMIT / np.iinfo(np.int32).max
+DEFAULT_GRAVITATIONAL_SOFTENING = 1.0  # kpc
 DEFAULT_OUTPUT_DIRECTORY = (
     Path(__file__).resolve().parents[0] / "logs"
 )
@@ -102,10 +111,64 @@ class StepRecord(NamedTuple):
     step_seconds: float
 
 
+def default_sim_config() -> fmdj.SimConfig:
+    cfg = fmdj.SimConfig(
+        force=fmdj.FMMConfig(
+            kernel=fmdj.PlummerKernel(
+                softening=DEFAULT_GRAVITATIONAL_SOFTENING
+            ),
+        ),
+        external_potential=fmdj.external_potential.HernquistPotential(
+            a=HOST_SCALE_RADIUS,
+            mass=HOST_MASS,
+        ),
+        integrator=fmdj.DKDLatticeConfig(
+            dx=LATTICE_DX,
+            dv=LATTICE_DV,
+            int_dtype=jnp.int32,
+        ),
+    )
+    cfg.force.tree.alloc_fac_nodes = 1.5
+    return cfg
+
+
+def sim_config_from_dict(values) -> fmdj.SimConfig:
+    force_values = values["force"].copy()
+    force_values["tree"] = force_values["tree"].copy()
+    force_values["tree"].setdefault("alloc_fac_nodes", 1.2)
+    force_values["tree"] = TreeConfig(**force_values["tree"])
+    force_values["kernel"] = fmdj.PlummerKernel(
+        **force_values["kernel"]
+    )
+    force_values["opening"] = fmdj.OpeningByAngle(
+        **force_values["opening"]
+    )
+
+    integrator_values = values["integrator"].copy()
+    int_dtype = integrator_values.pop("int_dtype")
+    integrator = fmdj.DKDLatticeConfig(
+        **integrator_values,
+        int_dtype=getattr(jnp, int_dtype),
+    )
+    return fmdj.SimConfig(
+        force=fmdj.FMMConfig(**force_values),
+        units=fmdj.UnitConfig(**values["units"]),
+        logging=LoggingConfig(**values["logging"]),
+        external_potential=fmdj.external_potential.HernquistPotential(
+            **values["external_potential"]
+        ),
+        integrator=integrator,
+    )
+
+
 @dataclass(frozen=True)
 class Config:
     N: int = 100_000
     Nhaloes: int = 3
+    mode: str = "sim"
+    integration_time_gyr: float = 1.0
+    integration_steps: int = 20
+    sim_config: fmdj.SimConfig = field(default_factory=default_sim_config)
     loss_mode: str = "distance"
     deduplication_weight: float | None = None
     max_steps: int = 2000
@@ -124,11 +187,21 @@ class Config:
     @classmethod
     def from_json(cls, filename):
         with Path(filename).open() as file:
-            return cls(**json.load(file))
+            values = json.load(file)
+        if "mode" not in values:
+            values["mode"] = "ic"
+        sim_values = values.pop("sim_config", None)
+        if sim_values is not None:
+            values["sim_config"] = sim_config_from_dict(sim_values)
+        return cls(**values)
 
     def to_json(self, filename):
+        values = asdict(self)
+        values["sim_config"]["integrator"]["int_dtype"] = np.dtype(
+            self.sim_config.integrator.int_dtype
+        ).name
         with Path(filename).open("w") as file:
-            json.dump(asdict(self), file, indent=2)
+            json.dump(values, file, indent=2)
             file.write("\n")
 
 
@@ -208,7 +281,9 @@ def map_particles(
     parameters: Parameters,
     base_particles,
     config: Config,
-) -> fmdj.data.Particles:
+    outputs: int | None = None,
+):
+    """Map parameters to particles, optionally yielding snapshots in Gyr."""
     pos, vel, mass = [], [], []
     scale_radius = radius_from_exp.jit(parameters.exp_rs)
     halo_mass = mass_from_exp.jit(parameters.exp_m)
@@ -218,27 +293,85 @@ def map_particles(
             + parameters.position[i] * POSITION_UNIT
         )
         vel.append(
-            jnp.asarray(base_vel) + parameters.velocity[i] * VELOCITY_UNIT
+            jnp.asarray(base_vel)
+            * jnp.sqrt(
+                halo_mass[i] / (scale_radius[i] * POSITION_UNIT)
+            )
+            + parameters.velocity[i] * VELOCITY_UNIT
         )
         mass.append(
             jnp.asarray(base_mass) * halo_mass[i]
         )
 
-    return fmdj.data.Particles(
+    particles = fmdj.data.Particles(
         pos=jnp.concatenate(pos),
         vel=jnp.concatenate(vel),
         mass=jnp.concatenate(mass),
     )
+    if config.mode == "ic":
+        if outputs is not None:
+            raise ValueError("outputs is only available in simulation mode")
+        return particles
+    if config.mode != "sim":
+        raise ValueError(f"Unknown mode: {config.mode}")
+
+    simulation_time = (
+        config.integration_time_gyr * GYR_TO_SIMULATION_TIME
+    )
+    if outputs is None:
+        times = np.linspace(
+            0.0,
+            simulation_time,
+            config.integration_steps + 1,
+            dtype=np.float32,
+        )
+        return fmdj.time_integration.simulate(
+            particles,
+            ts=times,
+            cfg=config.sim_config,
+        )
+
+    if outputs < 2:
+        raise ValueError("outputs must include at least the initial and final states")
+    number_of_intervals = outputs - 1
+    if config.integration_steps % number_of_intervals != 0:
+        raise ValueError(
+            f"outputs={outputs} is incompatible with "
+            f"integration_steps={config.integration_steps}; "
+            "outputs - 1 must divide integration_steps"
+        )
+    simulation_outputs = fmdj.time_integration.simulate_with_outputs(
+        particles,
+        tend=simulation_time,
+        nout=number_of_intervals,
+        steps_per_output=(
+            config.integration_steps // number_of_intervals
+        ),
+        cfg=config.sim_config,
+    )
+    return (
+        (time / GYR_TO_SIMULATION_TIME, output_particles)
+        for time, output_particles in simulation_outputs
+    )
 
 
-map_particles.jit = jax.jit(map_particles, static_argnames=("config",))
+map_particles.jit = jax.jit(
+    lambda parameters, base_particles, config: map_particles(
+        parameters,
+        base_particles,
+        config,
+    ),
+    static_argnames=("config",),
+)
 
 
 def get_particles(
     parameters: Parameters,
     config: Config,
     seed: int,
-) -> fmdj.data.Particles:
+    outputs: int | None = None,
+):
+    """Generate base particles and map them, optionally at multiple times."""
     if not isinstance(parameters, Parameters):
         parameters = Parameters.from_structured(parameters)
 
@@ -246,7 +379,14 @@ def get_particles(
         sample_base_particles(config.N, seed + i)
         for i in range(len(parameters.exp_m))
     ]
-    return map_particles.jit(parameters, base_particles, config)
+    if outputs is None:
+        return map_particles.jit(parameters, base_particles, config)
+    return map_particles(
+        parameters,
+        base_particles,
+        config,
+        outputs=outputs,
+    )
 
 
 def run(config: Config):
@@ -270,10 +410,12 @@ def run(config: Config):
     target = replace(target, mass=target.mass / MASS_UNIT)
 
     if config.loss_mode == "plummer":
-        kernel = fmdj.PlummerKernel(softening=SOFTENING)
+        kernel = fmdj.PlummerKernel(softening=LOSS_SOFTENING)
         normalize = False
     elif config.loss_mode == "distance":
-        kernel = fmdj.SoftenedDistanceKernel(softening=SOFTENING)
+        kernel = fmdj.SoftenedDistanceKernel(
+            softening=LOSS_SOFTENING
+        )
         normalize = True
     else:
         raise ValueError(f"Unknown loss mode: {config.loss_mode}")
@@ -284,7 +426,7 @@ def run(config: Config):
     )
 
     def loss(parameters):
-        particles = map_particles.jit(parameters, model_base, config)
+        particles = map_particles(parameters, model_base, config)
         particles = replace(particles, mass=particles.mass / MASS_UNIT)
         mmd = fmdj.loss.maximum_mean_discrepancy(
             part=particles,
@@ -428,15 +570,16 @@ def run(config: Config):
 
     output_directory = Path(config.output_directory)
     output_directory.mkdir(parents=True, exist_ok=True)
+    output_prefix = config.mode
     run_number = 0
     while (
-        (output_directory / f"run_{run_number}.npz").exists()
-        or (output_directory / f"run_{run_number}.json").exists()
+        (output_directory / f"{output_prefix}_{run_number}.npz").exists()
+        or (output_directory / f"{output_prefix}_{run_number}.json").exists()
     ):
         run_number += 1
 
-    output_path = output_directory / f"run_{run_number}.npz"
-    config_path = output_directory / f"run_{run_number}.json"
+    output_path = output_directory / f"{output_prefix}_{run_number}.npz"
+    config_path = output_directory / f"{output_prefix}_{run_number}.json"
 
     np.savez(
         output_path,
@@ -461,6 +604,27 @@ if __name__ == "__main__":
         default=Config.Nhaloes,
     )
     parser.add_argument(
+        "--ic",
+        action="store_true",
+        help="Compare initial conditions without running the simulation",
+    )
+    parser.add_argument(
+        "--integration_time_gyr",
+        type=float,
+        default=Config.integration_time_gyr,
+    )
+    parser.add_argument(
+        "--integration_steps",
+        type=int,
+        default=Config.integration_steps,
+    )
+    parser.add_argument(
+        "--sim_softening",
+        type=float,
+        default=DEFAULT_GRAVITATIONAL_SOFTENING,
+        help="Gravitational Plummer softening in kpc",
+    )
+    parser.add_argument(
         "--loss_plummer",
         action="store_true",
         help="Use the Plummer loss instead of the distance loss",
@@ -482,10 +646,25 @@ if __name__ == "__main__":
         default=Config.max_steps,
     )
     args = parser.parse_args()
+    sim_config = default_sim_config()
+    sim_config = replace(
+        sim_config,
+        force=replace(
+            sim_config.force,
+            kernel=replace(
+                sim_config.force.kernel,
+                softening=args.sim_softening,
+            ),
+        ),
+    )
     run(
         Config(
             N=args.N,
             Nhaloes=args.Nhaloes,
+            mode="ic" if args.ic else "sim",
+            integration_time_gyr=args.integration_time_gyr,
+            integration_steps=args.integration_steps,
+            sim_config=sim_config,
             loss_mode="plummer" if args.loss_plummer else "distance",
             deduplication_weight=args.loss_dedup,
             initial_parameter_seed=args.initial_parameter_seed,
