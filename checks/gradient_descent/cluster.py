@@ -27,9 +27,14 @@ LOSS_SOFTENING = 10.0
 SAMPLING_RADIUS_MAX = 10.0
 LOG10_MASS_MIN = 11.5
 LOG10_MASS_MAX = 13.5
-SCALE_RADIUS_MIN = 0.01
-SCALE_RADIUS_MAX = 0.2
-RADIUS_OPTIMIZER_SCALE = 4.0
+CONCENTRATION_MIN = 1.0
+CONCENTRATION_MAX = 20.0
+FIXED_CONCENTRATION = 8.0
+TARGET_CONCENTRATION_MIN = 6.0
+TARGET_CONCENTRATION_MAX = 10.0
+LOG10_CONCENTRATION_MIN = np.log10(CONCENTRATION_MIN)
+LOG10_CONCENTRATION_MAX = np.log10(CONCENTRATION_MAX)
+R200_MASS_FACTOR = RvirOfMvir(1.0)
 MAX_COM_POSITION = 5.0  # Mpc
 MAX_COM_VELOCITY = 5.0  # 1000 km/s
 MASS_WEIGHT = 1.0
@@ -41,6 +46,12 @@ LATTICE_VELOCITY_LIMIT = 10_000.0  # km/s
 LATTICE_DX = LATTICE_POSITION_LIMIT / np.iinfo(np.int32).max
 LATTICE_DV = LATTICE_VELOCITY_LIMIT / np.iinfo(np.int32).max
 DEFAULT_GRAVITATIONAL_SOFTENING = 1.0  # kpc
+FMM_ACCURACY_LEVELS = (
+    (5, 0.8),
+    (6, 0.7),
+    (7, 0.6),
+)
+FMM_ALLOC_FAC_ILIST = 150
 DEFAULT_OUTPUT_DIRECTORY = (
     Path(__file__).resolve().parents[0] / "logs"
 )
@@ -55,16 +66,25 @@ def mass_from_exp(exp_m):
 mass_from_exp.jit = jax.jit(mass_from_exp)
 
 
-def radius_from_exp(exp_rs):
-    return (
-        SCALE_RADIUS_MIN
-        + (SCALE_RADIUS_MAX - SCALE_RADIUS_MIN) * jax.nn.sigmoid(exp_rs)
-    )
-radius_from_exp.jit = jax.jit(radius_from_exp)
+def concentration_from_log10(log10_concentration):
+    return 10.0**log10_concentration
+concentration_from_log10.jit = jax.jit(concentration_from_log10)
+
+
+def radius_from_mass_concentration(exp_m, log10_concentration):
+    halo_mass = mass_from_exp(exp_m)
+    r200 = R200_MASS_FACTOR * jnp.cbrt(halo_mass)
+    return r200 / concentration_from_log10(log10_concentration)
+radius_from_mass_concentration.jit = jax.jit(
+    radius_from_mass_concentration
+)
 
 
 def duplication_loss(parameters):
-    scale_radius = radius_from_exp.jit(parameters.exp_rs)
+    scale_radius = radius_from_mass_concentration.jit(
+        parameters.exp_m,
+        parameters.log10_concentration,
+    )
     displacement = (
         parameters.position[:, None, :] - parameters.position[None, :, :]
     )
@@ -89,7 +109,7 @@ duplication_loss.jit = jax.jit(duplication_loss)
 @dataclass
 class Parameters:
     exp_m: jax.Array
-    exp_rs: jax.Array
+    log10_concentration: jax.Array
     position: jax.Array
     velocity: jax.Array
 
@@ -97,7 +117,9 @@ class Parameters:
     def from_structured(cls, parameters):
         return cls(
             exp_m=jnp.asarray(parameters["exp_m"]),
-            exp_rs=jnp.asarray(parameters["exp_rs"]),
+            log10_concentration=jnp.asarray(
+                parameters["log10_concentration"]
+            ),
             position=jnp.asarray(parameters["position"]),
             velocity=jnp.asarray(parameters["velocity"]),
         )
@@ -105,6 +127,7 @@ class Parameters:
 
 class StepRecord(NamedTuple):
     step: int
+    restart: int
     parameters: Parameters
     loss: float
     gradient_norm: float
@@ -174,11 +197,15 @@ class Config:
     sim_config: fmdj.SimConfig = field(default_factory=default_sim_config)
     loss_mode: str = "distance"
     deduplication_weight: float | None = None
-    fix_structure: bool = False
+    vary_concentration: bool = False
+    fix_mass: bool = False
     optimizer: str = "lbfgs"
     adam_learning_rate: float = 0.01
     max_steps: int = 2000
     patience: int = 20
+    max_restarts: int = 0
+    perturbation_scale: float = 0.05
+    perturbation_seed: int = 0
     loss_rtol: float = 1e-5
     memory_size: int = 10
     max_linesearch_steps: int = 5
@@ -203,6 +230,9 @@ class Config:
         values.pop("full_matrix_decay", None)
         values.pop("full_matrix_epsilon", None)
         values.pop("initial_parameters_file", None)
+        values.pop("fix_structure", None)
+        values.pop("constant_radius", None)
+        values.pop("fix_radius", None)
         sim_values = values.pop("sim_config", None)
         if sim_values is not None:
             values["sim_config"] = sim_config_from_dict(sim_values)
@@ -218,10 +248,25 @@ class Config:
             file.write("\n")
 
 
-def sample_parameters(Nhaloes: int, seed: int) -> Parameters:
+def sample_parameters(
+    Nhaloes: int,
+    seed: int,
+    vary_concentration: bool = False,
+) -> Parameters:
     rng = np.random.default_rng(seed)
     log10_mass = rng.uniform(12.0, 13.0, Nhaloes)
-    concentration = rng.uniform(5.0, 10.0, Nhaloes)
+    if vary_concentration:
+        log10_concentration = rng.uniform(
+            np.log10(TARGET_CONCENTRATION_MIN),
+            np.log10(TARGET_CONCENTRATION_MAX),
+            Nhaloes,
+        )
+    else:
+        log10_concentration = np.full(
+            Nhaloes,
+            np.log10(FIXED_CONCENTRATION),
+        )
+    concentration = 10.0**log10_concentration
     scale_radius = RvirOfMvir(10.0**log10_mass) / concentration
     position = np.empty((Nhaloes, 3))
     for i in range(Nhaloes):
@@ -238,15 +283,9 @@ def sample_parameters(Nhaloes: int, seed: int) -> Parameters:
         (log10_mass - LOG10_MASS_MIN)
         / (LOG10_MASS_MAX - LOG10_MASS_MIN)
     )
-    radius_fraction = (
-        (scale_radius - SCALE_RADIUS_MIN)
-        / (SCALE_RADIUS_MAX - SCALE_RADIUS_MIN)
-    )
     return Parameters(
         exp_m=jnp.asarray(np.log(mass_fraction / (1.0 - mass_fraction))),
-        exp_rs=jnp.asarray(
-            np.log(radius_fraction / (1.0 - radius_fraction))
-        ),
+        log10_concentration=jnp.asarray(log10_concentration),
         position=jnp.asarray(position),
         velocity=jnp.asarray(rng.normal(0.0, 0.4, (Nhaloes, 3))),
     )
@@ -254,7 +293,7 @@ def sample_parameters(Nhaloes: int, seed: int) -> Parameters:
 
 def structured_parameters(parameters: Parameters) -> np.ndarray:
     exp_m = np.asarray(parameters.exp_m)
-    exp_rs = np.asarray(parameters.exp_rs)
+    log10_concentration = np.asarray(parameters.log10_concentration)
     position = np.asarray(parameters.position)
     velocity = np.asarray(parameters.velocity)
 
@@ -262,13 +301,13 @@ def structured_parameters(parameters: Parameters) -> np.ndarray:
         exp_m.shape,
         dtype=[
             ("exp_m", exp_m.dtype),
-            ("exp_rs", exp_rs.dtype),
+            ("log10_concentration", log10_concentration.dtype),
             ("position", position.dtype, (3,)),
             ("velocity", velocity.dtype, (3,)),
         ],
     )
     result["exp_m"] = exp_m
-    result["exp_rs"] = exp_rs
+    result["log10_concentration"] = log10_concentration
     result["position"] = position
     result["velocity"] = velocity
     return result
@@ -298,7 +337,10 @@ def map_particles(
 ):
     """Map parameters to particles, optionally yielding snapshots in Gyr."""
     pos, vel, mass = [], [], []
-    scale_radius = radius_from_exp.jit(parameters.exp_rs)
+    scale_radius = radius_from_mass_concentration.jit(
+        parameters.exp_m,
+        parameters.log10_concentration,
+    )
     halo_mass = mass_from_exp.jit(parameters.exp_m)
     for i, (base_pos, base_vel, base_mass) in enumerate(base_particles):
         pos.append(
@@ -404,11 +446,15 @@ def get_particles(
 
 def run(config: Config):
     target_parameters = sample_parameters(
-        config.Nhaloes, config.target_parameter_seed
+        config.Nhaloes,
+        config.target_parameter_seed,
+        vary_concentration=config.vary_concentration,
     )
     if config.initial_parameters_file is None:
         initial_parameters = sample_parameters(
-            config.Nhaloes, config.initial_parameter_seed
+            config.Nhaloes,
+            config.initial_parameter_seed,
+            vary_concentration=config.vary_concentration,
         )
     else:
         with np.load(config.initial_parameters_file) as previous_run:
@@ -431,11 +477,19 @@ def run(config: Config):
             f"Initialized parameters from "
             f"{config.initial_parameters_file}, step {best_step}"
         )
-    if config.fix_structure:
+    if config.fix_mass or not config.vary_concentration:
         initial_parameters = replace(
             initial_parameters,
-            exp_m=target_parameters.exp_m,
-            exp_rs=target_parameters.exp_rs,
+            exp_m=(
+                target_parameters.exp_m
+                if config.fix_mass
+                else initial_parameters.exp_m
+            ),
+            log10_concentration=(
+                target_parameters.log10_concentration
+                if not config.vary_concentration
+                else initial_parameters.log10_concentration
+            ),
         )
 
     target_base = [
@@ -467,20 +521,34 @@ def run(config: Config):
     )
 
     def loss(parameters):
-        parameters = replace(
-            parameters,
-            exp_rs=parameters.exp_rs * RADIUS_OPTIMIZER_SCALE,
-        )
-        if config.fix_structure:
+        if config.fix_mass or not config.vary_concentration:
             parameters = replace(
                 parameters,
-                exp_m=jax.lax.stop_gradient(parameters.exp_m),
-                exp_rs=jax.lax.stop_gradient(parameters.exp_rs),
+                exp_m=(
+                    jax.lax.stop_gradient(parameters.exp_m)
+                    if config.fix_mass
+                    else parameters.exp_m
+                ),
+                log10_concentration=(
+                    jax.lax.stop_gradient(
+                        parameters.log10_concentration
+                    )
+                    if not config.vary_concentration
+                    else parameters.log10_concentration
+                ),
             )
 
         valid = (
             jnp.all(jnp.isfinite(parameters.exp_m))
-            & jnp.all(jnp.isfinite(parameters.exp_rs))
+            & jnp.all(jnp.isfinite(parameters.log10_concentration))
+            & jnp.all(
+                parameters.log10_concentration
+                >= LOG10_CONCENTRATION_MIN
+            )
+            & jnp.all(
+                parameters.log10_concentration
+                <= LOG10_CONCENTRATION_MAX
+            )
             & jnp.all(jnp.isfinite(parameters.position))
             & jnp.all(jnp.isfinite(parameters.velocity))
             & jnp.all(jnp.abs(parameters.position) <= MAX_COM_POSITION)
@@ -490,7 +558,11 @@ def run(config: Config):
         parameters = replace(
             parameters,
             exp_m=jnp.nan_to_num(parameters.exp_m),
-            exp_rs=jnp.nan_to_num(parameters.exp_rs),
+            log10_concentration=jnp.clip(
+                jnp.nan_to_num(parameters.log10_concentration),
+                LOG10_CONCENTRATION_MIN,
+                LOG10_CONCENTRATION_MAX,
+            ),
             position=jnp.clip(
                 jnp.nan_to_num(parameters.position),
                 -MAX_COM_POSITION,
@@ -537,19 +609,12 @@ def run(config: Config):
         )
 
     loss.jit = jax.jit(loss)
-    target_optimizer_parameters = replace(
-        target_parameters,
-        exp_rs=target_parameters.exp_rs / RADIUS_OPTIMIZER_SCALE,
-    )
     optimal_loss = float(
-        jax.block_until_ready(loss.jit(target_optimizer_parameters))
+        jax.block_until_ready(loss.jit(target_parameters))
     )
     print(f"Optimal loss: {optimal_loss:.3e}")
 
-    parameters = replace(
-        initial_parameters,
-        exp_rs=initial_parameters.exp_rs / RADIUS_OPTIMIZER_SCALE,
-    )
+    parameters = initial_parameters
     if config.optimizer == "adam":
         optimizer = optax.adam(config.adam_learning_rate)
         opt_state = optimizer.init(parameters)
@@ -600,8 +665,12 @@ def run(config: Config):
         raise ValueError(f"Unknown optimizer: {config.optimizer}")
 
     history = []
-    best_loss = np.inf
+    global_best_loss = np.inf
+    best_parameters = None
+    attempt_best_loss = np.inf
     stalled = 0
+    restart = 0
+    restart_rng = np.random.default_rng(config.perturbation_seed)
     total_evaluations = 1
     start_time = time.perf_counter()
 
@@ -633,16 +702,8 @@ def run(config: Config):
             history.append(
                 StepRecord(
                     step=i,
-                    parameters=jax.tree.map(
-                        np.asarray,
-                        replace(
-                            parameters,
-                            exp_rs=(
-                                parameters.exp_rs
-                                * RADIUS_OPTIMIZER_SCALE
-                            ),
-                        ),
-                    ),
+                    restart=restart,
+                    parameters=jax.tree.map(np.asarray, parameters),
                     loss=value,
                     gradient_norm=float(gradient_norm),
                     linesearch_evaluations=linesearch_evaluations,
@@ -656,17 +717,20 @@ def run(config: Config):
                 print(f"Stopping at step {i}: non-finite loss")
                 break
 
-            if (
-                not np.isfinite(best_loss)
+            attempt_improvement = (
+                not np.isfinite(attempt_best_loss)
                 or value
-                < best_loss
+                < attempt_best_loss
                 - config.loss_rtol
-                * max(abs(best_loss), np.finfo(float).tiny)
-            ):
-                best_loss = value
+                * max(abs(attempt_best_loss), np.finfo(float).tiny)
+            )
+            attempt_best_loss = min(attempt_best_loss, value)
+            if value < global_best_loss:
+                global_best_loss = value
+                best_parameters = parameters
+            if attempt_improvement:
                 stalled = 0
             else:
-                best_loss = min(best_loss, value)
                 stalled += 1
 
             if i % config.print_every == 0:
@@ -677,12 +741,61 @@ def run(config: Config):
                 )
 
             if stalled >= config.patience:
-                print(
-                    f"Converged at step {i}: no relative loss improvement "
-                    f"greater than {config.loss_rtol:g} for "
-                    f"{config.patience} steps"
+                if restart >= config.max_restarts:
+                    print(
+                        f"Converged at step {i}: no relative loss "
+                        f"improvement greater than {config.loss_rtol:g} "
+                        f"for {config.patience} steps after the final "
+                        "restart"
+                    )
+                    break
+
+                parameters = jax.tree.map(
+                    lambda values: values
+                    + config.perturbation_scale
+                    * jnp.asarray(
+                        restart_rng.normal(size=values.shape),
+                        dtype=values.dtype,
+                    ),
+                    best_parameters,
                 )
-                break
+                parameters = replace(
+                    parameters,
+                    exp_m=(
+                        best_parameters.exp_m
+                        if config.fix_mass
+                        else parameters.exp_m
+                    ),
+                    log10_concentration=(
+                        best_parameters.log10_concentration
+                        if not config.vary_concentration
+                        else parameters.log10_concentration
+                    ),
+                    position=jnp.clip(
+                        parameters.position,
+                        -MAX_COM_POSITION,
+                        MAX_COM_POSITION,
+                    ),
+                    velocity=jnp.clip(
+                        parameters.velocity,
+                        -MAX_COM_VELOCITY,
+                        MAX_COM_VELOCITY,
+                    ),
+                )
+                opt_state = optimizer.init(parameters)
+                if config.optimizer == "adam":
+                    value, grad = jax.block_until_ready(
+                        initial_value_and_grad(parameters)
+                    )
+                    value = float(value)
+                    total_evaluations += 1
+                restart += 1
+                attempt_best_loss = np.inf
+                stalled = 0
+                print(
+                    f"Restart {restart}/{config.max_restarts} at step {i}: "
+                    f"perturbing best loss {global_best_loss:.3e}"
+                )
     except KeyboardInterrupt:
         print("\nInterrupted by user; saving completed steps")
 
@@ -766,6 +879,15 @@ if __name__ == "__main__":
         help="Gravitational Plummer softening in kpc",
     )
     parser.add_argument(
+        "--accurate",
+        type=int,
+        choices=range(len(FMM_ACCURACY_LEVELS)),
+        default=0,
+        metavar="LEVEL",
+        help="FMM accuracy: 0=(p=5, theta=0.8), "
+        "1=(p=6, theta=0.7), 2=(p=7, theta=0.6)",
+    )
+    parser.add_argument(
         "--loss_plummer",
         action="store_true",
         help="Use the Plummer loss instead of the distance loss",
@@ -777,9 +899,14 @@ if __name__ == "__main__":
         help="Weight of the optional component-overlap penalty",
     )
     parser.add_argument(
-        "--fix_structure",
+        "--vary-conc",
         action="store_true",
-        help="Fix masses and scale radii to their target values",
+        help="Sample and infer concentrations instead of fixing c=8",
+    )
+    parser.add_argument(
+        "--fix_mass",
+        action="store_true",
+        help="Fix masses to their target values",
     )
     parser.add_argument(
         "--adam",
@@ -815,12 +942,40 @@ if __name__ == "__main__":
         default=Config.patience,
         help="Steps without sufficient loss improvement before stopping",
     )
+    parser.add_argument(
+        "--restarts",
+        type=int,
+        default=Config.max_restarts,
+        help="Number of perturb-and-restart attempts after stalls",
+    )
+    parser.add_argument(
+        "--perturbation_scale",
+        type=float,
+        default=Config.perturbation_scale,
+        help="Gaussian perturbation scale in optimizer coordinates",
+    )
+    parser.add_argument(
+        "--perturbation_seed",
+        type=int,
+        default=Config.perturbation_seed,
+    )
     args = parser.parse_args()
+    if args.restarts < 0:
+        parser.error("--restarts must be non-negative")
+    if args.perturbation_scale < 0:
+        parser.error("--perturbation_scale must be non-negative")
     sim_config = default_sim_config()
+    fmm_order, opening_angle = FMM_ACCURACY_LEVELS[args.accurate]
     sim_config = replace(
         sim_config,
         force=replace(
             sim_config.force,
+            p=fmm_order,
+            alloc_fac_ilist=FMM_ALLOC_FAC_ILIST,
+            opening=replace(
+                sim_config.force.opening,
+                theta=opening_angle,
+            ),
             kernel=replace(
                 sim_config.force.kernel,
                 softening=args.sim_softening,
@@ -837,7 +992,8 @@ if __name__ == "__main__":
             sim_config=sim_config,
             loss_mode="plummer" if args.loss_plummer else "distance",
             deduplication_weight=args.loss_dedup,
-            fix_structure=args.fix_structure,
+            vary_concentration=args.vary_conc,
+            fix_mass=args.fix_mass,
             optimizer="adam" if args.adam else "lbfgs",
             adam_learning_rate=(
                 Config.adam_learning_rate
@@ -848,5 +1004,8 @@ if __name__ == "__main__":
             initial_parameters_file=args.initial_parameters,
             max_steps=args.steps,
             patience=args.patience,
+            max_restarts=args.restarts,
+            perturbation_scale=args.perturbation_scale,
+            perturbation_seed=args.perturbation_seed,
         )
     )
