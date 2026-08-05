@@ -29,6 +29,9 @@ LOG10_MASS_MIN = 11.5
 LOG10_MASS_MAX = 13.5
 SCALE_RADIUS_MIN = 0.01
 SCALE_RADIUS_MAX = 0.2
+RADIUS_OPTIMIZER_SCALE = 4.0
+MAX_COM_POSITION = 5.0  # Mpc
+MAX_COM_VELOCITY = 5.0  # 1000 km/s
 MASS_WEIGHT = 1.0
 GYR_TO_SIMULATION_TIME = 1.022712165
 HOST_MASS = 1e14
@@ -128,7 +131,7 @@ def default_sim_config() -> fmdj.SimConfig:
             int_dtype=jnp.int32,
         ),
     )
-    cfg.force.tree.alloc_fac_nodes = 1.5
+    cfg.force.tree.alloc_fac_nodes = 1.8
     return cfg
 
 
@@ -171,15 +174,19 @@ class Config:
     sim_config: fmdj.SimConfig = field(default_factory=default_sim_config)
     loss_mode: str = "distance"
     deduplication_weight: float | None = None
+    fix_structure: bool = False
+    optimizer: str = "lbfgs"
+    adam_learning_rate: float = 0.01
     max_steps: int = 2000
-    patience: int = 15
+    patience: int = 20
     loss_rtol: float = 1e-5
     memory_size: int = 10
-    max_linesearch_steps: int = 4
+    max_linesearch_steps: int = 5
     print_every: int = 10
 
     target_parameter_seed: int = 0
     initial_parameter_seed: int = 42
+    initial_parameters_file: str | None = None
     target_particle_seed: int = 37
     model_particle_seed: int = 0
     output_directory: str = str(DEFAULT_OUTPUT_DIRECTORY)
@@ -190,6 +197,12 @@ class Config:
             values = json.load(file)
         if "mode" not in values:
             values["mode"] = "ic"
+        values.pop("max_learning_rate", None)
+        values.pop("max_direction_norm", None)
+        values.pop("full_matrix_learning_rate", None)
+        values.pop("full_matrix_decay", None)
+        values.pop("full_matrix_epsilon", None)
+        values.pop("initial_parameters_file", None)
         sim_values = values.pop("sim_config", None)
         if sim_values is not None:
             values["sim_config"] = sim_config_from_dict(sim_values)
@@ -393,9 +406,37 @@ def run(config: Config):
     target_parameters = sample_parameters(
         config.Nhaloes, config.target_parameter_seed
     )
-    initial_parameters = sample_parameters(
-        config.Nhaloes, config.initial_parameter_seed
-    )
+    if config.initial_parameters_file is None:
+        initial_parameters = sample_parameters(
+            config.Nhaloes, config.initial_parameter_seed
+        )
+    else:
+        with np.load(config.initial_parameters_file) as previous_run:
+            previous_history = previous_run["history"]
+            if len(previous_history) == 0:
+                raise ValueError(
+                    f"{config.initial_parameters_file} has an empty history"
+                )
+            best_step = np.argmin(previous_history["loss"])
+            initial_parameters = Parameters.from_structured(
+                previous_history["parameters"][best_step]
+            )
+        if len(initial_parameters.exp_m) != config.Nhaloes:
+            raise ValueError(
+                f"{config.initial_parameters_file} contains "
+                f"{len(initial_parameters.exp_m)} haloes, but "
+                f"Nhaloes={config.Nhaloes}"
+            )
+        print(
+            f"Initialized parameters from "
+            f"{config.initial_parameters_file}, step {best_step}"
+        )
+    if config.fix_structure:
+        initial_parameters = replace(
+            initial_parameters,
+            exp_m=target_parameters.exp_m,
+            exp_rs=target_parameters.exp_rs,
+        )
 
     target_base = [
         sample_base_particles(config.N, config.target_particle_seed + i)
@@ -426,6 +467,42 @@ def run(config: Config):
     )
 
     def loss(parameters):
+        parameters = replace(
+            parameters,
+            exp_rs=parameters.exp_rs * RADIUS_OPTIMIZER_SCALE,
+        )
+        if config.fix_structure:
+            parameters = replace(
+                parameters,
+                exp_m=jax.lax.stop_gradient(parameters.exp_m),
+                exp_rs=jax.lax.stop_gradient(parameters.exp_rs),
+            )
+
+        valid = (
+            jnp.all(jnp.isfinite(parameters.exp_m))
+            & jnp.all(jnp.isfinite(parameters.exp_rs))
+            & jnp.all(jnp.isfinite(parameters.position))
+            & jnp.all(jnp.isfinite(parameters.velocity))
+            & jnp.all(jnp.abs(parameters.position) <= MAX_COM_POSITION)
+            & jnp.all(jnp.abs(parameters.velocity) <= MAX_COM_VELOCITY)
+        )
+
+        parameters = replace(
+            parameters,
+            exp_m=jnp.nan_to_num(parameters.exp_m),
+            exp_rs=jnp.nan_to_num(parameters.exp_rs),
+            position=jnp.clip(
+                jnp.nan_to_num(parameters.position),
+                -MAX_COM_POSITION,
+                MAX_COM_POSITION,
+            ),
+            velocity=jnp.clip(
+                jnp.nan_to_num(parameters.velocity),
+                -MAX_COM_VELOCITY,
+                MAX_COM_VELOCITY,
+            ),
+        )
+
         particles = map_particles(parameters, model_base, config)
         particles = replace(particles, mass=particles.mass / MASS_UNIT)
         mmd = fmdj.loss.maximum_mean_discrepancy(
@@ -445,43 +522,82 @@ def run(config: Config):
             model_mass = jnp.sum(particles.mass)
             target_mass = jnp.sum(target.mass)
             mass_loss = jnp.log10(model_mass / target_mass) ** 2
-            return (
+            value = (
                 mmd / POSITION_UNIT
                 + MASS_WEIGHT * mass_loss
                 + prior_loss
             )
-        return mmd + prior_loss
+        else:
+            value = mmd + prior_loss
+
+        return jnp.where(
+            valid,
+            value,
+            jnp.asarray(jnp.inf, dtype=value.dtype),
+        )
 
     loss.jit = jax.jit(loss)
+    target_optimizer_parameters = replace(
+        target_parameters,
+        exp_rs=target_parameters.exp_rs / RADIUS_OPTIMIZER_SCALE,
+    )
     optimal_loss = float(
-        jax.block_until_ready(loss.jit(target_parameters))
+        jax.block_until_ready(loss.jit(target_optimizer_parameters))
     )
     print(f"Optimal loss: {optimal_loss:.3e}")
 
-    linesearch = optax.scale_by_zoom_linesearch(
-        max_linesearch_steps=config.max_linesearch_steps,
-        initial_guess_strategy="one",
+    parameters = replace(
+        initial_parameters,
+        exp_rs=initial_parameters.exp_rs / RADIUS_OPTIMIZER_SCALE,
     )
-    optimizer = optax.lbfgs(
-        memory_size=config.memory_size,
-        linesearch=linesearch,
-    )
-    parameters = initial_parameters
-    opt_state = optimizer.init(parameters)
-    value_and_grad = optax.value_and_grad_from_state(loss)
-
-    @jax.jit
-    def step(parameters, state):
-        value, grad = value_and_grad(parameters, state=state)
-        updates, state = optimizer.update(
-            grad,
-            state,
-            parameters,
-            value=value,
-            grad=grad,
-            value_fn=loss,
+    if config.optimizer == "adam":
+        optimizer = optax.adam(config.adam_learning_rate)
+        opt_state = optimizer.init(parameters)
+        initial_value_and_grad = jax.jit(jax.value_and_grad(loss))
+        value, grad = jax.block_until_ready(
+            initial_value_and_grad(parameters)
         )
-        return optax.apply_updates(parameters, updates), state
+        value = float(value)
+
+        @jax.jit
+        def step(parameters, state, grad):
+            updates, state = optimizer.update(
+                grad,
+                state,
+                parameters,
+            )
+            parameters = optax.apply_updates(parameters, updates)
+            value, grad = jax.value_and_grad(loss)(parameters)
+            return parameters, state, value, grad
+
+    elif config.optimizer == "lbfgs":
+        linesearch = optax.scale_by_zoom_linesearch(
+            max_linesearch_steps=config.max_linesearch_steps,
+            initial_guess_strategy="one",
+            tol=3e-7
+        )
+        optimizer = optax.lbfgs(
+            memory_size=config.memory_size,
+            linesearch=linesearch,
+        )
+        opt_state = optimizer.init(parameters)
+        value_and_grad = optax.value_and_grad_from_state(loss)
+
+        @jax.jit
+        def step(parameters, state):
+            value, grad = value_and_grad(parameters, state=state)
+            updates, state = optimizer.update(
+                grad,
+                state,
+                parameters,
+                value=value,
+                grad=grad,
+                value_fn=loss,
+            )
+            return optax.apply_updates(parameters, updates), state
+
+    else:
+        raise ValueError(f"Unknown optimizer: {config.optimizer}")
 
     history = []
     best_loss = np.inf
@@ -489,65 +605,90 @@ def run(config: Config):
     total_evaluations = 1
     start_time = time.perf_counter()
 
-    for i in range(config.max_steps):
-        step_start = time.perf_counter()
-        parameters, opt_state = step(parameters, opt_state)
-
-        value = optax.tree.get(opt_state, "value")
-        grad = optax.tree.get(opt_state, "grad")
-        gradient_norm = optax.global_norm(grad)
-        value, gradient_norm, parameters = jax.block_until_ready(
-            (value, gradient_norm, parameters)
-        )
-
-        value = float(value)
-        linesearch_evaluations = int(
-            optax.tree.get(opt_state, "num_linesearch_steps")
-        )
-        total_evaluations += linesearch_evaluations
-
-        history.append(
-            StepRecord(
-                step=i,
-                parameters=jax.tree.map(np.asarray, parameters),
-                loss=value,
-                gradient_norm=float(gradient_norm),
-                linesearch_evaluations=linesearch_evaluations,
-                total_evaluations=total_evaluations,
-                elapsed_seconds=time.perf_counter() - start_time,
-                step_seconds=time.perf_counter() - step_start,
-            )
-        )
-
-        if not np.isfinite(value):
-            print(f"Stopping at step {i}: non-finite loss")
-            break
-
-        if (
-            not np.isfinite(best_loss)
-            or value
-            < best_loss
-            - config.loss_rtol * max(abs(best_loss), np.finfo(float).tiny)
-        ):
-            best_loss = value
-            stalled = 0
-        else:
-            best_loss = min(best_loss, value)
-            stalled += 1
-
-        if i % config.print_every == 0:
-            print(
-                f"Step {i}, eval {total_evaluations}: "
-                f"loss={value:.3e} t={history[-1].elapsed_seconds:.2f}s"
+    try:
+        for i in range(config.max_steps):
+            step_start = time.perf_counter()
+            if config.optimizer == "adam":
+                parameters, opt_state, value, grad = step(
+                    parameters,
+                    opt_state,
+                    grad,
+                )
+                linesearch_evaluations = 1
+            else:
+                parameters, opt_state = step(parameters, opt_state)
+                value = optax.tree.get(opt_state, "value")
+                grad = optax.tree.get(opt_state, "grad")
+                linesearch_evaluations = int(
+                    optax.tree.get(opt_state, "num_linesearch_steps")
+                )
+            gradient_norm = optax.global_norm(grad)
+            value, gradient_norm, parameters = jax.block_until_ready(
+                (value, gradient_norm, parameters)
             )
 
-        if stalled >= config.patience:
-            print(
-                f"Converged at step {i}: no relative loss improvement "
-                f"greater than {config.loss_rtol:g} for "
-                f"{config.patience} steps"
+            value = float(value)
+            total_evaluations += linesearch_evaluations
+
+            history.append(
+                StepRecord(
+                    step=i,
+                    parameters=jax.tree.map(
+                        np.asarray,
+                        replace(
+                            parameters,
+                            exp_rs=(
+                                parameters.exp_rs
+                                * RADIUS_OPTIMIZER_SCALE
+                            ),
+                        ),
+                    ),
+                    loss=value,
+                    gradient_norm=float(gradient_norm),
+                    linesearch_evaluations=linesearch_evaluations,
+                    total_evaluations=total_evaluations,
+                    elapsed_seconds=time.perf_counter() - start_time,
+                    step_seconds=time.perf_counter() - step_start,
+                )
             )
-            break
+
+            if not np.isfinite(value):
+                print(f"Stopping at step {i}: non-finite loss")
+                break
+
+            if (
+                not np.isfinite(best_loss)
+                or value
+                < best_loss
+                - config.loss_rtol
+                * max(abs(best_loss), np.finfo(float).tiny)
+            ):
+                best_loss = value
+                stalled = 0
+            else:
+                best_loss = min(best_loss, value)
+                stalled += 1
+
+            if i % config.print_every == 0:
+                print(
+                    f"Step {i}, eval {total_evaluations}: "
+                    f"loss={value:.3e} "
+                    f"t={history[-1].elapsed_seconds:.2f}s"
+                )
+
+            if stalled >= config.patience:
+                print(
+                    f"Converged at step {i}: no relative loss improvement "
+                    f"greater than {config.loss_rtol:g} for "
+                    f"{config.patience} steps"
+                )
+                break
+    except KeyboardInterrupt:
+        print("\nInterrupted by user; saving completed steps")
+
+    if not history:
+        print("No completed steps; nothing to save")
+        return None
 
     history = jax.tree.map(lambda *values: np.asarray(values), *history)
     parameter_history = structured_parameters(history.parameters)
@@ -636,14 +777,43 @@ if __name__ == "__main__":
         help="Weight of the optional component-overlap penalty",
     )
     parser.add_argument(
+        "--fix_structure",
+        action="store_true",
+        help="Fix masses and scale radii to their target values",
+    )
+    parser.add_argument(
+        "--adam",
+        action="store_true",
+        help="Use Adam instead of L-BFGS",
+    )
+    parser.add_argument(
+        "--learning_rate",
+        type=float,
+        default=None,
+        help="Learning rate for Adam",
+    )
+    parser.add_argument(
         "--initial_parameter_seed",
         type=int,
         default=Config.initial_parameter_seed,
     )
     parser.add_argument(
+        "--initial_parameters",
+        type=str,
+        default=Config.initial_parameters_file,
+        metavar="PATH",
+        help="Initialize from the best-loss parameters in a previous .npz run",
+    )
+    parser.add_argument(
         "--steps",
         type=int,
         default=Config.max_steps,
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=Config.patience,
+        help="Steps without sufficient loss improvement before stopping",
     )
     args = parser.parse_args()
     sim_config = default_sim_config()
@@ -667,7 +837,16 @@ if __name__ == "__main__":
             sim_config=sim_config,
             loss_mode="plummer" if args.loss_plummer else "distance",
             deduplication_weight=args.loss_dedup,
+            fix_structure=args.fix_structure,
+            optimizer="adam" if args.adam else "lbfgs",
+            adam_learning_rate=(
+                Config.adam_learning_rate
+                if args.learning_rate is None
+                else args.learning_rate
+            ),
             initial_parameter_seed=args.initial_parameter_seed,
+            initial_parameters_file=args.initial_parameters,
             max_steps=args.steps,
+            patience=args.patience,
         )
     )
