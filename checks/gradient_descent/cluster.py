@@ -161,7 +161,6 @@ def default_sim_config() -> fmdj.SimConfig:
 def sim_config_from_dict(values) -> fmdj.SimConfig:
     force_values = values["force"].copy()
     force_values["tree"] = force_values["tree"].copy()
-    force_values["tree"].setdefault("alloc_fac_nodes", 1.2)
     force_values["tree"] = TreeConfig(**force_values["tree"])
     force_values["kernel"] = fmdj.PlummerKernel(
         **force_values["kernel"]
@@ -222,20 +221,9 @@ class Config:
     def from_json(cls, filename):
         with Path(filename).open() as file:
             values = json.load(file)
-        if "mode" not in values:
-            values["mode"] = "ic"
-        values.pop("max_learning_rate", None)
-        values.pop("max_direction_norm", None)
-        values.pop("full_matrix_learning_rate", None)
-        values.pop("full_matrix_decay", None)
-        values.pop("full_matrix_epsilon", None)
-        values.pop("initial_parameters_file", None)
-        values.pop("fix_structure", None)
-        values.pop("constant_radius", None)
-        values.pop("fix_radius", None)
-        sim_values = values.pop("sim_config", None)
-        if sim_values is not None:
-            values["sim_config"] = sim_config_from_dict(sim_values)
+        values["sim_config"] = sim_config_from_dict(
+            values["sim_config"]
+        )
         return cls(**values)
 
     def to_json(self, filename):
@@ -253,10 +241,14 @@ def sample_parameters(
     seed: int,
     vary_concentration: bool = False,
 ) -> Parameters:
-    rng = np.random.default_rng(seed)
-    log10_mass = rng.uniform(12.0, 13.0, Nhaloes)
+    mass_seed, concentration_seed, phase_space_seed = (
+        np.random.SeedSequence(seed).spawn(3)
+    )
+    mass_rng = np.random.default_rng(mass_seed)
+    concentration_rng = np.random.default_rng(concentration_seed)
+    log10_mass = mass_rng.uniform(12.0, 13.0, Nhaloes)
     if vary_concentration:
-        log10_concentration = rng.uniform(
+        log10_concentration = concentration_rng.uniform(
             np.log10(TARGET_CONCENTRATION_MIN),
             np.log10(TARGET_CONCENTRATION_MAX),
             Nhaloes,
@@ -268,15 +260,28 @@ def sample_parameters(
         )
     concentration = 10.0**log10_concentration
     scale_radius = RvirOfMvir(10.0**log10_mass) / concentration
+
+    np.random.seed(phase_space_seed.generate_state(1)[0])
+    host = aegis.profiles.HernquistProfile(
+        a=HOST_SCALE_RADIUS,
+        M=HOST_MASS,
+    )
     position = np.empty((Nhaloes, 3))
+    velocity = np.empty((Nhaloes, 3))
     for i in range(Nhaloes):
         while True:
-            candidate = rng.normal(0.0, 1.0, 3)
+            candidate_position, candidate_velocity = host.sample_particles(
+                1,
+                result="pos_vel",
+                ramax=MAX_COM_POSITION * POSITION_UNIT,
+            )
+            candidate_position = candidate_position[0] / POSITION_UNIT
             if i == 0 or np.all(
-                np.linalg.norm(position[:i] - candidate, axis=1)
+                np.linalg.norm(position[:i] - candidate_position, axis=1)
                 > scale_radius[:i] + scale_radius[i]
             ):
-                position[i] = candidate
+                position[i] = candidate_position
+                velocity[i] = candidate_velocity[0] / VELOCITY_UNIT
                 break
 
     mass_fraction = (
@@ -287,7 +292,7 @@ def sample_parameters(
         exp_m=jnp.asarray(np.log(mass_fraction / (1.0 - mass_fraction))),
         log10_concentration=jnp.asarray(log10_concentration),
         position=jnp.asarray(position),
-        velocity=jnp.asarray(rng.normal(0.0, 0.4, (Nhaloes, 3))),
+        velocity=jnp.asarray(velocity),
     )
 
 
@@ -925,6 +930,11 @@ if __name__ == "__main__":
         default=Config.initial_parameter_seed,
     )
     parser.add_argument(
+        "--target_parameter_seed",
+        type=int,
+        default=Config.target_parameter_seed,
+    )
+    parser.add_argument(
         "--initial_parameters",
         type=str,
         default=Config.initial_parameters_file,
@@ -1000,6 +1010,7 @@ if __name__ == "__main__":
                 if args.learning_rate is None
                 else args.learning_rate
             ),
+            target_parameter_seed=args.target_parameter_seed,
             initial_parameter_seed=args.initial_parameter_seed,
             initial_parameters_file=args.initial_parameters,
             max_steps=args.steps,
