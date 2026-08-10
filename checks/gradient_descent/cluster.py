@@ -241,6 +241,9 @@ class Config:
     target_particle_seed: int = 37
     model_particle_seed: int = 0
     output_directory: str = str(DEFAULT_OUTPUT_DIRECTORY)
+    output_prefix: str | None = None
+    output_id: int | None = None
+    output_id_width: int = 0
 
     @classmethod
     def from_json(cls, filename):
@@ -934,16 +937,25 @@ def run(config: Config):
 
     output_directory = Path(config.output_directory)
     output_directory.mkdir(parents=True, exist_ok=True)
-    output_prefix = config.mode
-    run_number = 0
-    while (
-        (output_directory / f"{output_prefix}_{run_number}.npz").exists()
-        or (output_directory / f"{output_prefix}_{run_number}.json").exists()
-    ):
-        run_number += 1
+    output_prefix = config.mode if config.output_prefix is None else config.output_prefix
+    if config.output_id is None:
+        run_number = 0
+        while (
+            (output_directory / f"{output_prefix}_{run_number}.npz").exists()
+            or (output_directory / f"{output_prefix}_{run_number}.json").exists()
+        ):
+            run_number += 1
+    else:
+        run_number = config.output_id
 
-    output_path = output_directory / f"{output_prefix}_{run_number}.npz"
-    config_path = output_directory / f"{output_prefix}_{run_number}.json"
+    run_label = f"{run_number:0{config.output_id_width}d}"
+    output_path = output_directory / f"{output_prefix}_{run_label}.npz"
+    config_path = output_directory / f"{output_prefix}_{run_label}.json"
+    if output_path.exists() or config_path.exists():
+        raise FileExistsError(
+            f"Output ID {run_number} already exists for mode "
+            f"{output_prefix!r} in {output_directory}"
+        )
 
     np.savez(
         output_path,
@@ -1066,6 +1078,29 @@ if __name__ == "__main__":
         default=Config.target_parameter_seed,
     )
     parser.add_argument(
+        "--output_id",
+        type=int,
+        default=None,
+        help="Explicit output ID; by default use the first free integer",
+    )
+    parser.add_argument(
+        "--output_directory",
+        type=str,
+        default=Config.output_directory,
+    )
+    parser.add_argument(
+        "--output_prefix",
+        type=str,
+        default=None,
+        help="Output filename prefix; by default use the run mode",
+    )
+    parser.add_argument(
+        "--output_id_width",
+        type=int,
+        default=0,
+        help="Zero-padding width for an explicit output ID",
+    )
+    parser.add_argument(
         "--initial_parameters",
         type=str,
         default=Config.initial_parameters_file,
@@ -1108,6 +1143,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.restarts < 0:
         parser.error("--restarts must be non-negative")
+    if args.output_id is not None and args.output_id < 0:
+        parser.error("--output_id must be non-negative")
+    if args.output_id_width < 0:
+        parser.error("--output_id_width must be non-negative")
     if args.perturbation_scale < 0:
         parser.error("--perturbation_scale must be non-negative")
     if args.log10_mass_min >= args.log10_mass_max:
@@ -1167,6 +1206,10 @@ if __name__ == "__main__":
             ),
             target_parameter_seed=args.target_parameter_seed,
             initial_parameter_seed=args.initial_parameter_seed,
+            output_directory=args.output_directory,
+            output_prefix=args.output_prefix,
+            output_id=args.output_id,
+            output_id_width=args.output_id_width,
             initial_parameters_file=args.initial_parameters,
             max_steps=args.steps,
             patience=args.patience,
