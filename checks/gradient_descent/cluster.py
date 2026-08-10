@@ -23,10 +23,12 @@ from aegis.profiles.analytical import RvirOfMvir
 POSITION_UNIT = 1e3  # kpc per Mpc
 VELOCITY_UNIT = 1e3  # km/s
 MASS_UNIT = 1e14
-LOSS_SOFTENING = 10.0
+LOSS_SOFTENING = 4.0
 SAMPLING_RADIUS_MAX = 10.0
-LOG10_MASS_MIN = 11.5
-LOG10_MASS_MAX = 13.5
+LOG10_MASS_MIN = 9.5
+LOG10_MASS_MAX = 11.5
+TARGET_LOG10_MASS_MIN = 10.0
+TARGET_LOG10_MASS_MAX = 11.0
 CONCENTRATION_MIN = 1.0
 CONCENTRATION_MAX = 20.0
 FIXED_CONCENTRATION = 8.0
@@ -37,15 +39,21 @@ LOG10_CONCENTRATION_MAX = np.log10(CONCENTRATION_MAX)
 R200_MASS_FACTOR = RvirOfMvir(1.0)
 MAX_COM_POSITION = 5.0  # Mpc
 MAX_COM_VELOCITY = 5.0  # 1000 km/s
-MASS_WEIGHT = 1.0
+MASS_WEIGHT = 10.0
+EARLY_STOP_RTOL = 1e-3
+EARLY_STOP_LOSS_RATIO = 100.0
+EARLY_STOP_IMPROVEMENT_FACTOR = 2.0
 GYR_TO_SIMULATION_TIME = 1.022712165
-HOST_MASS = 1e14
-HOST_SCALE_RADIUS = 163.0  # kpc
+HOST_MASS = 1e15
+HOST_SCALE_RADIUS = 351.2  # kpc
+HOST_VIRIAL_RADIUS = RvirOfMvir(HOST_MASS) * POSITION_UNIT
+ORBIT_PERICENTRE_MIN = 0.1 * HOST_VIRIAL_RADIUS
+ORBIT_APOCENTRE_MAX = HOST_VIRIAL_RADIUS
 LATTICE_POSITION_LIMIT = 20_000.0  # kpc
 LATTICE_VELOCITY_LIMIT = 10_000.0  # km/s
 LATTICE_DX = LATTICE_POSITION_LIMIT / np.iinfo(np.int32).max
 LATTICE_DV = LATTICE_VELOCITY_LIMIT / np.iinfo(np.int32).max
-DEFAULT_GRAVITATIONAL_SOFTENING = 1.0  # kpc
+DEFAULT_GRAVITATIONAL_SOFTENING = 4.0  # kpc
 FMM_ACCURACY_LEVELS = (
     (5, 0.8),
     (6, 0.7),
@@ -57,10 +65,14 @@ DEFAULT_OUTPUT_DIRECTORY = (
 )
 
 
-def mass_from_exp(exp_m):
+def mass_from_exp(
+    exp_m,
+    log10_mass_min=LOG10_MASS_MIN,
+    log10_mass_max=LOG10_MASS_MAX,
+):
     log10_mass = (
-        LOG10_MASS_MIN
-        + (LOG10_MASS_MAX - LOG10_MASS_MIN) * jax.nn.sigmoid(exp_m)
+        log10_mass_min
+        + (log10_mass_max - log10_mass_min) * jax.nn.sigmoid(exp_m)
     )
     return 10.0**log10_mass
 mass_from_exp.jit = jax.jit(mass_from_exp)
@@ -71,8 +83,13 @@ def concentration_from_log10(log10_concentration):
 concentration_from_log10.jit = jax.jit(concentration_from_log10)
 
 
-def radius_from_mass_concentration(exp_m, log10_concentration):
-    halo_mass = mass_from_exp(exp_m)
+def radius_from_mass_concentration(
+    exp_m,
+    log10_concentration,
+    log10_mass_min=LOG10_MASS_MIN,
+    log10_mass_max=LOG10_MASS_MAX,
+):
+    halo_mass = mass_from_exp(exp_m, log10_mass_min, log10_mass_max)
     r200 = R200_MASS_FACTOR * jnp.cbrt(halo_mass)
     return r200 / concentration_from_log10(log10_concentration)
 radius_from_mass_concentration.jit = jax.jit(
@@ -80,10 +97,12 @@ radius_from_mass_concentration.jit = jax.jit(
 )
 
 
-def duplication_loss(parameters):
+def duplication_loss(parameters, log10_mass_min, log10_mass_max):
     scale_radius = radius_from_mass_concentration.jit(
         parameters.exp_m,
         parameters.log10_concentration,
+        log10_mass_min,
+        log10_mass_max,
     )
     displacement = (
         parameters.position[:, None, :] - parameters.position[None, :, :]
@@ -195,6 +214,11 @@ class Config:
     integration_steps: int = 20
     sim_config: fmdj.SimConfig = field(default_factory=default_sim_config)
     loss_mode: str = "distance"
+    loss_softening: float = LOSS_SOFTENING
+    log10_mass_min: float = LOG10_MASS_MIN
+    log10_mass_max: float = LOG10_MASS_MAX
+    target_log10_mass_min: float = TARGET_LOG10_MASS_MIN
+    target_log10_mass_max: float = TARGET_LOG10_MASS_MAX
     deduplication_weight: float | None = None
     vary_concentration: bool = False
     fix_mass: bool = False
@@ -202,6 +226,7 @@ class Config:
     adam_learning_rate: float = 0.01
     max_steps: int = 2000
     patience: int = 20
+    early_stop: bool = False
     max_restarts: int = 0
     perturbation_scale: float = 0.05
     perturbation_seed: int = 0
@@ -240,13 +265,24 @@ def sample_parameters(
     Nhaloes: int,
     seed: int,
     vary_concentration: bool = False,
+    log10_mass_min: float = LOG10_MASS_MIN,
+    log10_mass_max: float = LOG10_MASS_MAX,
+    sample_log10_mass_min: float = TARGET_LOG10_MASS_MIN,
+    sample_log10_mass_max: float = TARGET_LOG10_MASS_MAX,
+    pericentre_min: float | None = None,
+    apocentre_min: float | None = None,
+    apocentre_max: float = MAX_COM_POSITION * POSITION_UNIT,
 ) -> Parameters:
     mass_seed, concentration_seed, phase_space_seed = (
         np.random.SeedSequence(seed).spawn(3)
     )
     mass_rng = np.random.default_rng(mass_seed)
     concentration_rng = np.random.default_rng(concentration_seed)
-    log10_mass = mass_rng.uniform(12.0, 13.0, Nhaloes)
+    log10_mass = mass_rng.uniform(
+        sample_log10_mass_min,
+        sample_log10_mass_max,
+        Nhaloes,
+    )
     if vary_concentration:
         log10_concentration = concentration_rng.uniform(
             np.log10(TARGET_CONCENTRATION_MIN),
@@ -273,7 +309,9 @@ def sample_parameters(
             candidate_position, candidate_velocity = host.sample_particles(
                 1,
                 result="pos_vel",
-                ramax=MAX_COM_POSITION * POSITION_UNIT,
+                rpmin=pericentre_min,
+                ramin=apocentre_min,
+                ramax=apocentre_max,
             )
             candidate_position = candidate_position[0] / POSITION_UNIT
             if i == 0 or np.all(
@@ -285,8 +323,8 @@ def sample_parameters(
                 break
 
     mass_fraction = (
-        (log10_mass - LOG10_MASS_MIN)
-        / (LOG10_MASS_MAX - LOG10_MASS_MIN)
+        (log10_mass - log10_mass_min)
+        / (log10_mass_max - log10_mass_min)
     )
     return Parameters(
         exp_m=jnp.asarray(np.log(mass_fraction / (1.0 - mass_fraction))),
@@ -345,8 +383,14 @@ def map_particles(
     scale_radius = radius_from_mass_concentration.jit(
         parameters.exp_m,
         parameters.log10_concentration,
+        config.log10_mass_min,
+        config.log10_mass_max,
     )
-    halo_mass = mass_from_exp.jit(parameters.exp_m)
+    halo_mass = mass_from_exp.jit(
+        parameters.exp_m,
+        config.log10_mass_min,
+        config.log10_mass_max,
+    )
     for i, (base_pos, base_vel, base_mass) in enumerate(base_particles):
         pos.append(
             jnp.asarray(base_pos) * scale_radius[i] * POSITION_UNIT
@@ -454,12 +498,24 @@ def run(config: Config):
         config.Nhaloes,
         config.target_parameter_seed,
         vary_concentration=config.vary_concentration,
+        log10_mass_min=config.log10_mass_min,
+        log10_mass_max=config.log10_mass_max,
+        sample_log10_mass_min=config.target_log10_mass_min,
+        sample_log10_mass_max=config.target_log10_mass_max,
+        pericentre_min=ORBIT_PERICENTRE_MIN,
+        apocentre_max=ORBIT_APOCENTRE_MAX,
     )
     if config.initial_parameters_file is None:
         initial_parameters = sample_parameters(
             config.Nhaloes,
             config.initial_parameter_seed,
             vary_concentration=config.vary_concentration,
+            log10_mass_min=config.log10_mass_min,
+            log10_mass_max=config.log10_mass_max,
+            sample_log10_mass_min=config.target_log10_mass_min,
+            sample_log10_mass_max=config.target_log10_mass_max,
+            pericentre_min=ORBIT_PERICENTRE_MIN,
+            apocentre_max=ORBIT_APOCENTRE_MAX,
         )
     else:
         with np.load(config.initial_parameters_file) as previous_run:
@@ -510,11 +566,11 @@ def run(config: Config):
     target = replace(target, mass=target.mass / MASS_UNIT)
 
     if config.loss_mode == "plummer":
-        kernel = fmdj.PlummerKernel(softening=LOSS_SOFTENING)
+        kernel = fmdj.PlummerKernel(softening=config.loss_softening)
         normalize = False
     elif config.loss_mode == "distance":
         kernel = fmdj.SoftenedDistanceKernel(
-            softening=LOSS_SOFTENING
+            softening=config.loss_softening
         )
         normalize = True
     else:
@@ -593,7 +649,11 @@ def run(config: Config):
         else:
             prior_loss = (
                 config.deduplication_weight
-                * duplication_loss.jit(parameters)
+                * duplication_loss.jit(
+                    parameters,
+                    config.log10_mass_min,
+                    config.log10_mass_max,
+                )
             )
         if config.loss_mode == "distance":
             model_mass = jnp.sum(particles.mass)
@@ -674,6 +734,7 @@ def run(config: Config):
     best_parameters = None
     attempt_best_loss = np.inf
     stalled = 0
+    early_stop_reference = None
     restart = 0
     restart_rng = np.random.default_rng(config.perturbation_seed)
     total_evaluations = 1
@@ -722,11 +783,16 @@ def run(config: Config):
                 print(f"Stopping at step {i}: non-finite loss")
                 break
 
+            loss_rtol = (
+                EARLY_STOP_RTOL
+                if config.early_stop
+                else config.loss_rtol
+            )
             attempt_improvement = (
                 not np.isfinite(attempt_best_loss)
                 or value
                 < attempt_best_loss
-                - config.loss_rtol
+                - loss_rtol
                 * max(abs(attempt_best_loss), np.finfo(float).tiny)
             )
             attempt_best_loss = min(attempt_best_loss, value)
@@ -746,10 +812,48 @@ def run(config: Config):
                 )
 
             if stalled >= config.patience:
+                if (
+                    config.early_stop
+                    and attempt_best_loss
+                    >= EARLY_STOP_LOSS_RATIO * optimal_loss
+                ):
+                    if early_stop_reference is None:
+                        early_stop_reference = attempt_best_loss
+                        stalled = 0
+                        print(
+                            f"Early-stop reference at step {i}: "
+                            f"loss={attempt_best_loss:.3e} "
+                            f"({attempt_best_loss / optimal_loss:.1f}x "
+                            "optimal)"
+                        )
+                        continue
+
+                    improvement_factor = (
+                        early_stop_reference / attempt_best_loss
+                    )
+                    if (
+                        improvement_factor
+                        < EARLY_STOP_IMPROVEMENT_FACTOR
+                    ):
+                        print(
+                            f"Early stopping at step {i}: loss only "
+                            f"improved by {improvement_factor:.2f}x "
+                            "between patience triggers"
+                        )
+                        break
+
+                    early_stop_reference = attempt_best_loss
+                    stalled = 0
+                    print(
+                        f"Early-stop progress at step {i}: loss "
+                        f"improved by {improvement_factor:.2f}x"
+                    )
+                    continue
+
                 if restart >= config.max_restarts:
                     print(
                         f"Converged at step {i}: no relative loss "
-                        f"improvement greater than {config.loss_rtol:g} "
+                        f"improvement greater than {loss_rtol:g} "
                         f"for {config.patience} steps after the final "
                         "restart"
                     )
@@ -796,6 +900,7 @@ def run(config: Config):
                     total_evaluations += 1
                 restart += 1
                 attempt_best_loss = np.inf
+                early_stop_reference = None
                 stalled = 0
                 print(
                     f"Restart {restart}/{config.max_restarts} at step {i}: "
@@ -884,6 +989,32 @@ if __name__ == "__main__":
         help="Gravitational Plummer softening in kpc",
     )
     parser.add_argument(
+        "--loss_softening",
+        type=float,
+        default=Config.loss_softening,
+        help="Loss-kernel softening in kpc",
+    )
+    parser.add_argument(
+        "--log10_mass_min",
+        type=float,
+        default=Config.log10_mass_min,
+    )
+    parser.add_argument(
+        "--log10_mass_max",
+        type=float,
+        default=Config.log10_mass_max,
+    )
+    parser.add_argument(
+        "--target_log10_mass_min",
+        type=float,
+        default=Config.target_log10_mass_min,
+    )
+    parser.add_argument(
+        "--target_log10_mass_max",
+        type=float,
+        default=Config.target_log10_mass_max,
+    )
+    parser.add_argument(
         "--accurate",
         type=int,
         choices=range(len(FMM_ACCURACY_LEVELS)),
@@ -953,6 +1084,11 @@ if __name__ == "__main__":
         help="Steps without sufficient loss improvement before stopping",
     )
     parser.add_argument(
+        "--early-stop",
+        action="store_true",
+        help="Stop far-from-optimal runs without factor-two progress",
+    )
+    parser.add_argument(
         "--restarts",
         type=int,
         default=Config.max_restarts,
@@ -974,6 +1110,20 @@ if __name__ == "__main__":
         parser.error("--restarts must be non-negative")
     if args.perturbation_scale < 0:
         parser.error("--perturbation_scale must be non-negative")
+    if args.log10_mass_min >= args.log10_mass_max:
+        parser.error("--log10_mass_min must be below --log10_mass_max")
+    if args.target_log10_mass_min >= args.target_log10_mass_max:
+        parser.error(
+            "--target_log10_mass_min must be below "
+            "--target_log10_mass_max"
+        )
+    if not (
+        args.log10_mass_min < args.target_log10_mass_min
+        and args.target_log10_mass_max < args.log10_mass_max
+    ):
+        parser.error("target mass range must lie inside inference bounds")
+    if args.loss_softening <= 0:
+        parser.error("--loss_softening must be positive")
     sim_config = default_sim_config()
     fmm_order, opening_angle = FMM_ACCURACY_LEVELS[args.accurate]
     sim_config = replace(
@@ -1001,6 +1151,11 @@ if __name__ == "__main__":
             integration_steps=args.integration_steps,
             sim_config=sim_config,
             loss_mode="plummer" if args.loss_plummer else "distance",
+            loss_softening=args.loss_softening,
+            log10_mass_min=args.log10_mass_min,
+            log10_mass_max=args.log10_mass_max,
+            target_log10_mass_min=args.target_log10_mass_min,
+            target_log10_mass_max=args.target_log10_mass_max,
             deduplication_weight=args.loss_dedup,
             vary_concentration=args.vary_conc,
             fix_mass=args.fix_mass,
@@ -1015,6 +1170,7 @@ if __name__ == "__main__":
             initial_parameters_file=args.initial_parameters,
             max_steps=args.steps,
             patience=args.patience,
+            early_stop=args.early_stop,
             max_restarts=args.restarts,
             perturbation_scale=args.perturbation_scale,
             perturbation_seed=args.perturbation_seed,

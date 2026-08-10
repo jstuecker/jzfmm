@@ -15,6 +15,10 @@ import fmdj
 
 
 DEFAULT_OUTPUT_DIRECTORY = Path(__file__).resolve().parent / "logs"
+TARGET_WEIGHT = 1.0
+MASS_WEIGHT = 10.0
+HERNQUIST_WEIGHT = 1.0
+HUBBLE_CONSTANT = 70.0  # km/s/Mpc
 BASE_HERNQUIST = aegis.profiles.HernquistProfile(a=1.0, M=1.0)
 BASE_VCIRC_AT_RS = float(BASE_HERNQUIST.vcirc(np.asarray([1.0]))[0])
 
@@ -56,10 +60,14 @@ class Config:
     integration_time_gyr: float = 1.0
     integration_steps: int = 10
     sim_softening: float = 10.0
+    loss_softening: float = cl.LOSS_SOFTENING
+    log10_mass_min: float = 12.0
+    log10_mass_max: float = 13.0
     accuracy: int = 1
+    redshift_space: bool = False
     fixed_masses: bool = False
     merging: bool = True
-    max_steps: int = 500
+    max_steps: int = 2000
     optimizer: str = "lbfgs"
     learning_rate: float = 0.01
     learning_rate_reduction: float = 0.25
@@ -67,7 +75,9 @@ class Config:
     memory_size: int = 10
     max_linesearch_steps: int = 5
     epoch_steps: int = 10
-    hernquist_weight: float = 1.0
+    target_weight: float = TARGET_WEIGHT
+    mass_weight: float = MASS_WEIGHT
+    hernquist_weight: float = HERNQUIST_WEIGHT
     patience: int = 20
     loss_rtol: float = 1e-5
     snapshot_every_epochs: int = 10
@@ -136,6 +146,16 @@ def simulate(parameters, config):
     )
 
 
+def observed_position(particles, redshift_space=False):
+    if not redshift_space:
+        return particles.pos
+    return particles.pos.at[:, 2].add(
+        particles.vel[:, 2]
+        / HUBBLE_CONSTANT
+        * cl.POSITION_UNIT
+    )
+
+
 def mass_weighted_com(parameters, particle_mass):
     total_mass = jnp.sum(particle_mass)
     position = jnp.sum(
@@ -164,6 +184,38 @@ def sample_host_particles(N, seed):
         log10_mass=jnp.zeros(N),
         position=jnp.asarray(position / cl.POSITION_UNIT),
         velocity=jnp.asarray(velocity / cl.VELOCITY_UNIT),
+    )
+
+
+def sample_log10_mass(seed, minimum, maximum):
+    mass_seed = np.random.SeedSequence(seed).spawn(3)[0]
+    return np.random.default_rng(mass_seed).uniform(minimum, maximum)
+
+
+def make_halo_particles(log10_mass, position, velocity, N, seed):
+    base_position, base_velocity, base_mass = cl.sample_base_particles(
+        N,
+        seed,
+    )
+    halo_mass = 10.0**log10_mass
+    scale_radius = (
+        cl.R200_MASS_FACTOR
+        * np.cbrt(halo_mass)
+        / cl.FIXED_CONCENTRATION
+    )
+    return fmdj.data.Particles(
+        pos=(
+            jnp.asarray(base_position)
+            * scale_radius
+            * cl.POSITION_UNIT
+            + position * cl.POSITION_UNIT
+        ),
+        vel=(
+            jnp.asarray(base_velocity)
+            * jnp.sqrt(halo_mass / (scale_radius * cl.POSITION_UNIT))
+            + velocity * cl.VELOCITY_UNIT
+        ),
+        mass=jnp.asarray(base_mass) * halo_mass,
     )
 
 
@@ -306,38 +358,41 @@ def remap_particles(parameters, target_average_mass, rng):
 
 
 def run(config):
-    target_halo = cl.sample_parameters(
+    target_phase_space = cl.sample_parameters(
         1,
         config.target_parameter_seed,
         vary_concentration=False,
     )
-    initial_halo = cl.sample_parameters(
-        1,
+    target_log10_mass = sample_log10_mass(
+        config.target_parameter_seed,
+        config.log10_mass_min,
+        config.log10_mass_max,
+    )
+    initial_log10_mass = sample_log10_mass(
         config.initial_parameter_seed,
-        vary_concentration=False,
+        config.log10_mass_min,
+        config.log10_mass_max,
     )
-    ic_config = cl.Config(N=config.N, Nhaloes=1, mode="ic")
-    target_particles = cl.map_particles(
-        target_halo,
-        [cl.sample_base_particles(config.N, config.target_particle_seed)],
-        ic_config,
+    target_particles = make_halo_particles(
+        target_log10_mass,
+        target_phase_space.position[0],
+        target_phase_space.velocity[0],
+        config.N,
+        config.target_particle_seed,
     )
-    target_mass = cl.mass_from_exp(target_halo.exp_m[0])
+    target_mass = 10.0**target_log10_mass
     target_average_mass = float(target_mass / config.N)
     target_parameters = ParticleParameters(
         log10_mass=jnp.log10(target_particles.mass),
         position=target_particles.pos / cl.POSITION_UNIT,
         velocity=target_particles.vel / cl.VELOCITY_UNIT,
     )
-    reference_particles = cl.map_particles(
-        target_halo,
-        [
-            cl.sample_base_particles(
-                config.N,
-                config.model_particle_seed,
-            )
-        ],
-        ic_config,
+    reference_particles = make_halo_particles(
+        target_log10_mass,
+        target_phase_space.position[0],
+        target_phase_space.velocity[0],
+        config.N,
+        config.model_particle_seed,
     )
     reference_parameters = ParticleParameters(
         log10_mass=(
@@ -350,7 +405,10 @@ def run(config):
     )
     target_particles = simulate(target_parameters, config)
     target = fmdj.data.PosMass(
-        pos=target_particles.pos,
+        pos=observed_position(
+            target_particles,
+            config.redshift_space,
+        ),
         mass=target_particles.mass / cl.MASS_UNIT,
     )
 
@@ -359,7 +417,7 @@ def run(config):
             config.N,
             config.initial_particle_seed,
         )
-        initial_mass = cl.mass_from_exp(initial_halo.exp_m[0])
+        initial_mass = 10.0**initial_log10_mass
         initial_parameters.log10_mass = jnp.asarray(
             jnp.log10(initial_mass / config.N)
             if config.fixed_masses
@@ -409,7 +467,7 @@ def run(config):
 
     distance_config = fmdj.DirectSummationConfig(
         kernel=fmdj.SoftenedDistanceKernel(
-            softening=cl.LOSS_SOFTENING
+            softening=config.loss_softening
         ),
         kahan_summation=True,
         remove_self_interaction=False,
@@ -465,7 +523,10 @@ def run(config):
 
         evolved_particles = simulate(parameters, config)
         particles = fmdj.data.PosMass(
-            pos=evolved_particles.pos,
+            pos=observed_position(
+                evolved_particles,
+                config.redshift_space,
+            ),
             mass=evolved_particles.mass / cl.MASS_UNIT,
         )
         target_loss = fmdj.loss.maximum_mean_discrepancy(
@@ -526,8 +587,8 @@ def run(config):
             normalize=True,
         ) / cl.POSITION_UNIT
         total_loss = (
-            target_loss
-            + cl.MASS_WEIGHT * mass_loss
+            config.target_weight * target_loss
+            + config.mass_weight * mass_loss
             + config.hernquist_weight * hernquist_loss
         )
         invalid = jnp.asarray(jnp.inf, dtype=total_loss.dtype)
@@ -895,12 +956,33 @@ if __name__ == "__main__":
         help="Gravitational Plummer softening in kpc",
     )
     parser.add_argument(
+        "--loss_softening",
+        type=float,
+        default=Config.loss_softening,
+        help="Softened-distance loss softening in kpc",
+    )
+    parser.add_argument(
+        "--log10_mass_min",
+        type=float,
+        default=Config.log10_mass_min,
+    )
+    parser.add_argument(
+        "--log10_mass_max",
+        type=float,
+        default=Config.log10_mass_max,
+    )
+    parser.add_argument(
         "--accurate",
         type=int,
         choices=range(len(cl.FMM_ACCURACY_LEVELS)),
         default=Config.accuracy,
         metavar="LEVEL",
         help="FMM accuracy level",
+    )
+    parser.add_argument(
+        "--redshift_space",
+        action="store_true",
+        help="Evaluate the final target loss in LOS redshift space",
     )
     parser.add_argument(
         "--fixed-masses",
@@ -952,6 +1034,16 @@ if __name__ == "__main__":
         default=Config.learning_rate_reduction,
     )
     parser.add_argument(
+        "--target_weight",
+        type=float,
+        default=Config.target_weight,
+    )
+    parser.add_argument(
+        "--mass_weight",
+        type=float,
+        default=Config.mass_weight,
+    )
+    parser.add_argument(
         "--hernquist_weight",
         type=float,
         default=Config.hernquist_weight,
@@ -987,8 +1079,18 @@ if __name__ == "__main__":
         parser.error("--epoch_steps must be at least 1")
     if args.learning_rate <= 0 or args.minimum_learning_rate <= 0:
         parser.error("learning rates must be positive")
+    if args.sim_softening <= 0 or args.loss_softening <= 0:
+        parser.error("softenings must be positive")
+    if args.log10_mass_min >= args.log10_mass_max:
+        parser.error("--log10_mass_min must be below --log10_mass_max")
     if not 0 < args.learning_rate_reduction < 1:
         parser.error("--learning_rate_reduction must lie between 0 and 1")
+    if min(
+        args.target_weight,
+        args.mass_weight,
+        args.hernquist_weight,
+    ) < 0:
+        parser.error("loss weights must be non-negative")
     run(
         Config(
             N=args.N,
@@ -996,7 +1098,11 @@ if __name__ == "__main__":
             integration_time_gyr=args.integration_time_gyr,
             integration_steps=args.integration_steps,
             sim_softening=args.sim_softening,
+            loss_softening=args.loss_softening,
+            log10_mass_min=args.log10_mass_min,
+            log10_mass_max=args.log10_mass_max,
             accuracy=args.accurate,
+            redshift_space=args.redshift_space,
             fixed_masses=args.fixed_masses,
             merging=not args.no_merging and not args.fixed_masses,
             max_steps=args.steps,
@@ -1007,6 +1113,8 @@ if __name__ == "__main__":
             learning_rate=args.learning_rate,
             minimum_learning_rate=args.minimum_learning_rate,
             learning_rate_reduction=args.learning_rate_reduction,
+            target_weight=args.target_weight,
+            mass_weight=args.mass_weight,
             hernquist_weight=args.hernquist_weight,
             target_parameter_seed=args.target_parameter_seed,
             initial_parameter_seed=args.initial_parameter_seed,
