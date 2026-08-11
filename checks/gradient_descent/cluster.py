@@ -497,6 +497,7 @@ def get_particles(
 
 
 def run(config: Config):
+    run_start_time = time.perf_counter()
     target_parameters = sample_parameters(
         config.Nhaloes,
         config.target_parameter_seed,
@@ -741,6 +742,7 @@ def run(config: Config):
     restart = 0
     restart_rng = np.random.default_rng(config.perturbation_seed)
     total_evaluations = 1
+    initialization_seconds = time.perf_counter() - run_start_time
     start_time = time.perf_counter()
 
     try:
@@ -963,6 +965,11 @@ def run(config: Config):
         initial_parameters=structured_parameters(initial_parameters),
         history=structured_history,
         optimal_loss=optimal_loss,
+        initialization_seconds=initialization_seconds,
+        optimization_seconds=float(history.elapsed_seconds[-1]),
+        total_run_seconds=(
+            initialization_seconds + float(history.elapsed_seconds[-1])
+        ),
     )
     config.to_json(config_path)
 
