@@ -354,3 +354,64 @@ def plot_runs(sims, noutputs=5, nstates=10):
         )
 
     return fig, axs
+
+
+def plot_convergence_summary(summary):
+    times = np.sort(np.unique(summary["time_gyr"]))
+    target_seeds = np.sort(np.unique(summary["target_seed"]))
+    G = cl.default_sim_config().units.G()
+    rvir = cl.HOST_VIRIAL_RADIUS
+    vvir = np.sqrt(G * cl.HOST_MASS / rvir)
+
+    ranks = {
+        "Best of 100": (0, "C0"),
+        "10th percentile": (9, "C1"),
+        "25th percentile": (24, "C2"),
+        "Median": (49, "C3"),
+    }
+    metrics = [
+        ("loss_ratio", r"$L/L_{\rm optimal}$", 1, 1),
+        ("position_error_kpc", r"$|\Delta\mathbf{x}|/r_{\rm vir}$", rvir, 0.1),
+        ("velocity_error_kms", r"$|\Delta\mathbf{v}|/v_{\rm vir}$", vvir, 0.1),
+    ]
+
+    fig, axs = plt.subplots(1, 3, figsize=(MNRAS_PAGE_WIDTH*1.2, 3.0), sharex=True)
+    legend_handles = []
+
+    for ax, (field, ylabel, scale, reference) in zip(axs, metrics):
+        for label, (rank, color) in ranks.items():
+            curves = []
+
+            for target_seed in target_seeds:
+                values = []
+                for time in times:
+                    select = (summary["target_seed"] == target_seed) & (summary["time_gyr"] == time)
+                    selected = summary[select]
+                    result = selected[np.argsort(selected["loss_ratio"])[rank]]
+                    values.append(result[field] / scale)
+
+                curves.append(values)
+                ax.plot(times, values, color=color, alpha=0.25, lw=0.8, marker="o", ms=2.5)
+
+            line, = ax.plot(times, np.median(curves, axis=0), color=color, lw=2.2, marker="o", ms=4, label=label, zorder=10)
+            if ax is axs[0]:
+                legend_handles.append(line)
+
+        ax.axhline(reference, color="black", ls="dotted", lw=0.8)
+        ax.set_yscale("log")
+        ax.set_xticks(times)
+        ax.set_ylabel(ylabel)
+        ax.grid(axis="y", which="both", alpha=0.15)
+        ax.set_xlabel("Target Time [Gyr]")
+
+    axs[0].set_title("Loss", fontsize=11)
+    axs[1].set_title("Initial position", fontsize=11)
+    axs[1].set_ylim(1e-3, 5e0)
+    axs[2].set_title("Initial velocity", fontsize=11)
+    legend_handles += [
+        Line2D([], [], color="black", alpha=0.25, lw=0.8, marker="o", ms=2.5, label="Individual targets"),
+        Line2D([], [], color="black", lw=2.2, marker="o", ms=4, label="Median across targets"),
+    ]
+    fig.legend(handles=legend_handles, loc="upper center", ncol=3, fontsize=9, frameon=False, columnspacing=1, bbox_to_anchor=(0.5, 1.01))
+    fig.tight_layout(rect=(0, 0.06, 1, 0.89))
+    return fig, axs
