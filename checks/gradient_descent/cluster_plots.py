@@ -1,11 +1,24 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
+from pathlib import Path
 
 import cluster as cl
 
 
 MNRAS_PAGE_WIDTH = 7.1  # inches
+
+
+def run_paths(run):
+    if isinstance(run, (int, np.integer)) or str(run).isdigit():
+        stem = Path("logs") / f"sim_{run}"
+    else:
+        stem = Path(run)
+        if stem.suffix in (".npz", ".json"):
+            stem = stem.with_suffix("")
+        if not stem.is_absolute() and not stem.exists() and not stem.with_suffix(".npz").exists():
+            stem = Path("logs") / stem
+    return stem.with_suffix(".npz"), stem.with_suffix(".json")
 
 
 def square_limits(particles, padding=0.03):
@@ -109,8 +122,9 @@ def plot_runs(sims, noutputs=5, nstates=10):
         )
 
         for row, sim in enumerate(sims):
-            result = np.load(f"logs/sim_{sim}.npz")
-            config = cl.Config.from_json(f"logs/sim_{sim}.json")
+            result_path, config_path = run_paths(sim)
+            result = np.load(result_path)
+            config = cl.Config.from_json(config_path)
             config.sim_config.logging.level = 0
             history = result["history"]
             best_index = np.argmin(history["loss"])
@@ -283,9 +297,9 @@ def plot_runs(sims, noutputs=5, nstates=10):
                 ax.set_xticks([])
                 ax.set_yticks([])
                 if row == nrows - 1:
-                    ax.set_xlabel("x [kpc]")
+                    ax.set_xlabel("x")
                 if column == 0:
-                    ax.set_ylabel("y [kpc]")
+                    ax.set_ylabel("y")
 
         titles = (
             "Final distributions",
@@ -370,7 +384,7 @@ def plot_convergence_summary(summary):
         "Median": (49, "C3"),
     }
     metrics = [
-        ("loss_ratio", r"$L/L_{\rm optimal}$", 1, 1),
+        ("loss_ratio", r"$L/L_{\rm ref}$", 1, 1),
         ("position_error_kpc", r"$|\Delta\mathbf{x}|/r_{\rm vir}$", rvir, 0.1),
         ("velocity_error_kms", r"$|\Delta\mathbf{v}|/v_{\rm vir}$", vvir, 0.1),
     ]

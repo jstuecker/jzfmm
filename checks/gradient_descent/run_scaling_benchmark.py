@@ -103,6 +103,7 @@ def main():
 
         command = [
             sys.executable,
+            "-u",
             "cluster.py",
             f"--N={N}",
             "--Nhaloes=1",
