@@ -23,17 +23,29 @@ struct OpeningCriterion<OPENING_BY_ANGLE> {
 
     template<int dim, typename tvec>
     __device__ __forceinline__ static bool should_open(
-        NodeWithExt<dim,tvec> nodeA,
-        NodeWithExt<dim,tvec> nodeB,
+        Node<dim,tvec> nodeA,
+        Node<dim,tvec> nodeB,
         Params<tvec> params
     ) {
-        tvec r2 = (nodeA.center - nodeB.center).norm2();
-        tvec L2 = 0.25f * (nodeA.extent + nodeB.extent).norm2();
-        
-        bool need_open = L2 >= params.theta * params.theta * r2;
-        // also open if L2 had an overflow (and r2 is valid)
-        need_open = need_open || ((isnan(L2) || isinf(L2)) && !isnan(r2));
-        return need_open;
+        // Opening Criterion
+        // 2**levels is the per dimension extent
+        // We use a scaling strategy to avoid floating point overflows in the squares
+        const Vec<dim,int32_t> levelsA = lvl_vec<dim>(nodeA.level);
+        const Vec<dim,int32_t> levelsB = lvl_vec<dim>(nodeB.level);
+        const Vec<dim,tvec> dx = nodeA.center - nodeB.center;
+
+        int scale_exp = max(levelsA[dim - 1], levelsB[dim - 1]);
+        const tvec dx_max = absmax(dx);
+        if(dx_max != tvec(0))
+            scale_exp = max(scale_exp, ilogb(dx_max));
+
+        const Vec<dim,tvec> dx_scaled = mulpow2(dx, -scale_exp);
+        const Vec<dim,tvec> extent_scaled =
+            exp2<tvec>(levelsA - scale_exp)
+            + exp2<tvec>(levelsB - scale_exp);
+
+        return tvec(0.25) * extent_scaled.norm2()
+            >= params.theta * params.theta * dx_scaled.norm2();
     }
 };
 

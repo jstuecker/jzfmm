@@ -13,7 +13,7 @@ float_types_direct = ("float", "double")
 p_instance_values = (1, 2, 3, 4, 5, 6, 7)
 p_m2l_instance_values = (1, 2, 3, 4, 5, 6, 7)
 p_l2l_instance_values = (1, 2, 3, 4, 5, 6, 7)
-radial_kernel_instance_values = (0, 1, 2, 3)
+radial_kernel_instance_values = (0, 1, 2)
 opening_criterion_instance_values = (0,)
 default_includes = ["../common/math.cuh"]
 
@@ -129,7 +129,7 @@ for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToL
 
 for kname in ("TranslateLocalToLocal", "SummarizeMultipoles", "TranslateLocalToLocal_XVJP"):
     kernels[kname].template_par["dim"].instances = dimensions
-    kernels[kname].template_par["dim"].expression = "xnode.dimensions()[1]"
+    kernels[kname].template_par["dim"].expression = "nodes.dimensions()[1] - 1"
     kernels[kname].template_filter = fmm_order_filter
 
 add_dtype_template(kernels["SummarizeMultipoles"], "mp_in")

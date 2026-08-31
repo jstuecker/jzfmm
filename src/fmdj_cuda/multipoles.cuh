@@ -135,7 +135,9 @@ __device__ __forceinline__ void setupDnG(
     tvec r2 = dx.norm2();
 
     Vec<p+1,tvec> G;
-    evaluate_radial_kernel_derivatives<p,tvec>(radial_kernel_kind, r2, radial_kernel_params, G);
+    evaluate_radial_kernel_derivatives<p,tvec>(
+        radial_kernel_kind, r2, radial_kernel_params, 0, G
+    );
     Dn[0] = G[p];
 
     #pragma unroll
@@ -317,8 +319,8 @@ template<int p, int dim, typename tvec>
 __global__ __launch_bounds__(32, 1) void SummarizeMultipoles(
     const int* __restrict__ isplit,
     const tvec* __restrict__ mp_in,
-    const Vec<dim,tvec>* __restrict__ xnode,
-    const Vec<dim,tvec>* __restrict__ xchild,
+    const Node<dim,tvec>* __restrict__ nodes,
+    const Node<dim,tvec>* __restrict__ children,
     tvec* __restrict__ mp_out,
     int nnodes,
     int p_in,
@@ -352,17 +354,28 @@ __global__ __launch_bounds__(32, 1) void SummarizeMultipoles(
         mp_kahan[iM] = tvec(0);
     }
 
-    for(int ip = istart; ip < iend; ip++) {
+    const Node<dim,tvec> node = nodes[inode];
+    const int parent_exp = lvl_vec<dim>(node.level)[dim - 1];
+    for(int ichild = istart; ichild < iend; ichild++) {
+        const Node<dim,tvec> child = children[ichild];
+        const int child_exp = lvl_vec<dim>(child.level)[dim - 1];
+        const int child_dexp = child_exp - parent_exp;
         RegisterArray<ncomb,tvec> mp_new;
         ct_static_for<0, ncomb>([&](auto iM_constant) {
             constexpr int iM = decltype(iM_constant)::value;
-            if(iM < ncomb_in)
-                mp_new.template get<iM>() = mp_in[ip * ncomb_in + iM];
+            constexpr int degree = ct_flat_degree<iM, dim>();
+            if(iM < ncomb_in) {
+                mp_new.template get<iM>() = mulpow2(
+                    mp_in[ichild * ncomb_in + iM], degree * child_dexp
+                );
+            }
             else
                 mp_new.template get<iM>() = tvec(0);
         });
 
-        shift_multipoles<p,dim,tvec>(mp_new, xchild[ip] - xnode[inode]);
+        shift_multipoles<p,dim,tvec>(
+            mp_new, mulpow2(child.center - node.center, -parent_exp)
+        );
 
         if(kahan) {
             ct_static_for<0, ncomb>([&](auto iM_constant) {
@@ -467,8 +480,8 @@ template<int p, int dim, typename tvec>
 __global__ void TranslateLocalToLocal(
     const int* __restrict__ isplit,
     const tvec* __restrict__ loc_node,
-    const Vec<dim,tvec>* __restrict__ xnode,
-    const Vec<dim,tvec>* __restrict__ xchild,
+    const Node<dim,tvec>* __restrict__ nodes,
+    const Node<dim,tvec>* __restrict__ children,
     tvec* __restrict__ loc_child,
     const int nnodes,
     const int pout
@@ -483,7 +496,8 @@ __global__ void TranslateLocalToLocal(
     if (istart >= iend)
         return;
     
-    Vec<dim,tvec> xn = xnode[inode];
+    const Node<dim,tvec> node = nodes[inode];
+    const int parent_exp = lvl_vec<dim>(node.level)[dim - 1];
     RegisterArray<ncomb,tvec> loc_in;
     ct_static_for<0, ncomb>([&](auto iM_constant) {
         constexpr int iM = decltype(iM_constant)::value;
@@ -491,7 +505,10 @@ __global__ void TranslateLocalToLocal(
     });
     
     for(int ichild = istart; ichild < iend; ichild++) {
-        Vec<dim,tvec> dpos = xchild[ichild] - xn;
+        const Node<dim,tvec> child = children[ichild];
+        const int child_exp = lvl_vec<dim>(child.level)[dim - 1];
+        const int child_dexp = child_exp - parent_exp;
+        Vec<dim,tvec> dpos = mulpow2(child.center - node.center, -parent_exp);
 
         RegisterArray<ncomb,tvec> loc_work;
         ct_static_for<0, ncomb>([&](auto iM_constant) {
@@ -503,9 +520,11 @@ __global__ void TranslateLocalToLocal(
 
         ct_static_for<0, ncomb>([&](auto iM_constant) {
             constexpr int iM = decltype(iM_constant)::value;
-            if(iM < NCOMB(pout, dim))
+            constexpr int degree = ct_flat_degree<iM, dim>();
+            if(iM < NCOMB(pout, dim)) {
                 loc_child[ichild * NCOMB(pout, dim) + iM] =
-                    loc_work.template get<iM>();
+                    mulpow2(loc_work.template get<iM>(), degree * child_dexp);
+            }
         });
     }
 }
@@ -514,8 +533,8 @@ template<int p, int dim, typename tvec>
 __global__ void TranslateLocalToLocal_XVJP(
     const int* __restrict__ isplit,
     const tvec* __restrict__ loc_node,
-    const Vec<dim,tvec>* __restrict__ xnode,
-    const Vec<dim,tvec>* __restrict__ xchild,
+    const Node<dim,tvec>* __restrict__ nodes,
+    const Node<dim,tvec>* __restrict__ children,
     const tvec* __restrict__ g_loc_child,
     Vec<dim,tvec>* __restrict__ g_xchild,
     const int nnodes,
@@ -531,7 +550,8 @@ __global__ void TranslateLocalToLocal_XVJP(
     if (istart >= iend)
         return;
     
-    Vec<dim,tvec> xn = xnode[inode];
+    const Node<dim,tvec> node = nodes[inode];
+    const int parent_exp = lvl_vec<dim>(node.level)[dim - 1];
     Vec<ncomb,tvec> loc_in;
     #pragma unroll
     for (int iM = 0; iM < ncomb; iM++) {
@@ -539,7 +559,10 @@ __global__ void TranslateLocalToLocal_XVJP(
     }
     
     for(int ichild = istart; ichild < iend; ichild++) {
-        Vec<dim,tvec> dpos = xchild[ichild] - xn;
+        const Node<dim,tvec> child = children[ichild];
+        const int child_exp = lvl_vec<dim>(child.level)[dim - 1];
+        const int child_dexp = child_exp - parent_exp;
+        Vec<dim,tvec> dpos = mulpow2(child.center - node.center, -parent_exp);
 
         Vec<ncomb,tvec> loc_child;
 
@@ -550,6 +573,10 @@ __global__ void TranslateLocalToLocal_XVJP(
         }
 
         shift_local_to_local<p,dim,tvec>(loc_src, loc_child, dpos);
+
+        for_each_multiindex<p,dim>([&](int im, int msum, int (&)[dim]) {
+            loc_child[im] = mulpow2(loc_child[im], msum * child_dexp);
+        });
 
         Vec<ncomb,tvec> gloc_child;
         #pragma unroll
@@ -573,7 +600,9 @@ __global__ void TranslateLocalToLocal_XVJP(
 
                 int ib = multi_to_flat<dim>(b);
                     
-                gxa += gloc_child[im] * loc_child[ib] * (ma + 1);
+                gxa += mulpow2(
+                    gloc_child[im] * loc_child[ib] * tvec(ma + 1), -child_exp
+                );
             });
 
             g_xchild[ichild][a] = gxa;
@@ -589,15 +618,25 @@ __global__ void TranslateLocalToLocal_XVJP(
 template<int p, int dim, typename tvec>
 __device__ __forceinline__ void m2l_translator(
     Vec<dim,tvec> dx,
+    int source_exp,
+    int target_exp,
     const Vec<NCOMB(p, dim),tvec>& Mp,
     Vec<NCOMB(p, dim),tvec>& loc,
     int radial_kernel_kind,
     const tvec* radial_kernel_params
 ) {
     constexpr int ncomb = NCOMB(p, dim);
+    int scale_exp = max(source_exp, target_exp);
+    const tvec dx_max = absmax(dx);
+    if(dx_max != tvec(0))
+        scale_exp = max(scale_exp, ilogb(dx_max));
+
+    dx = mulpow2(dx, -scale_exp);
+    const int source_dexp = source_exp - scale_exp;
+    const int target_dexp = target_exp - scale_exp;
     Vec<p + 1,tvec> G;
     evaluate_radial_kernel_derivatives<p,tvec>(
-        radial_kernel_kind, dx.norm2(), radial_kernel_params, G
+        radial_kernel_kind, dx.norm2(), radial_kernel_params, scale_exp, G
     );
 
     #pragma unroll
@@ -678,7 +717,12 @@ __device__ __forceinline__ void m2l_translator(
                 constexpr int nfac =
                     ct_factorial(nx) * ct_factorial(ny) * ct_factorial(nz);
                 constexpr double inv_nfac = 1.0 / static_cast<double>(nfac);
-                Lnew += Dn.template get<dflat>() * Mp[nflat] * tvec(inv_nfac);
+                const int term_exp = ndegree * source_dexp
+                    + kdegree * target_dexp;
+                Lnew += mulpow2(
+                    Dn.template get<dflat>() * Mp[nflat] * tvec(inv_nfac),
+                    term_exp
+                );
             }
         });
 

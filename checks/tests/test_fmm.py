@@ -5,10 +5,12 @@ import jax.numpy as jnp
 import jax
 import numpy as np
 import pytest
+from jztree.data import PosLvl
 from jztree_utils import ics
 
-from fmdj.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, QuarticPlummerKernel, Plummer2DKernel, SoftenedDistanceKernel
+from fmdj.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, Plummer2DKernel, SoftenedDistanceKernel
 from fmdj.fmm import direct_summation, fast_multipole_method
+from fmdj.multipoles import _fmm_node_to_child, num_multi, summarize_multipoles
 
 def _device_array_bytes(x):
     return np.asarray(jax.block_until_ready(x)).tobytes()
@@ -50,31 +52,6 @@ def test_dim(dim):
     # print(p, jnp.median(ferr_rel) / 10**(-p-1), jnp.max(ferr_rel) / 10**(1-p))
     assert jnp.median(ferr_rel) <= 8.*10**-(p+1)
     assert jnp.max(ferr_rel) <= 9.*10**-(p-1)
-
-def test_gravity3d_kernels():
-    cfg_plummer = FMMConfig(
-        kernel=PlummerKernel(softening=1e-3),
-        p=3,
-        opening=OpeningByAngle(theta=0.4),
-        kahan_summation=True,
-    )
-    cfg_quartic = FMMConfig(
-        kernel=QuarticPlummerKernel(softening=1e-3),
-        p=cfg_plummer.p,
-        opening=cfg_plummer.opening,
-        kahan_summation=cfg_plummer.kahan_summation,
-    )
-
-    part = ics.uniform_particles(int(2048))
-
-    f_plummer = fast_multipole_method.jit(part, cfg_fmm=cfg_plummer).force()
-    f_quartic = fast_multipole_method.jit(part, cfg_fmm=cfg_quartic).force()
-
-    ferr = jnp.linalg.norm(f_quartic - f_plummer, axis=-1)
-    ferr_rel = ferr / jnp.linalg.norm(0.5*(f_quartic + f_plummer), axis=-1)
-
-    assert jnp.median(ferr_rel) <= 1e-3
-    assert jnp.max(ferr_rel) <= 5e-2
 
 
 @pytest.mark.parametrize("kernel", [
@@ -141,3 +118,12 @@ def test_fmm_reproducibility():
     for _ in range(5):
         actual = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).values
         assert jnp.all(expected == actual) # check bit-perfect agreement
+
+@pytest.mark.parametrize("logscale", [-28,-16,-8,0,8,16,28])
+def test_fmm_scales(logscale):
+    cfg_fmm = FMMConfig()
+    part = ics.gaussian_particles(1024*1024, scale=10.**logscale)
+
+    loc = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).values
+
+    assert jnp.all(~jnp.isnan(loc))

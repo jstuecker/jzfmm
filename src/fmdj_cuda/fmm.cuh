@@ -69,10 +69,12 @@ __global__ void CountInteractionsAndM2L(
         int num_childrenA = min(MAX_NUMA, child_range.y - offsetA);
 
         // childA info
-        __shared__ NodeWithExt<dim,tvec> childA[MAX_NUMA];
+        __shared__ Node<dim,tvec> childA[MAX_NUMA];
+        __shared__ int scale_expA[MAX_NUMA];
         if(threadIdx.x < num_childrenA) {
             Node<dim,tvec> child = children_recv[offsetA + threadIdx.x];
-            childA[threadIdx.x] = {child.center, LvlToExt<dim,tvec>(child.level)};
+            childA[threadIdx.x] = child;
+            scale_expA[threadIdx.x] = lvl_vec<dim>(child.level)[dim - 1];
         }
 
         int num_open[MAX_NUMA];
@@ -91,6 +93,7 @@ __global__ void CountInteractionsAndM2L(
         // Todo: BLOCKSIZE does not need to be a compile time constant here.
         //       Make it more flexible! (Need to adapt the warp communication scheme below though!)
         __shared__ Vec<dim,tvec> posB[m2l_blocksize];
+        __shared__ int scale_expB[m2l_blocksize];
         __shared__ Vec<ncomb_mp,tvec> mpB[m2l_blocksize];
         
         // Interaction list info:
@@ -141,10 +144,9 @@ __global__ void CountInteractionsAndM2L(
             int id = seg_mgr.next();
 
             // Each thread loads one other child B to check the opening criterion
-            NodeWithExt<dim,tvec> childB_ext;
+            Node<dim,tvec> childB;
             if(id >= 0) {
-                Node<dim,tvec> childB = children_src[id];
-                childB_ext = {childB.center, LvlToExt<dim,tvec>(childB.level)};
+                childB = children_src[id];
             }
 
             // For each child A, we count the cumulative number of opens and we 
@@ -159,7 +161,7 @@ __global__ void CountInteractionsAndM2L(
                     continue;
 
                 bool need_open = (id >= 0) && OpeningCriterion<opening_criterion_kind>::template should_open<dim,tvec>(
-                    childA[i], childB_ext, opening_criterion
+                    childA[i], childB, opening_criterion
                 );
                 bool actually_open = need_open && (id >= 0);
                 bool interact_now = !need_open && (id >= 0);
@@ -177,7 +179,9 @@ __global__ void CountInteractionsAndM2L(
 
             // only read the multipoles if at least one interaction happens with this childB
             if(any_interacts) {
-                posB[threadIdx.x] = childB_ext.center;
+                posB[threadIdx.x] = childB.center;
+                scale_expB[threadIdx.x] =
+                    lvl_vec<dim>(children_src[id].level)[dim - 1];
                 for(int k=0; k<ncomb_mp; k++) {
                     mpB[threadIdx.x][k] = mp_src[id * ncomb_mp + k];
                 }
@@ -197,9 +201,12 @@ __global__ void CountInteractionsAndM2L(
                     // find the ib-th set bit
                     int b_read = __fns(interact_flags_wa, 0, ib+1);
 
-                    Vec<dim,tvec> dx = posB[b_read] - xaWrite;
-
-                    m2l_translator<p,dim,tvec>(dx, mpB[b_read], LocA, radial_kernel_kind, radial_kernel_params);
+                    m2l_translator<p,dim,tvec>(
+                        posB[b_read] - xaWrite,
+                        scale_expB[b_read], scale_expA[a_write],
+                        mpB[b_read], LocA,
+                        radial_kernel_kind, radial_kernel_params
+                    );
                 }
             }
         }
@@ -299,11 +306,11 @@ __global__ void InsertInteractions(
         int num_childrenA = min(MAX_NUMA, child_range.y - offsetA);
 
         // childA info
-        __shared__ NodeWithExt<dim,tvec> childA[MAX_NUMA];
+        __shared__ Node<dim,tvec> childA[MAX_NUMA];
         __shared__ int ilist_offsets[MAX_NUMA];
         if(threadIdx.x < num_childrenA) {
             Node<dim,tvec> child = children_recv[offsetA + threadIdx.x];
-            childA[threadIdx.x] = {child.center, LvlToExt<dim,tvec>(child.level)};
+            childA[threadIdx.x] = child;
             ilist_offsets[threadIdx.x] = spl_ilist_child[offsetA + threadIdx.x];
         }
 
@@ -331,10 +338,9 @@ __global__ void InsertInteractions(
             int id = seg_mgr.next();
 
             // Each thread loads one other child B to check the opening criterion
-            NodeWithExt<dim,tvec> childB_ext;
+            Node<dim,tvec> childB;
             if(id >= 0) {
-                Node<dim,tvec> childB = children_src[id];
-                childB_ext = {childB.center, LvlToExt<dim,tvec>(childB.level)};
+                childB = children_src[id];
             }
 
             #pragma unroll
@@ -343,7 +349,7 @@ __global__ void InsertInteractions(
                     continue;
 
                 bool need_open = (id >= 0) && OpeningCriterion<opening_criterion_kind>::template should_open<dim,tvec>(
-                    childA[i], childB_ext, opening_criterion
+                    childA[i], childB, opening_criterion
                 );
 
                 unsigned open_mask = __ballot_sync(ALLTHREADS, need_open);

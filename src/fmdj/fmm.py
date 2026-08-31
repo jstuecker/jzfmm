@@ -200,6 +200,14 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg_fmm: FMMConfig):
     # Add super node data into tree information
     spl_n2n = th.ispl_n2n.append(spl, nsup+1, fill_value=spl[-1], resize=True)
     cent = th.center().append(jnp.zeros((size, dim), dtype=center0.dtype), nsup, fill_value=0., resize=True)
+    top_level = th.num_planes() - 1
+    super_level = jnp.max(th.lvl.get(
+        top_level, size, fill_value=jnp.iinfo(jnp.int32).min
+    ))
+    lvl = th.lvl.append(
+        jnp.full(size, super_level, dtype=jnp.int32), nsup,
+        fill_value=super_level, resize=True,
+    )
 
     def handle_level(i, carry):
         level = th.num_planes() - 1 - i
@@ -210,7 +218,7 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg_fmm: FMMConfig):
         single_thread_per_receiver = jnp.asarray(i == 0, dtype=jnp.int32)[None]
 
         child_recv = FMMChildData(
-            poslvl=PosLvl(pos=cent.get(level, size), lvl=th.lvl.get(level, size)),
+            poslvl=th.poslvl(level, size),
             mp=mph.get(level, size=size)
         )
 
@@ -234,7 +242,9 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg_fmm: FMMConfig):
             parent_range = jnp.array([0, spl_n2n.num(level+1)-1], dtype=jnp.int32)
 
         loc_ch = _fmm_node_to_child(
-            parent_spl_recv, parent_loc, parent_cent, child_recv.poslvl.pos, cfg_fmm=cfg_fmm
+            parent_spl_recv, parent_loc,
+            PosLvl(pos=parent_cent, lvl=lvl.get(level+1, size)),
+            child_recv.poslvl, cfg_fmm=cfg_fmm
         )
 
         loc_ch, ilist = _fmm_node_to_node(
@@ -479,23 +489,26 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg_fmm: FMMCon
         mph = build_multipole_hierarchy(th, pos, mp, cfg_fmm=cfg_fmm)
         loc_node, ilist = _fmm_dual_walk(th, mph, cfg_fmm=cfg_fmm)
         ispl = th.splits_leaf_to_part()
-        xnode = th.center().get(0, th.size())
-        loc_part = _fmm_node_to_child(ispl, loc_node, xnode, pos, pout=pout, cfg_fmm=cfg_fmm)
-        return (loc_part, ilist), (pos, mp, ispl, xnode, loc_node)
+        node = th.poslvl(0)
+        # Particle scale H=1 makes the L2P output use physical derivative units.
+        particle = PosLvl(pos=pos, lvl=jnp.zeros(pos.shape[0], dtype=jnp.int32))
+        loc_part = _fmm_node_to_child(ispl, loc_node, node, particle, pout=pout, cfg_fmm=cfg_fmm)
+        return (loc_part, ilist), (pos, mp, ispl, node, loc_node)
     
     def eval_bwd(pout, res, grads):
-        pos, mp, ispl, xnode, loc_node = res
+        pos, mp, ispl, node, loc_node = res
         gloc = grads[0]
+        particle = PosLvl(pos=pos, lvl=jnp.zeros(pos.shape[0], dtype=jnp.int32))
 
         # Backwards pass = FMM with gloc as multipole weights
         # plus the position derivatives of the shifting operators
 
-        gx1 = shift_local_to_children_vjp_x(ispl, loc_node, xnode, pos, gloc)
+        gx1 = shift_local_to_children_vjp_x(ispl, loc_node, node, particle, gloc)
         
         dim = pos.shape[-1]
         (gmp, _), (_, _, _, _, gmp_node) = eval_fwd(pos, gloc, pout=p_of_num_multi(mp.shape[-1], dim=dim))
 
-        gx2 = shift_local_to_children_vjp_x(ispl, gmp_node, xnode, pos, mp)
+        gx2 = shift_local_to_children_vjp_x(ispl, gmp_node, node, particle, mp)
         
         return gx1 + gx2, _sum_to_input_shape(gmp, mp)
     

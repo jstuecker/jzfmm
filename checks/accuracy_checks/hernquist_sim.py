@@ -2,7 +2,7 @@ import os
 import aegis
 import jax.numpy as jnp
 import fmdj
-from fmdj.config import FMMConfig, PlummerKernel, QuarticPlummerKernel, SimConfig
+from fmdj.config import FMMConfig, PlummerKernel, SimConfig
 from fmdj.time_integration import simulate_with_outputs
 import numpy as np
 import matplotlib.pyplot as plt

@@ -32,15 +32,15 @@ ffi::Error SummarizeMultipolesFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer isplit,
     ffi::AnyBuffer mp_in,
-    ffi::AnyBuffer xnode,
-    ffi::AnyBuffer xchild,
+    ffi::AnyBuffer nodes,
+    ffi::AnyBuffer children,
     ffi::Result<ffi::AnyBuffer> mp_out,
     int p_in,
     bool kahan,
     int p
 ) {
     int nnodes = isplit.element_count() - 1;
-    int dim = xnode.dimensions()[1];
+    int dim = nodes.dimensions()[1] - 1;
     DT tvec = mp_in.element_type();
     dim3 blockDim(32);
     dim3 gridDim(div_ceil(isplit.element_count() - 1, 32));
@@ -49,14 +49,14 @@ ffi::Error SummarizeMultipolesFFIHost(
     // Build a bundled argument list for cudaLaunchKernel
     void* isplit_arg = isplit.untyped_data();
     void* mp_in_arg = mp_in.untyped_data();
-    void* xnode_arg = xnode.untyped_data();
-    void* xchild_arg = xchild.untyped_data();
+    void* nodes_arg = nodes.untyped_data();
+    void* children_arg = children.untyped_data();
     void* mp_out_arg = mp_out->untyped_data();
     void* args[] = {
         &isplit_arg,
         &mp_in_arg,
-        &xnode_arg,
-        &xchild_arg,
+        &nodes_arg,
+        &children_arg,
         &mp_out_arg,
         &nnodes,
         &p_in,
@@ -130,8 +130,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // isplit
         .Arg<ffi::AnyBuffer>() // mp_in
-        .Arg<ffi::AnyBuffer>() // xnode
-        .Arg<ffi::AnyBuffer>() // xchild
+        .Arg<ffi::AnyBuffer>() // nodes
+        .Arg<ffi::AnyBuffer>() // children
         .Ret<ffi::AnyBuffer>() // mp_out
         .Attr<int>("p_in")
         .Attr<bool>("kahan")
@@ -148,15 +148,15 @@ ffi::Error TranslateLocalToLocalFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer isplit,
     ffi::AnyBuffer loc_node,
-    ffi::AnyBuffer xnode,
-    ffi::AnyBuffer xchild,
+    ffi::AnyBuffer nodes,
+    ffi::AnyBuffer children,
     ffi::Result<ffi::AnyBuffer> loc_child,
     int pout,
     int p,
     size_t block_size
 ) {
     int nnodes = isplit.element_count() - 1;
-    int dim = xnode.dimensions()[1];
+    int dim = nodes.dimensions()[1] - 1;
     DT tvec = loc_node.element_type();
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(isplit.element_count() - 1, block_size));
@@ -168,14 +168,14 @@ ffi::Error TranslateLocalToLocalFFIHost(
     // Build a bundled argument list for cudaLaunchKernel
     void* isplit_arg = isplit.untyped_data();
     void* loc_node_arg = loc_node.untyped_data();
-    void* xnode_arg = xnode.untyped_data();
-    void* xchild_arg = xchild.untyped_data();
+    void* nodes_arg = nodes.untyped_data();
+    void* children_arg = children.untyped_data();
     void* loc_child_arg = loc_child->untyped_data();
     void* args[] = {
         &isplit_arg,
         &loc_node_arg,
-        &xnode_arg,
-        &xchild_arg,
+        &nodes_arg,
+        &children_arg,
         &loc_child_arg,
         &nnodes,
         &pout
@@ -248,8 +248,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // isplit
         .Arg<ffi::AnyBuffer>() // loc_node
-        .Arg<ffi::AnyBuffer>() // xnode
-        .Arg<ffi::AnyBuffer>() // xchild
+        .Arg<ffi::AnyBuffer>() // nodes
+        .Arg<ffi::AnyBuffer>() // children
         .Ret<ffi::AnyBuffer>() // loc_child
         .Attr<int>("pout")
         .Attr<int>("p")
@@ -266,8 +266,8 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
     cudaStream_t stream,
     ffi::AnyBuffer isplit,
     ffi::AnyBuffer loc_node,
-    ffi::AnyBuffer xnode,
-    ffi::AnyBuffer xchild,
+    ffi::AnyBuffer nodes,
+    ffi::AnyBuffer children,
     ffi::AnyBuffer g_loc_child,
     ffi::Result<ffi::AnyBuffer> g_xchild,
     int pout,
@@ -275,7 +275,7 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
     size_t block_size
 ) {
     int nnodes = isplit.element_count() - 1;
-    int dim = xnode.dimensions()[1];
+    int dim = nodes.dimensions()[1] - 1;
     DT tvec = loc_node.element_type();
     dim3 blockDim(block_size);
     dim3 gridDim(div_ceil(isplit.element_count() - 1, block_size));
@@ -284,15 +284,15 @@ ffi::Error TranslateLocalToLocal_XVJPFFIHost(
     // Build a bundled argument list for cudaLaunchKernel
     void* isplit_arg = isplit.untyped_data();
     void* loc_node_arg = loc_node.untyped_data();
-    void* xnode_arg = xnode.untyped_data();
-    void* xchild_arg = xchild.untyped_data();
+    void* nodes_arg = nodes.untyped_data();
+    void* children_arg = children.untyped_data();
     void* g_loc_child_arg = g_loc_child.untyped_data();
     void* g_xchild_arg = g_xchild->untyped_data();
     void* args[] = {
         &isplit_arg,
         &loc_node_arg,
-        &xnode_arg,
-        &xchild_arg,
+        &nodes_arg,
+        &children_arg,
         &g_loc_child_arg,
         &g_xchild_arg,
         &nnodes,
@@ -366,8 +366,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(
         .Ctx<ffi::PlatformStream<cudaStream_t>>()
         .Arg<ffi::AnyBuffer>() // isplit
         .Arg<ffi::AnyBuffer>() // loc_node
-        .Arg<ffi::AnyBuffer>() // xnode
-        .Arg<ffi::AnyBuffer>() // xchild
+        .Arg<ffi::AnyBuffer>() // nodes
+        .Arg<ffi::AnyBuffer>() // children
         .Arg<ffi::AnyBuffer>() // g_loc_child
         .Ret<ffi::AnyBuffer>() // g_xchild
         .Attr<int>("pout")

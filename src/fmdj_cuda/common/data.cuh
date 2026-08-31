@@ -90,6 +90,15 @@ Vec<dim, tvec> operator-(Vec<dim, tvec> a, const Vec<dim, tvec>& b) {
     return a;
 }
 
+template<int dim, typename tvec>
+__host__ __device__ __forceinline__
+Vec<dim, tvec> operator-(Vec<dim, tvec> a, tvec b) {
+    #pragma unroll
+    for(int i = 0; i < dim; i++)
+        a[i] -= b;
+    return a;
+}
+
 // ---- scalar multiply (both orders) ----
 template<int dim, typename tvec>
 __host__ __device__ __forceinline__

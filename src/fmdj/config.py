@@ -28,25 +28,13 @@ class PlummerKernel(KernelConfig):
         return jnp.asarray([self.softening], dtype=dtype)
 
 @dataclass(unsafe_hash=True, slots=True)
-class QuarticPlummerKernel(KernelConfig):
-    """K(r) = -1 / (r^4 + eps^4)^(1/4)."""
-
-    softening : float = 1e-3
-
-    def kind_id(self) -> int:
-        return 1
-
-    def params(self, dtype=jnp.float32) -> jax.Array:
-        return jnp.asarray([self.softening], dtype=dtype)
-
-@dataclass(unsafe_hash=True, slots=True)
 class Plummer2DKernel(KernelConfig):
     """K(r) = 0.5 * log(r^2 + eps^2)."""
 
     softening : float = 1e-3
 
     def kind_id(self) -> int:
-        return 2
+        return 1
 
     def params(self, dtype=jnp.float32) -> jax.Array:
         return jnp.asarray([self.softening], dtype=dtype)
@@ -58,7 +46,7 @@ class SoftenedDistanceKernel(KernelConfig):
     softening : float = 1e-3
 
     def kind_id(self) -> int:
-        return 3
+        return 2
 
     def params(self, dtype=jnp.float32) -> jax.Array:
         return jnp.asarray([self.softening], dtype=dtype)

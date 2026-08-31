@@ -507,7 +507,7 @@ __device__ __forceinline__ int3 lvl_xyz_old(const int level) {
 }
 
 template <typename tvec>
-__device__ __forceinline__ tvec pow2(tvec val, int pow) {
+__device__ __forceinline__ tvec mulpow2(tvec val, int pow) {
     if constexpr (std::is_same_v<tvec, float>)
         return ldexpf(val, pow);
     else if constexpr (std::is_same_v<tvec, double>)
@@ -518,30 +518,42 @@ __device__ __forceinline__ tvec pow2(tvec val, int pow) {
         return pow >= 0 ? val << pow : val >> -pow;
 }
 
+template<int dim, typename tvec>
+__device__ __forceinline__ Vec<dim,tvec> mulpow2(Vec<dim,tvec> val, int pow) {
+    #pragma unroll
+    for(int i = 0; i < dim; i++)
+        val[i] = mulpow2(val[i], pow);
+    return val;
+}
+
+template<typename tout, int dim, typename tin>
+__device__ __forceinline__ Vec<dim,tout> exp2(const Vec<dim,tin>& exponent) {
+    Vec<dim,tout> result;
+    #pragma unroll
+    for(int i = 0; i < dim; i++)
+        result[i] = mulpow2(tout(1), int(exponent[i]));
+    return result;
+}
+
+template<int dim, typename tvec>
+__device__ __forceinline__ tvec absmax(const Vec<dim,tvec>& val) {
+    tvec result = abs(val[0]);
+    #pragma unroll
+    for(int i = 1; i < dim; i++)
+        result = max(result, abs(val[i]));
+    return result;
+}
+
 template <int dim, typename tvec>
 __device__ __forceinline__ Vec<dim, tvec> LvlToExt(const int level) {
     // Converts a node's or leaf's binary level to its extend per dimension
-    Vec<dim,int32_t> l = lvl_vec<dim>(level);
-    Vec<dim,tvec> ext;
-    
-    #pragma unroll
-    for(int i=0; i<dim; i++)
-        ext[i] = pow2(static_cast<tvec>(1.0), l[i]);
-        
-    return ext;
+    return exp2<tvec>(lvl_vec<dim>(level));
 }
 
 template <int dim, typename tvec>
 __device__ __forceinline__ Vec<dim, tvec> LvlToHalfExt(const int level) {
     // Converts a node's or leaf's binary level to its extend per dimension
-    Vec<dim,int32_t> l = lvl_vec<dim>(level);
-    Vec<dim,tvec> ext;
-    
-    #pragma unroll
-    for(int i=0; i<dim; i++)
-        ext[i] = pow2(static_cast<tvec>(1.0), l[i]-1);
-        
-    return ext;
+    return exp2<tvec>(lvl_vec<dim>(level) - int32_t(1));
 }
 
 template <int dim, typename tvec>

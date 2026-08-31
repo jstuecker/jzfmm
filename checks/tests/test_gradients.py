@@ -7,6 +7,7 @@ import pytest
 from dataclasses import replace
 from jax.test_util import check_grads
 
+from jztree.data import PosLvl
 from jztree.tree import _dense_interaction_list
 from jztree.config import TreeConfig
 from jztree_utils import ics
@@ -36,10 +37,11 @@ def my_check_gradient(f, x, epsrel=1e-4, rtol=5e-3, atol=0.):
 def test_m2m_gradients(pos_mass_z, tree_hierarchy):
     cfg_fmm = FMMConfig()
     spl = tree_hierarchy.splits_leaf_to_part()
-    xnode = tree_hierarchy.center().get(0, tree_hierarchy.size())
+    node = tree_hierarchy.poslvl(0)
+    child = PosLvl(pos=pos_mass_z.pos, lvl=jnp.zeros(len(pos_mass_z.pos), dtype=jnp.int32))
 
     def m2m(x,m):
-        return summarize_multipoles(spl, m, xnode, x, cfg_fmm=cfg_fmm)
+        return summarize_multipoles(spl, m, node, replace(child, pos=x), cfg_fmm=cfg_fmm)
 
     check_grads(lambda m: m2m(pos_mass_z.pos, m), (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-3)
     check_grads(lambda x: m2m(x, pos_mass_z.mass), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-3)
@@ -53,9 +55,10 @@ def test_l2l_gradients(pos_mass_z, tree_hierarchy):
     loc, ilist = _fmm_dual_walk.jit(th, mph, cfg_fmm=cfg_fmm)
 
     ispl = th.splits_leaf_to_part()
-    cent =  th.center().get(0, th.size())
+    node = th.poslvl(0)
+    child = PosLvl(pos=pos_mass_z.pos, lvl=jnp.zeros(len(pos_mass_z.pos), dtype=jnp.int32))
     def l2l(x,loc):
-        return _fmm_node_to_child(ispl, loc, cent, x, cfg_fmm=cfg_fmm, pout=1)
+        return _fmm_node_to_child(ispl, loc, node, replace(child, pos=x), cfg_fmm=cfg_fmm, pout=1)
 
     loc = loc.at[:,1:4].set(0.)
     check_grads(lambda x: l2l(x, loc), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-2)

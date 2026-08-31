@@ -7,6 +7,8 @@ from fmdj.fmm import _fmm_dual_walk, leaf_leaf_summation, fast_multipole_method
 from fmdj.multipoles import _fmm_node_to_child, summarize_multipoles
 from fmdj.data import PosMass
 import jax
+import jax.numpy as jnp
+from jztree.data import PosLvl
 from jztree_utils import ics
 
 @pytest.mark.shrink_in_quick(keep_index=2)
@@ -84,8 +86,10 @@ def bench_fmm_steps(jax_bench, p):
 
     loc, ilist = jb.measure(fn_jit=_fmm_dual_walk.jit, 
                             th=th, mph=mph, cfg_fmm=cfg_fmm, tag="node2node")[1]
+    leaf_nodes = th.poslvl(0)
+    particles = PosLvl(pos=pos_mass_z.pos, lvl=jnp.zeros(len(pos_mass_z.pos), dtype=jnp.int32))
     phif = jb.measure(fn_jit=_fmm_node_to_child.jit, 
-                      ispl=th.splits_leaf_to_part(), loc=loc, xnode=th.center().get(0, th.size()), xchild=pos_mass_z.pos,
+                      ispl=th.splits_leaf_to_part(), loc=loc, node=leaf_nodes, child=particles,
                       cfg_fmm=cfg_fmm, pout=1,tag="loc2loc")[1]
     fphi = jb.measure(fn_jit=leaf_leaf_summation.jit,
                       particles=pos_mass_z, ispl=th.splits_leaf_to_part(), ilist=ilist, cfg_fmm=cfg_fmm, tag="leaf2leaf")[1]
@@ -103,15 +107,16 @@ def bench_fmm_steps(jax_bench, p):
 def bench_particle_multipoles(jax_bench, p, pos_mass_z, tree_hierarchy):
     th = tree_hierarchy
     ispl = th.splits_leaf_to_part()
-    cent =  th.center().get(0, th.size())
 
     jb = jax_bench(jit_rounds=200, jit_warmup=20)
 
     cfg_fmm = FMMConfig(p=p)
+    leaf_nodes = th.poslvl(0)
+    particles = PosLvl(pos=pos_mass_z.pos, lvl=jnp.zeros(len(pos_mass_z.pos), dtype=jnp.int32))
 
     jb.measure(
         fn_jit = summarize_multipoles.jit,
-        ispl=ispl, mp=pos_mass_z.mass, xnode=cent, xchild=pos_mass_z.pos, cfg_fmm=cfg_fmm,
+        ispl=ispl, mp=pos_mass_z.mass, node=leaf_nodes, child=particles, cfg_fmm=cfg_fmm,
         tag="part2mp"
     )
     

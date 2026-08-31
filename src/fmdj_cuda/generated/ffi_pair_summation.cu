@@ -94,16 +94,6 @@ ffi::Error DirectPairSummationFFIHost(
         { {true, 2, 5, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 2, 5, double>) },
         { {true, 2, 6, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 2, 6, float>) },
         { {true, 2, 6, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 2, 6, double>) },
-        { {true, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 3, 2, float>) },
-        { {true, 3, 2, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 3, 2, double>) },
-        { {true, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 3, 3, float>) },
-        { {true, 3, 3, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 3, 3, double>) },
-        { {true, 3, 4, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 3, 4, float>) },
-        { {true, 3, 4, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 3, 4, double>) },
-        { {true, 3, 5, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 3, 5, float>) },
-        { {true, 3, 5, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 3, 5, double>) },
-        { {true, 3, 6, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 3, 6, float>) },
-        { {true, 3, 6, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<true, 3, 6, double>) },
         { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 0, 2, float>) },
         { {false, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 0, 2, double>) },
         { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 0, 3, float>) },
@@ -133,17 +123,7 @@ ffi::Error DirectPairSummationFFIHost(
         { {false, 2, 5, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 2, 5, float>) },
         { {false, 2, 5, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 2, 5, double>) },
         { {false, 2, 6, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 2, 6, float>) },
-        { {false, 2, 6, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 2, 6, double>) },
-        { {false, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 3, 2, float>) },
-        { {false, 3, 2, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 3, 2, double>) },
-        { {false, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 3, 3, float>) },
-        { {false, 3, 3, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 3, 3, double>) },
-        { {false, 3, 4, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 3, 4, float>) },
-        { {false, 3, 4, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 3, 4, double>) },
-        { {false, 3, 5, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 3, 5, float>) },
-        { {false, 3, 5, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 3, 5, double>) },
-        { {false, 3, 6, DT::F32}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 3, 6, float>) },
-        { {false, 3, 6, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 3, 6, double>) }
+        { {false, 2, 6, DT::F64}, reinterpret_cast<TFunc>(&DirectPairSummation<false, 2, 6, double>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -153,7 +133,7 @@ ffi::Error DirectPairSummationFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in DirectPairSummationFFIHost -- Only supporting:\n"\
-            "(true, 0, 2, float), (true, 0, 2, double), (true, 0, 3, float), (true, 0, 3, double), (true, 0, 4, float), (true, 0, 4, double), (true, 0, 5, float), (true, 0, 5, double), (true, 0, 6, float), (true, 0, 6, double), (true, 1, 2, float), (true, 1, 2, double), (true, 1, 3, float), (true, 1, 3, double), (true, 1, 4, float), (true, 1, 4, double), (true, 1, 5, float), (true, 1, 5, double), (true, 1, 6, float), (true, 1, 6, double), (true, 2, 2, float), (true, 2, 2, double), (true, 2, 3, float), (true, 2, 3, double), (true, 2, 4, float), (true, 2, 4, double), (true, 2, 5, float), (true, 2, 5, double), (true, 2, 6, float), (true, 2, 6, double), (true, 3, 2, float), (true, 3, 2, double), (true, 3, 3, float), (true, 3, 3, double), (true, 3, 4, float), (true, 3, 4, double), (true, 3, 5, float), (true, 3, 5, double), (true, 3, 6, float), (true, 3, 6, double), (false, 0, 2, float), (false, 0, 2, double), (false, 0, 3, float), (false, 0, 3, double), (false, 0, 4, float), (false, 0, 4, double), (false, 0, 5, float), (false, 0, 5, double), (false, 0, 6, float), (false, 0, 6, double), (false, 1, 2, float), (false, 1, 2, double), (false, 1, 3, float), (false, 1, 3, double), (false, 1, 4, float), (false, 1, 4, double), (false, 1, 5, float), (false, 1, 5, double), (false, 1, 6, float), (false, 1, 6, double), (false, 2, 2, float), (false, 2, 2, double), (false, 2, 3, float), (false, 2, 3, double), (false, 2, 4, float), (false, 2, 4, double), (false, 2, 5, float), (false, 2, 5, double), (false, 2, 6, float), (false, 2, 6, double), (false, 3, 2, float), (false, 3, 2, double), (false, 3, 3, float), (false, 3, 3, double), (false, 3, 4, float), (false, 3, 4, double), (false, 3, 5, float), (false, 3, 5, double), (false, 3, 6, float), (false, 3, 6, double)"
+            "(true, 0, 2, float), (true, 0, 2, double), (true, 0, 3, float), (true, 0, 3, double), (true, 0, 4, float), (true, 0, 4, double), (true, 0, 5, float), (true, 0, 5, double), (true, 0, 6, float), (true, 0, 6, double), (true, 1, 2, float), (true, 1, 2, double), (true, 1, 3, float), (true, 1, 3, double), (true, 1, 4, float), (true, 1, 4, double), (true, 1, 5, float), (true, 1, 5, double), (true, 1, 6, float), (true, 1, 6, double), (true, 2, 2, float), (true, 2, 2, double), (true, 2, 3, float), (true, 2, 3, double), (true, 2, 4, float), (true, 2, 4, double), (true, 2, 5, float), (true, 2, 5, double), (true, 2, 6, float), (true, 2, 6, double), (false, 0, 2, float), (false, 0, 2, double), (false, 0, 3, float), (false, 0, 3, double), (false, 0, 4, float), (false, 0, 4, double), (false, 0, 5, float), (false, 0, 5, double), (false, 0, 6, float), (false, 0, 6, double), (false, 1, 2, float), (false, 1, 2, double), (false, 1, 3, float), (false, 1, 3, double), (false, 1, 4, float), (false, 1, 4, double), (false, 1, 5, float), (false, 1, 5, double), (false, 1, 6, float), (false, 1, 6, double), (false, 2, 2, float), (false, 2, 2, double), (false, 2, 3, float), (false, 2, 3, double), (false, 2, 4, float), (false, 2, 4, double), (false, 2, 5, float), (false, 2, 5, double), (false, 2, 6, float), (false, 2, 6, double)"
         );
     }
     const void* instance = it->second;
@@ -262,16 +242,6 @@ ffi::Error BwdDirectPairSummationFFIHost(
         { {true, 2, 5, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 2, 5, double>) },
         { {true, 2, 6, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 2, 6, float>) },
         { {true, 2, 6, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 2, 6, double>) },
-        { {true, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 3, 2, float>) },
-        { {true, 3, 2, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 3, 2, double>) },
-        { {true, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 3, 3, float>) },
-        { {true, 3, 3, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 3, 3, double>) },
-        { {true, 3, 4, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 3, 4, float>) },
-        { {true, 3, 4, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 3, 4, double>) },
-        { {true, 3, 5, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 3, 5, float>) },
-        { {true, 3, 5, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 3, 5, double>) },
-        { {true, 3, 6, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 3, 6, float>) },
-        { {true, 3, 6, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<true, 3, 6, double>) },
         { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 0, 2, float>) },
         { {false, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 0, 2, double>) },
         { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 0, 3, float>) },
@@ -301,17 +271,7 @@ ffi::Error BwdDirectPairSummationFFIHost(
         { {false, 2, 5, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 2, 5, float>) },
         { {false, 2, 5, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 2, 5, double>) },
         { {false, 2, 6, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 2, 6, float>) },
-        { {false, 2, 6, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 2, 6, double>) },
-        { {false, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 3, 2, float>) },
-        { {false, 3, 2, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 3, 2, double>) },
-        { {false, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 3, 3, float>) },
-        { {false, 3, 3, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 3, 3, double>) },
-        { {false, 3, 4, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 3, 4, float>) },
-        { {false, 3, 4, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 3, 4, double>) },
-        { {false, 3, 5, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 3, 5, float>) },
-        { {false, 3, 5, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 3, 5, double>) },
-        { {false, 3, 6, DT::F32}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 3, 6, float>) },
-        { {false, 3, 6, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 3, 6, double>) }
+        { {false, 2, 6, DT::F64}, reinterpret_cast<TFunc>(&BwdDirectPairSummation<false, 2, 6, double>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -321,7 +281,7 @@ ffi::Error BwdDirectPairSummationFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in BwdDirectPairSummationFFIHost -- Only supporting:\n"\
-            "(true, 0, 2, float), (true, 0, 2, double), (true, 0, 3, float), (true, 0, 3, double), (true, 0, 4, float), (true, 0, 4, double), (true, 0, 5, float), (true, 0, 5, double), (true, 0, 6, float), (true, 0, 6, double), (true, 1, 2, float), (true, 1, 2, double), (true, 1, 3, float), (true, 1, 3, double), (true, 1, 4, float), (true, 1, 4, double), (true, 1, 5, float), (true, 1, 5, double), (true, 1, 6, float), (true, 1, 6, double), (true, 2, 2, float), (true, 2, 2, double), (true, 2, 3, float), (true, 2, 3, double), (true, 2, 4, float), (true, 2, 4, double), (true, 2, 5, float), (true, 2, 5, double), (true, 2, 6, float), (true, 2, 6, double), (true, 3, 2, float), (true, 3, 2, double), (true, 3, 3, float), (true, 3, 3, double), (true, 3, 4, float), (true, 3, 4, double), (true, 3, 5, float), (true, 3, 5, double), (true, 3, 6, float), (true, 3, 6, double), (false, 0, 2, float), (false, 0, 2, double), (false, 0, 3, float), (false, 0, 3, double), (false, 0, 4, float), (false, 0, 4, double), (false, 0, 5, float), (false, 0, 5, double), (false, 0, 6, float), (false, 0, 6, double), (false, 1, 2, float), (false, 1, 2, double), (false, 1, 3, float), (false, 1, 3, double), (false, 1, 4, float), (false, 1, 4, double), (false, 1, 5, float), (false, 1, 5, double), (false, 1, 6, float), (false, 1, 6, double), (false, 2, 2, float), (false, 2, 2, double), (false, 2, 3, float), (false, 2, 3, double), (false, 2, 4, float), (false, 2, 4, double), (false, 2, 5, float), (false, 2, 5, double), (false, 2, 6, float), (false, 2, 6, double), (false, 3, 2, float), (false, 3, 2, double), (false, 3, 3, float), (false, 3, 3, double), (false, 3, 4, float), (false, 3, 4, double), (false, 3, 5, float), (false, 3, 5, double), (false, 3, 6, float), (false, 3, 6, double)"
+            "(true, 0, 2, float), (true, 0, 2, double), (true, 0, 3, float), (true, 0, 3, double), (true, 0, 4, float), (true, 0, 4, double), (true, 0, 5, float), (true, 0, 5, double), (true, 0, 6, float), (true, 0, 6, double), (true, 1, 2, float), (true, 1, 2, double), (true, 1, 3, float), (true, 1, 3, double), (true, 1, 4, float), (true, 1, 4, double), (true, 1, 5, float), (true, 1, 5, double), (true, 1, 6, float), (true, 1, 6, double), (true, 2, 2, float), (true, 2, 2, double), (true, 2, 3, float), (true, 2, 3, double), (true, 2, 4, float), (true, 2, 4, double), (true, 2, 5, float), (true, 2, 5, double), (true, 2, 6, float), (true, 2, 6, double), (false, 0, 2, float), (false, 0, 2, double), (false, 0, 3, float), (false, 0, 3, double), (false, 0, 4, float), (false, 0, 4, double), (false, 0, 5, float), (false, 0, 5, double), (false, 0, 6, float), (false, 0, 6, double), (false, 1, 2, float), (false, 1, 2, double), (false, 1, 3, float), (false, 1, 3, double), (false, 1, 4, float), (false, 1, 4, double), (false, 1, 5, float), (false, 1, 5, double), (false, 1, 6, float), (false, 1, 6, double), (false, 2, 2, float), (false, 2, 2, double), (false, 2, 3, float), (false, 2, 3, double), (false, 2, 4, float), (false, 2, 4, double), (false, 2, 5, float), (false, 2, 5, double), (false, 2, 6, float), (false, 2, 6, double)"
         );
     }
     const void* instance = it->second;
@@ -429,10 +389,6 @@ ffi::Error LeafLeafPairSummationFFIHost(
         { {true, 2, 2, DT::F64}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<true, 2, 2, double>) },
         { {true, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<true, 2, 3, float>) },
         { {true, 2, 3, DT::F64}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<true, 2, 3, double>) },
-        { {true, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<true, 3, 2, float>) },
-        { {true, 3, 2, DT::F64}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<true, 3, 2, double>) },
-        { {true, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<true, 3, 3, float>) },
-        { {true, 3, 3, DT::F64}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<true, 3, 3, double>) },
         { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<false, 0, 2, float>) },
         { {false, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<false, 0, 2, double>) },
         { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<false, 0, 3, float>) },
@@ -444,11 +400,7 @@ ffi::Error LeafLeafPairSummationFFIHost(
         { {false, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<false, 2, 2, float>) },
         { {false, 2, 2, DT::F64}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<false, 2, 2, double>) },
         { {false, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<false, 2, 3, float>) },
-        { {false, 2, 3, DT::F64}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<false, 2, 3, double>) },
-        { {false, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<false, 3, 2, float>) },
-        { {false, 3, 2, DT::F64}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<false, 3, 2, double>) },
-        { {false, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<false, 3, 3, float>) },
-        { {false, 3, 3, DT::F64}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<false, 3, 3, double>) }
+        { {false, 2, 3, DT::F64}, reinterpret_cast<TFunc>(&LeafLeafPairSummation<false, 2, 3, double>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -458,7 +410,7 @@ ffi::Error LeafLeafPairSummationFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in LeafLeafPairSummationFFIHost -- Only supporting:\n"\
-            "(true, 0, 2, float), (true, 0, 2, double), (true, 0, 3, float), (true, 0, 3, double), (true, 1, 2, float), (true, 1, 2, double), (true, 1, 3, float), (true, 1, 3, double), (true, 2, 2, float), (true, 2, 2, double), (true, 2, 3, float), (true, 2, 3, double), (true, 3, 2, float), (true, 3, 2, double), (true, 3, 3, float), (true, 3, 3, double), (false, 0, 2, float), (false, 0, 2, double), (false, 0, 3, float), (false, 0, 3, double), (false, 1, 2, float), (false, 1, 2, double), (false, 1, 3, float), (false, 1, 3, double), (false, 2, 2, float), (false, 2, 2, double), (false, 2, 3, float), (false, 2, 3, double), (false, 3, 2, float), (false, 3, 2, double), (false, 3, 3, float), (false, 3, 3, double)"
+            "(true, 0, 2, float), (true, 0, 2, double), (true, 0, 3, float), (true, 0, 3, double), (true, 1, 2, float), (true, 1, 2, double), (true, 1, 3, float), (true, 1, 3, double), (true, 2, 2, float), (true, 2, 2, double), (true, 2, 3, float), (true, 2, 3, double), (false, 0, 2, float), (false, 0, 2, double), (false, 0, 3, float), (false, 0, 3, double), (false, 1, 2, float), (false, 1, 2, double), (false, 1, 3, float), (false, 1, 3, double), (false, 2, 2, float), (false, 2, 2, double), (false, 2, 3, float), (false, 2, 3, double)"
         );
     }
     const void* instance = it->second;
@@ -575,10 +527,6 @@ ffi::Error BwdLeafLeafPairSummationFFIHost(
         { {true, 2, 2, DT::F64}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<true, 2, 2, double>) },
         { {true, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<true, 2, 3, float>) },
         { {true, 2, 3, DT::F64}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<true, 2, 3, double>) },
-        { {true, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<true, 3, 2, float>) },
-        { {true, 3, 2, DT::F64}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<true, 3, 2, double>) },
-        { {true, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<true, 3, 3, float>) },
-        { {true, 3, 3, DT::F64}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<true, 3, 3, double>) },
         { {false, 0, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<false, 0, 2, float>) },
         { {false, 0, 2, DT::F64}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<false, 0, 2, double>) },
         { {false, 0, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<false, 0, 3, float>) },
@@ -590,11 +538,7 @@ ffi::Error BwdLeafLeafPairSummationFFIHost(
         { {false, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<false, 2, 2, float>) },
         { {false, 2, 2, DT::F64}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<false, 2, 2, double>) },
         { {false, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<false, 2, 3, float>) },
-        { {false, 2, 3, DT::F64}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<false, 2, 3, double>) },
-        { {false, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<false, 3, 2, float>) },
-        { {false, 3, 2, DT::F64}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<false, 3, 2, double>) },
-        { {false, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<false, 3, 3, float>) },
-        { {false, 3, 3, DT::F64}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<false, 3, 3, double>) }
+        { {false, 2, 3, DT::F64}, reinterpret_cast<TFunc>(&BwdLeafLeafPairSummation<false, 2, 3, double>) }
     };
 
     const TTuple key = TTuple(kahan, radial_kernel_kind, dim, tvec);
@@ -604,7 +548,7 @@ ffi::Error BwdLeafLeafPairSummationFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (kahan, radial_kernel_kind, dim, tvec)"\
             " in BwdLeafLeafPairSummationFFIHost -- Only supporting:\n"\
-            "(true, 0, 2, float), (true, 0, 2, double), (true, 0, 3, float), (true, 0, 3, double), (true, 1, 2, float), (true, 1, 2, double), (true, 1, 3, float), (true, 1, 3, double), (true, 2, 2, float), (true, 2, 2, double), (true, 2, 3, float), (true, 2, 3, double), (true, 3, 2, float), (true, 3, 2, double), (true, 3, 3, float), (true, 3, 3, double), (false, 0, 2, float), (false, 0, 2, double), (false, 0, 3, float), (false, 0, 3, double), (false, 1, 2, float), (false, 1, 2, double), (false, 1, 3, float), (false, 1, 3, double), (false, 2, 2, float), (false, 2, 2, double), (false, 2, 3, float), (false, 2, 3, double), (false, 3, 2, float), (false, 3, 2, double), (false, 3, 3, float), (false, 3, 3, double)"
+            "(true, 0, 2, float), (true, 0, 2, double), (true, 0, 3, float), (true, 0, 3, double), (true, 1, 2, float), (true, 1, 2, double), (true, 1, 3, float), (true, 1, 3, double), (true, 2, 2, float), (true, 2, 2, double), (true, 2, 3, float), (true, 2, 3, double), (false, 0, 2, float), (false, 0, 2, double), (false, 0, 3, float), (false, 0, 3, double), (false, 1, 2, float), (false, 1, 2, double), (false, 1, 3, float), (false, 1, 3, double), (false, 2, 2, float), (false, 2, 2, double), (false, 2, 3, float), (false, 2, 3, double)"
         );
     }
     const void* instance = it->second;
