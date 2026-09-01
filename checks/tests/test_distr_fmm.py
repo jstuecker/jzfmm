@@ -5,7 +5,6 @@ from dataclasses import replace
 
 import jax
 import jax.numpy as jnp
-import pytest
 from jax.sharding import AxisType, PartitionSpec as P
 
 from jztree.data import squeeze_any, squeeze_particles

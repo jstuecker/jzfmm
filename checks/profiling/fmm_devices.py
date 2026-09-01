@@ -1,6 +1,5 @@
 import os
 import numpy as np
-import io
 import matplotlib.pyplot as plt
 
 from pytest_jax_bench import JaxBench

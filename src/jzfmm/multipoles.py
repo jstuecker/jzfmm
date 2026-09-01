@@ -23,7 +23,12 @@ def num_multi(p, dim=3):
     return math.comb(p + dim, dim)
 
 def p_of_num_multi(ncomp, dim=3):
-    return [num_multi(p, dim=dim) for p in range(20)].index(ncomp)
+    p = 0
+    while num_multi(p, dim=dim) < ncomp:
+        p += 1
+    if num_multi(p, dim=dim) != ncomp:
+        raise ValueError(f"{ncomp} is not a valid multipole component count in {dim} dimensions")
+    return p
 
 def iter_multi(p, dim=3, istart=0):
     i = 0
@@ -239,26 +244,3 @@ def _fmm_node_to_child(
     
     return eval(child.pos, loc)
 _fmm_node_to_child.jit = jax.jit(_fmm_node_to_child, static_argnames=["cfg_fmm", "pout"])
-
-def multipole_readout_pos_vjp(mp: jax.Array, gmp: jax.Array, dim=3):
-    return local_readout_pos_vjp(gmp, mp, dim=dim) # turns out, math is identical with transposed inputs
-
-def local_readout_pos_vjp(loc: jax.Array, gloc: jax.Array, dim=3):
-    p_loc = p_of_num_multi(loc.shape[1], dim=dim)
-    p_glocx = p_of_num_multi(gloc.shape[1], dim=dim)
-
-    imap = get_index_map(p_loc, dim=dim)
-    
-    gx = []
-    for a in range(dim):
-        avec = [0] * dim
-        avec[a] = 1
-        onew = jnp.zeros_like(gloc[:,0])
-        for m in iter_multi(p_glocx, dim=dim):
-            if (sum(m) > p_glocx) or (sum(m) + sum(avec) > p_loc):
-                continue
-            b = tuple(m[d] + avec[d] for d in range(dim))
-            onew +=  (m[a] + 1) * gloc[:,imap[m]] * loc[:,imap[b]]
-        gx.append(onew)
-    
-    return jnp.stack(gx, axis=-1)

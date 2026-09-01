@@ -46,10 +46,7 @@ find_center.jit = jax.jit(find_center, static_argnames=("npot", "nbind"))
 def ext_acc(p : Particles, t, cfg: SimConfig):
     if cfg.external_potential is None:
         return jnp.zeros_like(p.pos)
-    else:
-        acc = cfg.external_potential.acceleration(p.pos, t=t, cfg=cfg)
-
-        return acc
+    return cfg.external_potential.acceleration(p.pos, t=t, cfg=cfg)
 
 def quantize_particles(p: Particles, integrator: DKDLatticeConfig) -> Particles:
     dtype = jnp.result_type(p.mass, jnp.float32)

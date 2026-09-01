@@ -1,5 +1,4 @@
 from pathlib import Path
-import os
 
 from jax_ffi_gen import parse, generator as gen
 

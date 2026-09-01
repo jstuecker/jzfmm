@@ -45,28 +45,6 @@ __device__ __forceinline__ constexpr int multi_to_flat(const int (&k)[dim]) {
     }
 }
 
-// template<int pmax>
-// __device__ __forceinline__ constexpr  int3 flat_to_multi(const int kflat) {
-//     int i = 0, ksum, kz, ky;
-//     #pragma unroll
-//     for(ksum=0; ksum <= pmax; ksum++) {
-//         int nadd = ((ksum+2)*(ksum+1)) >> 1;
-//         if (i + nadd > kflat)
-//             break;
-//         i += nadd;
-//     }
-//     #pragma unroll
-//     for(kz=0; kz <= ksum; kz++) {
-//         int nadd = (ksum-kz+1);
-//         if (i + nadd > kflat)
-//             break;
-//         i += nadd;
-//     }
-//     ky = kflat - i;
-
-//     return int3{ksum-ky-kz, ky, kz};
-// }
-
 /* ---------------------------------------------------------------------------------------------- */
 /*                                   Iteration Helper functions                                   */
 /* ---------------------------------------------------------------------------------------------- */

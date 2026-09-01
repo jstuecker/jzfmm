@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -33,22 +32,6 @@ class UniformAcceleration(PotentialField):
 
     def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
         return - (self.acc[0] * x[:,0] + self.acc[1] * x[:,1] + self.acc[2] * x[:,2])
-
-@dataclass(unsafe_hash=True)
-class MiyamotoNagaiPotential(PotentialField):
-    """Miyamoto Nagai (1975) potential (https://articles.adsabs.harvard.edu/pdf/1975PASJ...27..533M)
-    see also http://astro.utoronto.ca/~bovy/AST1420/notes/notebooks/07.-Flattened-Mass-Distributions.html
-    """
-
-    mass: float = 2e10
-    b: float = 300e-6
-    a: float = 3000e-6
-
-    def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
-        R = jnp.sqrt(x[...,0]**2 + x[...,1]**2)
-        z = x[...,2]
-
-        return - cfg.units.G()*self.mass / jnp.sqrt(R**2 + (jnp.sqrt(z**2 + self.b**2) + self.a)**2)
 
 @dataclass(unsafe_hash=True)
 class DiskPotential(PotentialField):
@@ -89,10 +72,22 @@ class DiskPotential(PotentialField):
 
 @dataclass(unsafe_hash=True)
 class MilkyWayPotential(PotentialField):
-    halo: PotentialField | None = NFWPotential(24.17, 4096193.) # <=> conc=8.71, M200c=1e12
-    bulge: PotentialField | None = HernquistPotential(a=5e2, mass=9e9)
-    star_disk: PotentialField | None = DiskPotential(mass=4.1e10, scale_radius=2.5e3, height=3.5e2)
-    gas_disk: PotentialField | None = DiskPotential(mass=1.9e10, scale_radius=7e3, height=8e1)
+    halo: PotentialField | None = field(
+        default_factory=lambda: NFWPotential(24.17, 4096193.)
+    )  # <=> conc=8.71, M200c=1e12
+    bulge: PotentialField | None = field(
+        default_factory=lambda: HernquistPotential(a=5e2, mass=9e9)
+    )
+    star_disk: PotentialField | None = field(
+        default_factory=lambda: DiskPotential(
+            mass=4.1e10, scale_radius=2.5e3, height=3.5e2
+        )
+    )
+    gas_disk: PotentialField | None = field(
+        default_factory=lambda: DiskPotential(
+            mass=1.9e10, scale_radius=7e3, height=8e1
+        )
+    )
 
     def potential(self, x, t=0, cfg=None):
         val = 0.

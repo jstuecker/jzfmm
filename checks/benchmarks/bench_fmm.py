@@ -5,8 +5,6 @@ from jztree.tree import build_tree_hierarchy, zsort, center_of_mass
 from jzfmm.multipoles import build_multipole_hierarchy
 from jzfmm.fmm import _fmm_dual_walk, leaf_leaf_summation, fast_multipole_method
 from jzfmm.multipoles import _fmm_node_to_child, summarize_multipoles
-from jzfmm.data import PosMass
-import jax
 import jax.numpy as jnp
 from jztree.data import PosLvl
 from jztree_utils import ics

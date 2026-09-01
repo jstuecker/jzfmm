@@ -138,12 +138,6 @@ Node {
 
 
 template<int dim, typename tvec>
-struct NodeWithExt {
-    Vec<dim,tvec> center;
-    Vec<dim,tvec> extent;
-};
-
-template<int dim, typename tvec>
 struct alignas(compact_alignment<(dim + 1) * sizeof(tvec)>::value)
 PosMass {
     union {

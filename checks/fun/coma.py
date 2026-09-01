@@ -1,13 +1,12 @@
 import numpy as np
 import aegis
-import jax
 import jax.numpy as jnp
 import jzfmm
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import os
-from jzfmm_utils.plots import plot_particles_inset, time_in_years
+from jzfmm_utils.plots import time_in_years
 from matplotlib.animation import FuncAnimation
 from jztree.config import TreeConfig
 import argparse

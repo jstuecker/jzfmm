@@ -3,8 +3,8 @@
 
 #include "multipoles.cuh"
 #include "common/math.cuh"
-#include "common/data.cuh"
 #include "common/iterators.cuh"
+#include "common/data.cuh"
 #include "opening.cuh"
 
 /* ---------------------------------------------------------------------------------------------- */

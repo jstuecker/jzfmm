@@ -24,33 +24,15 @@ execute_process(
   RESULT_VARIABLE CUDA_PATH_RESULT
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-message(STATUS "Using a python installed cuda directory: ${CUDA_PATH}")
-
-# set(CUDAToolkit_ROOT "${CUDA_PATH}")
-
 if(NOT CUDA_PATH_RESULT EQUAL 0)
   message(WARNING "Could not find python cuda directory - I will assume a system or conda/miniforge" 
           "-managed installation ") # ${CUDA_PATH_ERR}
 else()
   # CUDA_ROOT defined via python we will try to set up CUDA paths from a python environment 
-  message(STATUS "Using python/CUDA setup from: $ENV{CUDA_PATH}")
+  message(STATUS "Using Python CUDA installation: ${CUDA_PATH}")
 
   set(_cuda_root "${CUDA_PATH}")
-
-  
-  # set(_cuda_bin   "${_cuda_root}/bin")
   set(_cuda_lib   "${_cuda_root}/lib")
-  # set(_cuda_inc   "${_cuda_root}/include")
-
-  # message(STATUS "Using CUDA bin path: ${_cuda_bin}")
-  # message(STATUS "Using CUDA lib path: ${_cuda_lib}")
-  # message(STATUS "Using CUDA inc path: ${_cuda_inc}")  
-
-  # if(DEFINED ENV{PATH})
-  #   set(ENV{PATH} "${_cuda_bin}:$ENV{PATH}")
-  # else()
-  #   set(ENV{PATH} "${_cuda_bin}")
-  # endif()
 
   # Make sure the linker & runtime see the wheel libs during compiler detection
   if(DEFINED ENV{LIBRARY_PATH})
@@ -62,10 +44,8 @@ else()
   set(CMAKE_CUDA_RUNTIME_LIBRARY Static)
   set(CUDA_USE_STATIC_CUDA_RUNTIME ON)
 
-  # include_directories(SYSTEM "${_cuda_root}/include" "${_cuda_root}/include/cccl")
   # Need to define the link directory explicitly here so that ninja finds it
   add_link_options(-L${_cuda_root}/lib)
-  # add_link_options(-L${_cuda_root}/lib64)
 
   set(CMAKE_CUDA_COMPILER "${_cuda_root}/bin/nvcc")
 endif()
@@ -92,9 +72,6 @@ endif()
 
 # Now let Cmake detect CUDA
 project(${SKBUILD_PROJECT_NAME} LANGUAGES CXX CUDA)
-# find_package(CUDAToolkit CONFIG REQUIRED)
-
-message(STATUS "Using")
 
 find_package(nanobind CONFIG REQUIRED)
 
@@ -119,45 +96,24 @@ message(STATUS "XLA include directory: ${XLA_DIR}")
 # The p=7 compile-time M2L contraction exceeds NVCC's default template depth.
 # The following ptxas flag also reports register and local-memory usage.
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --ftemplate-depth=512 -Xptxas=-v")
-# set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -L${_cuda_lib} -Xlinker -rpath,${_cuda_lib}")
 
 include_directories(SYSTEM ${XLA_DIR})
-
-# foreach(var IN ZIP_LISTS MODULES MODULE_PATHS)
-#     set(MODULE_NAME ${var_0})
-#     set(MODULE_SOURCE ${var_1})
-
-#     nanobind_add_module(${MODULE_NAME} ${MODULE_SOURCE})
-
-#     target_compile_options(${MODULE_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O3> $<$<COMPILE_LANGUAGE:CUDA>:-O3>)
-#     target_compile_features(${MODULE_NAME} PRIVATE cxx_std_17)
-
-#   # If this is the multipoles FFI module, link in the separately compiled CUDA object
-#   # if (${MODULE_NAME} STREQUAL "ffi_multipoles")
-#   #   target_link_libraries(${MODULE_NAME} PRIVATE $<TARGET_OBJECTS:multipoles_cuda>)
-#   # endif()
-
-#   install(TARGETS ${MODULE_NAME} LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME}_cuda)
-# endforeach()
 
 
 # ----------------------------------------------------------------------------------------------- #
 # Auto-add all modules from src/jzfmm_cuda/generated
 # ----------------------------------------------------------------------------------------------- #
 
-# Build-time toggle: only generate sources when explicitly requested
-# option(JZFMM_GENERATE "Generate FFI source files at configure time" OFF)
-# Allow enabling via environment variable too: JZFMM_GENERATE=1/ON/TRUE
-# if(DEFINED ENV{JZFMM_GENERATE})
-#   if("$ENV{JZFMM_GENERATE}" STREQUAL "1" OR "$ENV{JZFMM_GENERATE}" STREQUAL "ON" OR "$ENV{JZFMM_GENERATE}" STREQUAL "TRUE")
-#     set(JZFMM_GENERATE ON CACHE BOOL "Generate FFI source files at configure time" FORCE)
-#   endif()
-# else()
-#   set(JZFMM_GENERATE OFF CACHE BOOL "Generate FFI source files at configure time" FORCE)
-# endif()
+option(JZFMM_GENERATE "Generate FFI source files at configure time" OFF)
+if(DEFINED ENV{JZFMM_GENERATE} AND
+   ("$ENV{JZFMM_GENERATE}" STREQUAL "1" OR
+    "$ENV{JZFMM_GENERATE}" STREQUAL "ON" OR
+    "$ENV{JZFMM_GENERATE}" STREQUAL "TRUE"))
+  set(JZFMM_GENERATE ON)
+endif()
 
 # Optionally run the generator so files exist at configure time (opt-in)
-if(DEFINED ENV{JZFMM_GENERATE} AND ( "$ENV{JZFMM_GENERATE}" STREQUAL "1" OR "$ENV{JZFMM_GENERATE}" STREQUAL "ON" OR "$ENV{JZFMM_GENERATE}" STREQUAL "TRUE") )
+if(JZFMM_GENERATE)
   message(STATUS "JZFMM_GENERATE=ON: Running CUDA FFI generator script")
   execute_process(
     COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/src/jzfmm_cuda/_generate_ffi.py"

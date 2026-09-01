@@ -2,11 +2,9 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 import numpy as np
-import io
 import matplotlib.pyplot as plt
 
 from pytest_jax_bench import JaxBench
-import jax
 import jax.numpy as jnp
 import time
 

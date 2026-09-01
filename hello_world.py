@@ -1,25 +1,23 @@
-import matplotlib.pyplot as plt
-import jax.numpy as jnp
-import aegis
+import argparse
 from dataclasses import replace
+
+import aegis
+import jax.numpy as jnp
+import matplotlib
+
+matplotlib.use("TkAgg")
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+
 from jzfmm.data import Particles
 from jzfmm.config import FMMConfig, KDKConfig, PlummerKernel, SimConfig
 from jzfmm.external_potential import NFWPotential
 from jzfmm.time_integration import find_center, force_and_potential, simulate_with_outputs
-
-import argparse
-
-import matplotlib
-matplotlib.use("TkAgg")
-
-from matplotlib.animation import FuncAnimation
 from jzfmm_utils.plots import plot_particles_inset
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--show", action="store_true", help="Visualize on the fly")
 args = parser.parse_args()
-
-print(args.show)
 
 prof = aegis.profiles.NFWProfile(conc=10., r200c=10.)
 pos0, vel0, m = prof.sample_particles(1024*128, result="pos_vel_m", rpmin=1e-3, ramax=10.)

@@ -1,10 +1,10 @@
-from typing import Tuple, List
+from typing import Tuple
 from functools import partial
 import numpy as np
 import jax
 import jax.numpy as jnp
 import warnings
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 
 
 from jztree.data import PosMass, InteractionList, get_pos_mass, TreeHierarchy, PosLvl, PackedArray, RankIdx, get_num
@@ -18,7 +18,7 @@ from jax.sharding import PartitionSpec as P
 
 from .config import DirectSummationConfig, FMMConfig
 from .data import LocalExpansion
-from .multipoles import _fmm_node_to_child, build_multipole_hierarchy, local_readout_pos_vjp, num_multi, p_of_num_multi, shift_local_to_children_vjp_x
+from .multipoles import _fmm_node_to_child, build_multipole_hierarchy, num_multi, p_of_num_multi, shift_local_to_children_vjp_x
 
 import jzfmm_cuda.ffi_fmm as ffi_fmm
 import jzfmm_cuda.ffi_pair_summation as ffi_pair_summation
@@ -38,13 +38,6 @@ jax.ffi.register_ffi_target("BwdDirectPairSummation", ffi_pair_summation.BwdDire
 class FMMChildData:
     poslvl: PosLvl
     mp: jax.Array
-
-@jax.tree_util.register_dataclass
-@dataclass(slots=True)
-class FMMNodeData:
-    cent: jax.Array
-    loc: jax.Array
-    num: jax.Array
 
 def _comm_buffer_size(base_size: int, factor: float) -> int:
     return max(base_size, int(np.ceil(base_size * factor)))
@@ -97,7 +90,9 @@ def _fmm_node_to_node(
             stacklevel=2,
         )
 
-    assert ilist_alloc_size < 2**31, "So far only int32 supported {ilist_alloc_size/2**31}"
+    assert ilist_alloc_size < 2**31, (
+        f"So far only int32 is supported ({ilist_alloc_size / 2**31:.3g} * 2**31 entries requested)"
+    )
     assert len(spl_recv) == len(node_ilist.ispl)
 
     # children = jnp.concatenate((plane.center(), plane.lvl.view(jnp.float32)[...,None]), axis=-1)
@@ -448,13 +443,6 @@ def direct_force_jax(x, m=1., softening=1e-2):
     
     return -jnp.sum(dx * rinv**3 * jnp.broadcast_to(m, x.shape[:-1])[None,:,None], axis=1)
 direct_force_jax.jit = jax.jit(direct_force_jax)
-
-def direct_force_and_potential_jax(x, m=1., softening=1e-2):
-    phi = direct_potential_jax(x, m, softening)
-    f = direct_force_jax(x, m, softening)
-    
-    return jnp.concatenate([f, phi[:,None]], axis=-1)
-direct_force_and_potential_jax.jit = jax.jit(direct_force_and_potential_jax)
 
 def direct_potential_scan_jax(x, m=1., n2lim=1e8, eps=1e-5):
     N = x.shape[0]
