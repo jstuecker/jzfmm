@@ -1,7 +1,6 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
-import aegis
 from jzfmm.data import PosMass, Particles
 from jztree.comm import get_rank_info
 from jztree.jax_ext import tree_map_by_len
@@ -28,7 +27,56 @@ def gaussian_blob(N, scale=1.0, mass=1., seed=0, npad=0):
     else:
         return posmass
 
+_BITMAP_FONT = {
+    "j": ("00100", "00000", "00100", "00100", "00100", "10100", "01100"),
+    "z": ("11111", "00001", "00010", "00100", "01000", "10000", "11111"),
+    "-": ("000", "000", "000", "111", "000", "000", "000"),
+    "t": ("00100", "11111", "00100", "00100", "00100", "00100", "00011"),
+    "r": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
+    "e": ("01110", "10001", "10000", "11110", "10000", "10001", "01110"),
+}
+
+def gaussian_text(
+    text="jz-tree", N=1024 * 128, spacing=0.45, blob_sigma=0.06,
+    velocity_dispersion=0., angular_velocity=0., mass=1., seed=0,
+):
+    """Place Gaussian particle blobs on the active pixels of a bitmap string."""
+    rng = np.random.default_rng(seed)
+    pixels = []
+    xoffset = 0
+    for character in text.lower():
+        glyph = _BITMAP_FONT[character]
+        for row, line in enumerate(glyph):
+            pixels.extend(
+                (xoffset + column, -row)
+                for column, active in enumerate(line) if active == "1"
+            )
+        xoffset += len(glyph[0]) + 1
+
+    centers = np.asarray(pixels, dtype=float)
+    centers -= 0.5 * (centers.min(axis=0) + centers.max(axis=0))
+    centers *= spacing
+
+    blob_ids = np.arange(N) % len(centers)
+    rng.shuffle(blob_ids)
+    pos = np.zeros((N, 3))
+    pos[:, :2] = centers[blob_ids]
+    pos += rng.normal(scale=blob_sigma, size=pos.shape)
+    vel = rng.normal(scale=velocity_dispersion, size=pos.shape)
+    pos -= np.mean(pos, axis=0)
+    vel[:, 0] -= angular_velocity * pos[:, 1]
+    vel[:, 1] += angular_velocity * pos[:, 0]
+    vel -= np.mean(vel, axis=0)
+
+    return Particles(
+        pos=jnp.asarray(pos),
+        vel=jnp.asarray(vel),
+        mass=jnp.full(N, mass / N),
+    )
+
 def hernquist(N, a=1., M=1., anisotropy=0., seed=None):
+    import aegis
+
     if seed is not None:
         np.random.seed(seed)
     prof = aegis.profiles.HernquistProfile(a=a, M=M, anisotropy=anisotropy)
