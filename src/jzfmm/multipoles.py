@@ -108,7 +108,7 @@ def summarize_multipoles(
         mp, xchild = res
         child_eval = PosLvl(pos=xchild, lvl=child.lvl)
         gmp = _fmm_node_to_child(ispl, gmp_n, node, child_eval, cfg_fmm=cfg_fmm, pout=pin)
-        gx = shift_local_to_children_vjp_x(ispl, gmp_n, node, child_eval, mp)
+        gx = _shift_local_to_children_vjp_x(ispl, gmp_n, node, child_eval, mp)
 
         return gx, gmp
     
@@ -177,7 +177,7 @@ def _shift_local_to_children_impl(
     )[0]
     return pcast_like(locnew, child.pos)
 
-def shift_local_to_children_vjp_x(
+def _shift_local_to_children_vjp_x(
         ispl: jnp.array,
         loc: jnp.array,
         node: PosLvl,
@@ -237,7 +237,7 @@ def _fmm_node_to_child(
         loc, xchild = res
         child_eval = PosLvl(pos=xchild, lvl=child.lvl)
         gloc = summarize_multipoles(ispl, gloc_c, node, child_eval, cfg_fmm=cfg_fmm)
-        gx = shift_local_to_children_vjp_x(ispl, loc, node, child_eval, gloc_c)
+        gx = _shift_local_to_children_vjp_x(ispl, loc, node, child_eval, gloc_c)
         return gx, gloc
     
     eval.defvjp(eval_fwd, eval_bwd)

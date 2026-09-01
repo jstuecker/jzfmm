@@ -55,4 +55,5 @@ Project links
    :caption: Contents
 
    attribution.md
+   api.rst
    changelog.md

@@ -18,7 +18,7 @@ from jax.sharding import PartitionSpec as P
 
 from .config import DirectSummationConfig, FMMConfig
 from .data import LocalExpansion
-from .multipoles import _fmm_node_to_child, build_multipole_hierarchy, num_multi, p_of_num_multi, shift_local_to_children_vjp_x
+from .multipoles import _fmm_node_to_child, _shift_local_to_children_vjp_x, build_multipole_hierarchy, num_multi, p_of_num_multi
 
 import jzfmm_cuda.ffi_fmm as ffi_fmm
 import jzfmm_cuda.ffi_pair_summation as ffi_pair_summation
@@ -35,7 +35,7 @@ jax.ffi.register_ffi_target("BwdDirectPairSummation", ffi_pair_summation.BwdDire
 
 @jax.tree_util.register_dataclass
 @dataclass(slots=True)
-class FMMChildData:
+class _FMMChildData:
     poslvl: PosLvl
     mp: jax.Array
 
@@ -46,12 +46,12 @@ def _fmm_node_to_node(
         node_range: jax.Array,
         node_ilist: InteractionList,
         spl_recv: jax.Array,
-        child_recv: FMMChildData,
+        child_recv: _FMMChildData,
         cfg_fmm: FMMConfig,
         single_thread_per_receiver: jax.Array | None = None,
         loc_in: jax.Array | None = None,
         spl_src: jax.Array | None = None,
-        child_src: FMMChildData | None = None
+        child_src: _FMMChildData | None = None
     ) -> Tuple[jax.Array, InteractionList]:
     """
     Evaluates M2L for a tree plane and generates child interaction list.
@@ -212,7 +212,7 @@ def _fmm_dual_walk(th: TreeHierarchy, mph: PackedArray, cfg_fmm: FMMConfig):
         parent_cent = cent.get(level+1, size)
         single_thread_per_receiver = jnp.asarray(i == 0, dtype=jnp.int32)[None]
 
-        child_recv = FMMChildData(
+        child_recv = _FMMChildData(
             poslvl=th.poslvl(level, size),
             mp=mph.get(level, size=size)
         )
@@ -271,7 +271,7 @@ def _sum_to_input_shape(x: jax.Array, target: jax.Array) -> jax.Array:
         return x
     return jnp.reshape(jnp.sum(x), jnp.shape(target))
 
-def leaf_leaf_summation(
+def _leaf_leaf_summation(
         particles: PosMass,
         ispl: jax.Array,
         ilist: InteractionList,
@@ -389,7 +389,7 @@ def leaf_leaf_summation(
     eval.defvjp(eval_fwd, eval_bwd)
 
     return eval(particles_recv, spl_recv, ilist, loc_in)
-leaf_leaf_summation.jit = jax.jit(leaf_leaf_summation, static_argnames=['cfg_fmm'])
+_leaf_leaf_summation.jit = jax.jit(_leaf_leaf_summation, static_argnames=['cfg_fmm'])
 
 
 # ------------------------------------------------------------------------------------------------ #
@@ -429,22 +429,22 @@ def direct_summation(
     return LocalExpansion(eval(posm) * G, dim=part.pos.shape[-1])
 direct_summation.jit = jax.jit(direct_summation, static_argnames=['cfg_direct'])
 
-def direct_potential_jax(x, m=1., softening=1e-2):
+def _direct_potential_jax(x, m=1., softening=1e-2):
     rij2 = jnp.sum((x[:, None, :] - x[None, :, :]) ** 2, axis=-1)
     rinv = jnp.where(rij2 > 0, 1. / jnp.sqrt(rij2 + softening**2), 0.)
     
     return -jnp.sum(rinv * jnp.broadcast_to(m, x.shape[:-1])[None,:], axis=1)
-direct_potential_jax.jit = jax.jit(direct_potential_jax)
+_direct_potential_jax.jit = jax.jit(_direct_potential_jax)
 
-def direct_force_jax(x, m=1., softening=1e-2):
+def _direct_force_jax(x, m=1., softening=1e-2):
     dx = x[:, None] - x[None, :]
     rij2 = jnp.sum(dx ** 2, axis=-1, keepdims=True)
     rinv = jnp.where(rij2 > 0, 1. / jnp.sqrt(rij2 + softening**2), 0.)
     
     return -jnp.sum(dx * rinv**3 * jnp.broadcast_to(m, x.shape[:-1])[None,:,None], axis=1)
-direct_force_jax.jit = jax.jit(direct_force_jax)
+_direct_force_jax.jit = jax.jit(_direct_force_jax)
 
-def direct_potential_scan_jax(x, m=1., n2lim=1e8, eps=1e-5):
+def _direct_potential_scan_jax(x, m=1., n2lim=1e8, eps=1e-5):
     N = x.shape[0]
 
     nmax = int(np.ceil(n2lim / len(x)))
@@ -464,14 +464,14 @@ def direct_potential_scan_jax(x, m=1., n2lim=1e8, eps=1e-5):
     _, phis = jax.lax.scan(handle_interval, None, jnp.arange(nev, dtype=jnp.int32))
 
     return jnp.concatenate(phis)[0:N]
-direct_potential_scan_jax.jit = jax.jit(direct_potential_scan_jax, static_argnames=("n2lim",))
+_direct_potential_scan_jax.jit = jax.jit(_direct_potential_scan_jax, static_argnames=("n2lim",))
 
 # ------------------------------------------------------------------------------------------------ #
 #                                         Master Functions                                         #
 # ------------------------------------------------------------------------------------------------ #
 
 
-def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg_fmm: FMMConfig) -> Tuple[jax.Array, InteractionList]:
+def _evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg_fmm: FMMConfig) -> Tuple[jax.Array, InteractionList]:
     
     def eval_fwd(pos, mp, pout=1):
         mph = build_multipole_hierarchy(th, pos, mp, cfg_fmm=cfg_fmm)
@@ -491,12 +491,12 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg_fmm: FMMCon
         # Backwards pass = FMM with gloc as multipole weights
         # plus the position derivatives of the shifting operators
 
-        gx1 = shift_local_to_children_vjp_x(ispl, loc_node, node, particle, gloc)
+        gx1 = _shift_local_to_children_vjp_x(ispl, loc_node, node, particle, gloc)
         
         dim = pos.shape[-1]
         (gmp, _), (_, _, _, _, gmp_node) = eval_fwd(pos, gloc, pout=p_of_num_multi(mp.shape[-1], dim=dim))
 
-        gx2 = shift_local_to_children_vjp_x(ispl, gmp_node, node, particle, mp)
+        gx2 = _shift_local_to_children_vjp_x(ispl, gmp_node, node, particle, mp)
         
         return gx1 + gx2, _sum_to_input_shape(gmp, mp)
     
@@ -507,17 +507,17 @@ def evaluate_node_node_fmm(partz: PosMass, th: TreeHierarchy, *, cfg_fmm: FMMCon
     eval.defvjp(eval_fwd, eval_bwd)
 
     return eval(partz.pos, jnp.reshape(partz.mass, jnp.shape(partz.mass) + (1,)))
-evaluate_node_node_fmm.jit = jax.jit(evaluate_node_node_fmm, static_argnames=['cfg_fmm', ])
+_evaluate_node_node_fmm.jit = jax.jit(_evaluate_node_node_fmm, static_argnames=['cfg_fmm', ])
 
 def _fast_multipole_method_z(
         partz: PosMass, th: TreeHierarchy, *, cfg_fmm: FMMConfig, G=1., pout: int = 1
     ) -> LocalExpansion:
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
 
-    loc_node_node, ilist = evaluate_node_node_fmm(partz, th, cfg_fmm=cfg_fmm)
+    loc_node_node, ilist = _evaluate_node_node_fmm(partz, th, cfg_fmm=cfg_fmm)
     spl = th.splits_leaf_to_part()
 
-    loc = leaf_leaf_summation(partz, spl, jax.lax.stop_gradient(ilist), cfg_fmm=cfg_fmm, loc_in=loc_node_node)
+    loc = _leaf_leaf_summation(partz, spl, jax.lax.stop_gradient(ilist), cfg_fmm=cfg_fmm, loc_in=loc_node_node)
 
     return LocalExpansion(loc * G, dim=partz.pos.shape[-1])
 _fast_multipole_method_z.jit = jax.jit(_fast_multipole_method_z, static_argnames=("cfg_fmm", "G", "pout"))

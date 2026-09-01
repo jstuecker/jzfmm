@@ -15,8 +15,8 @@ from jztree_utils import ics
 from jzfmm.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, SimConfig
 from jzfmm.data import PosMass
 from jzfmm.multipoles import summarize_multipoles, build_multipole_hierarchy, _fmm_node_to_child
-from jzfmm.fmm import _fmm_dual_walk, evaluate_node_node_fmm
-from jzfmm.fmm import direct_summation, leaf_leaf_summation, fast_multipole_method
+from jzfmm.fmm import _evaluate_node_node_fmm, _fmm_dual_walk
+from jzfmm.fmm import _leaf_leaf_summation, direct_summation, fast_multipole_method
 from jzfmm.external_potential import UniformAcceleration
 from jzfmm.time_integration import simulate
     
@@ -71,12 +71,12 @@ def test_fmm_node_gradients(pos_mass_z, tree_hierarchy):
 
     def f(pos):
         pm = PosMass(pos=pos, mass=pos_mass_z.mass)
-        return evaluate_node_node_fmm(pm, tree_hierarchy, cfg_fmm=cfg_fmm)[0]
+        return _evaluate_node_node_fmm(pm, tree_hierarchy, cfg_fmm=cfg_fmm)[0]
     check_grads(f, (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-2)
 
     def f(mass):
         pm = PosMass(pos=pos_mass_z.pos, mass=mass)
-        return evaluate_node_node_fmm(pm, tree_hierarchy, cfg_fmm=cfg_fmm)[0]
+        return _evaluate_node_node_fmm(pm, tree_hierarchy, cfg_fmm=cfg_fmm)[0]
     check_grads(f, (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-1)
 
 @pytest.mark.parametrize("mode", ["fmm", "direct"])
@@ -131,7 +131,7 @@ def test_force_gradients(dim):
 
     cfg_direct = DirectSummationConfig(kernel=cfg_fmm.kernel, kahan_summation=True)
     fphi1 = direct_summation.jit(part, cfg_direct=cfg_direct).values
-    fphi2 = leaf_leaf_summation.jit(part, ispl, ilist, cfg_fmm)
+    fphi2 = _leaf_leaf_summation.jit(part, ispl, ilist, cfg_fmm)
     fphi3 = fast_multipole_method.jit(part, cfg_fmm=cfg_fmm).values
 
     abstol = float(jnp.std(fphi1) * 2e-2)
@@ -139,7 +139,7 @@ def test_force_gradients(dim):
     assert fphi2 == pytest.approx(fphi1, abs=abstol*1e-2)
     assert fphi3 == pytest.approx(fphi1, abs=abstol)
 
-    def f1(part): return leaf_leaf_summation(part, ispl, ilist, cfg_fmm=cfg_fmm).sum()
+    def f1(part): return _leaf_leaf_summation(part, ispl, ilist, cfg_fmm=cfg_fmm).sum()
     def f2(part): return direct_summation(part, cfg_direct=cfg_direct).values.sum()
     def f3(part): return fast_multipole_method(part, cfg_fmm=cfg_fmm).values.sum()
     

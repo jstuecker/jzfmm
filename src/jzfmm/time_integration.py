@@ -43,7 +43,7 @@ def find_center(p: Particles, npot: int = 50, nbind: int | None = None):
     return cpos, cvel
 find_center.jit = jax.jit(find_center, static_argnames=("npot", "nbind"))
 
-def ext_acc(p : Particles, t, cfg: SimConfig):
+def _ext_acc(p : Particles, t, cfg: SimConfig):
     if cfg.external_potential is None:
         return jnp.zeros_like(p.pos)
     return cfg.external_potential.acceleration(p.pos, t=t, cfg=cfg)
@@ -70,32 +70,32 @@ def dequantize_particles(p: Particles, integrator: DKDLatticeConfig) -> Particle
         vel=vel,
     )
 
-def timestep_kdk(p : Particles, dt, cfg: SimConfig, t=0.):
+def _timestep_kdk(p : Particles, dt, cfg: SimConfig, t=0.):
     p = replace(p)  # Make a copy to avoid modifying the input
 
     assert p.loc is not None, "need to have previous acceleration for KDK"
 
-    vh = p.vel + (p.loc.force() + ext_acc(p, t, cfg)) * (0.5 * dt)
+    vh = p.vel + (p.loc.force() + _ext_acc(p, t, cfg)) * (0.5 * dt)
     p.pos = p.pos + vh * dt
 
     p.loc = force_and_potential(p, cfg=cfg)
-    p.vel = vh + (p.loc.force() + ext_acc(p, t + dt, cfg)) * (0.5 * dt)
+    p.vel = vh + (p.loc.force() + _ext_acc(p, t + dt, cfg)) * (0.5 * dt)
 
     return p
 
-def timestep_dkd(p : Particles, dt, cfg: SimConfig, t=0.):
+def _timestep_dkd(p : Particles, dt, cfg: SimConfig, t=0.):
     p = replace(p)  # Make a copy to avoid modifying the input
 
     assert p.loc is None, "Should not have p.loc on particles for DKD, it is internal and temporary"
 
     p.pos = p.pos + p.vel * (0.5 * dt)
     loc = force_and_potential(p, cfg=cfg)
-    p.vel = p.vel + (loc.force() + ext_acc(p, t + 0.5 * dt, cfg)) * dt
+    p.vel = p.vel + (loc.force() + _ext_acc(p, t + 0.5 * dt, cfg)) * dt
     p.pos = p.pos + p.vel * (0.5 * dt)
 
     return p
 
-def timestep_dkd_lattice(p : Particles, dt, cfg: SimConfig, t=0.):
+def _timestep_dkd_lattice(p : Particles, dt, cfg: SimConfig, t=0.):
     p = replace(p)  # Make a copy to avoid modifying the input
 
     assert p.loc is None, "Should not have p.loc on particles for DKD, it is internal and temporary"
@@ -109,7 +109,7 @@ def timestep_dkd_lattice(p : Particles, dt, cfg: SimConfig, t=0.):
 
     p_float = dequantize_particles(p, cfg.integrator)
     loc = force_and_potential(p_float, cfg=cfg)
-    acc = loc.force() + ext_acc(p_float, t + 0.5 * dt, cfg)
+    acc = loc.force() + _ext_acc(p_float, t + 0.5 * dt, cfg)
     with jax.enable_x64(int_dtype == jnp.int64):
         p.vel = p.vel + jnp.rint(dt * acc / dv).astype(int_dtype)
 
@@ -118,12 +118,12 @@ def timestep_dkd_lattice(p : Particles, dt, cfg: SimConfig, t=0.):
 
     return p
 
-def reverse_timestep_dkd_vjp(p_next: Particles, gp_next: Particles, dt, cfg: SimConfig, tend=0.):
+def _reverse_timestep_dkd_vjp(p_next: Particles, gp_next: Particles, dt, cfg: SimConfig, tend=0.):
     xmid = p_next.pos - 0.5 * dt * p_next.vel
     p_mid = replace(p_next, pos=xmid, loc=None)
 
     def mid_acc(p):
-        return force_and_potential(p, cfg=cfg).force() + ext_acc(p, tend - 0.5 * dt, cfg)
+        return force_and_potential(p, cfg=cfg).force() + _ext_acc(p, tend - 0.5 * dt, cfg)
 
     acc_mid, acc_vjp = jax.vjp(mid_acc, p_mid)
     v_prev = p_next.vel - dt * acc_mid
@@ -142,7 +142,7 @@ def reverse_timestep_dkd_vjp(p_next: Particles, gp_next: Particles, dt, cfg: Sim
 
     return p_prev, gp_prev
 
-def reverse_timestep_dkd_lattice_vjp(p_next: Particles, gp_next: Particles, dt, cfg: SimConfig, tend=0.):
+def _reverse_timestep_dkd_lattice_vjp(p_next: Particles, gp_next: Particles, dt, cfg: SimConfig, tend=0.):
     p_prev = replace(p_next)
     dx, dv, int_dtype = cfg.integrator.dx, cfg.integrator.dv, cfg.integrator.int_dtype
 
@@ -152,7 +152,7 @@ def reverse_timestep_dkd_lattice_vjp(p_next: Particles, gp_next: Particles, dt, 
     p_mid = dequantize_particles(p_prev, cfg.integrator)
 
     def mid_acc(p):
-        return force_and_potential(p, cfg=cfg).force() + ext_acc(p, tend - 0.5 * dt, cfg)
+        return force_and_potential(p, cfg=cfg).force() + _ext_acc(p, tend - 0.5 * dt, cfg)
 
     acc_mid, acc_vjp = jax.vjp(mid_acc, p_mid)
     with jax.enable_x64(int_dtype == jnp.int64):
@@ -174,11 +174,11 @@ def reverse_timestep_dkd_lattice_vjp(p_next: Particles, gp_next: Particles, dt, 
 
 def timestep(p : Particles, dt, cfg: SimConfig, t=0.):
     if isinstance(cfg.integrator, KDKConfig):
-        return timestep_kdk(p, dt=dt, cfg=cfg, t=t)
+        return _timestep_kdk(p, dt=dt, cfg=cfg, t=t)
     if isinstance(cfg.integrator, DKDConfig):
-        return timestep_dkd(p, dt=dt, cfg=cfg, t=t)
+        return _timestep_dkd(p, dt=dt, cfg=cfg, t=t)
     if isinstance(cfg.integrator, DKDLatticeConfig):
-        return timestep_dkd_lattice(p, dt=dt, cfg=cfg, t=t)
+        return _timestep_dkd_lattice(p, dt=dt, cfg=cfg, t=t)
     raise TypeError(f"Unknown integrator config {cfg.integrator!r}. Expected KDKConfig, DKDConfig, or DKDLatticeConfig.")
 timestep.jit = jax.jit(timestep, static_argnames=("cfg",))
 
@@ -236,8 +236,8 @@ def simulate(
             dt = t1 - t0
 
             if isinstance(cfg.integrator, DKDConfig):
-                return reverse_timestep_dkd_vjp(p, gp, dt=dt, cfg=cfg, tend=t1)
-            return reverse_timestep_dkd_lattice_vjp(p, gp, dt=dt, cfg=cfg, tend=t1)
+                return _reverse_timestep_dkd_vjp(p, gp, dt=dt, cfg=cfg, tend=t1)
+            return _reverse_timestep_dkd_lattice_vjp(p, gp, dt=dt, cfg=cfg, tend=t1)
 
         p_prev, gp_prev = jax.lax.fori_loop(0, nsteps, step, (p, gp))
         

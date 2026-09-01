@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 from jztree.data import PosMass
 
-def static_field(*args, **kwargs):
+def _static_field(*args, **kwargs):
     return field(*args, metadata=dict(static=True), **kwargs)
 
 @jax.tree_util.register_dataclass
@@ -11,7 +11,7 @@ def static_field(*args, **kwargs):
 class LocalExpansion:
     values: jax.Array
 
-    dim: int = static_field(default=3)
+    dim: int = _static_field(default=3)
 
     def fphi(self):
         return jnp.concatenate([self.force(), self.potential()[...,None]], axis=-1)
@@ -35,4 +35,4 @@ class Particles:
     loc : LocalExpansion | None = None
 
     num: jax.Array | None = None
-    num_total: int | None = static_field(default=None)
+    num_total: int | None = _static_field(default=None)

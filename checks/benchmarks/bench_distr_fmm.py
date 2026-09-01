@@ -6,7 +6,7 @@ import pytest
 from jax.sharding import AxisType, PartitionSpec as P
 
 from jzfmm.config import FMMConfig
-from jzfmm.fmm import _fmm_dual_walk, fast_multipole_method, leaf_leaf_summation
+from jzfmm.fmm import _fmm_dual_walk, _leaf_leaf_summation, fast_multipole_method
 from jzfmm.multipoles import build_multipole_hierarchy
 from jztree.jax_ext import shard_map_constructor
 from jztree.tree import zsort_and_tree
@@ -20,7 +20,7 @@ def get_mesh(ndev=-1):
 
 
 def leaf_leaf_with_tree(partz, th, ilist, cfg_fmm):
-    return leaf_leaf_summation(partz, th.splits_leaf_to_part(), ilist, cfg_fmm=cfg_fmm)
+    return _leaf_leaf_summation(partz, th.splits_leaf_to_part(), ilist, cfg_fmm=cfg_fmm)
 
 
 @pytest.mark.shrink_in_quick(keep_index=2)

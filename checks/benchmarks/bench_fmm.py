@@ -3,7 +3,7 @@ from jzfmm.config import FMMConfig
 from dataclasses import replace
 from jztree.tree import build_tree_hierarchy, zsort, center_of_mass
 from jzfmm.multipoles import build_multipole_hierarchy
-from jzfmm.fmm import _fmm_dual_walk, leaf_leaf_summation, fast_multipole_method
+from jzfmm.fmm import _fmm_dual_walk, _leaf_leaf_summation, fast_multipole_method
 from jzfmm.multipoles import _fmm_node_to_child, summarize_multipoles
 import jax.numpy as jnp
 from jztree.data import PosLvl
@@ -41,7 +41,7 @@ def bench_leaf_size(jax_bench, pos_mass_z, max_leaf_size):
         th=th, mph=mph, cfg_fmm=cfg_fmm, tag="node2node"
     )
 
-    jb.measure(fn_jit=leaf_leaf_summation.jit,
+    jb.measure(fn_jit=_leaf_leaf_summation.jit,
         particles=pos_mass_z, ispl=th.splits_leaf_to_part(), ilist=ilist, cfg_fmm=cfg_fmm,
         tag="leaf2leaf"
     )
@@ -89,7 +89,7 @@ def bench_fmm_steps(jax_bench, p):
     phif = jb.measure(fn_jit=_fmm_node_to_child.jit, 
                       ispl=th.splits_leaf_to_part(), loc=loc, node=leaf_nodes, child=particles,
                       cfg_fmm=cfg_fmm, pout=1,tag="loc2loc")[1]
-    fphi = jb.measure(fn_jit=leaf_leaf_summation.jit,
+    fphi = jb.measure(fn_jit=_leaf_leaf_summation.jit,
                       particles=pos_mass_z, ispl=th.splits_leaf_to_part(), ilist=ilist, cfg_fmm=cfg_fmm, tag="leaf2leaf")[1]
     
     jb.measure(fn_jit=fast_multipole_method.jit,
