@@ -2,13 +2,13 @@ import numpy as np
 import aegis
 import jax
 import jax.numpy as jnp
-import fmdj
+import jzfmm
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
-from fmdj_utils.plots import time_in_years
+from jzfmm_utils.plots import time_in_years
 from matplotlib.animation import FuncAnimation
-from fmdj.external_potential import MilkyWayPotential
+from jzfmm.external_potential import MilkyWayPotential
 from jztree.config import TreeConfig
 
 import argparse
@@ -29,19 +29,19 @@ xy = aegis.numerics.sample.random_direction(len(r), ndim=2)
 pos = jnp.stack([xy[...,0], xy[...,1], jax.random.normal(jax.random.key(1), len(xy))*0.1], axis=-1)*r[:,None]
 
 pot = MilkyWayPotential()
-accr = jnp.linalg.norm(pot.acceleration(pos, cfg=fmdj.SimConfig()), axis=-1)
+accr = jnp.linalg.norm(pot.acceleration(pos, cfg=jzfmm.SimConfig()), axis=-1)
 vcirc = jnp.sqrt(jnp.clip(accr * r, 0., None))
 vel = jnp.cross(pos, jnp.array((0.,0.,1.))) * (vcirc/r)[:,None]
 vel = vel + jax.random.normal(jax.random.key(2), vel.shape) * 10.
 
 # We choose effectively mass-less particles, let dynamics be driven by external potential
-part = fmdj.data.Particles(pos=jnp.array(pos), vel=jnp.array(vel), mass=1e-1)
+part = jzfmm.data.Particles(pos=jnp.array(pos), vel=jnp.array(vel), mass=1e-1)
 
 # ------------------------------------------------------------------------------------------------ #
 #                                             Plotting                                             #
 # ------------------------------------------------------------------------------------------------ #
 
-def myplot(t: float, p: fmdj.data.Particles, previous=None, skip=10, dm=True):
+def myplot(t: float, p: jzfmm.data.Particles, previous=None, skip=10, dm=True):
     if previous is None:
         fig, ax = plt.subplots(1, 1, figsize=[6.5, 6])
         ax = plt.gca()
@@ -96,16 +96,16 @@ def update(t_and_p):
 #                                         Run and Visualize                                        #
 # ------------------------------------------------------------------------------------------------ #
 
-cfg_fmm = fmdj.FMMConfig(
-    kernel=fmdj.PlummerKernel(softening=1e-2),
+cfg_fmm = jzfmm.FMMConfig(
+    kernel=jzfmm.PlummerKernel(softening=1e-2),
     tree=TreeConfig(mass_centered=False, alloc_fac_nodes=2.0),
 )
-cfg = fmdj.SimConfig(force=cfg_fmm)
+cfg = jzfmm.SimConfig(force=cfg_fmm)
 cfg.external_potential = MilkyWayPotential()
 if not dm:
     cfg.external_potential.halo = None
 
-sim_iter = fmdj.time_integration.simulate_with_outputs(
+sim_iter = jzfmm.time_integration.simulate_with_outputs(
     part, tend=nfw.tcirc(20.)*0.5, nout=300, steps_per_output=20, cfg=cfg,
 )
 

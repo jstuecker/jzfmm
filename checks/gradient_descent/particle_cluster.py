@@ -11,7 +11,7 @@ import numpy as np
 import optax
 
 import cluster as cl
-import fmdj
+import jzfmm
 
 
 DEFAULT_OUTPUT_DIRECTORY = Path(__file__).resolve().parent / "logs"
@@ -46,7 +46,7 @@ def get_particles(parameters):
         10.0**parameters.log10_mass,
         (len(parameters.position),),
     )
-    return fmdj.data.Particles(
+    return jzfmm.data.Particles(
         pos=parameters.position * cl.POSITION_UNIT,
         vel=parameters.velocity * cl.VELOCITY_UNIT,
         mass=particle_mass,
@@ -139,7 +139,7 @@ def simulate(parameters, config):
         config.integration_steps + 1,
         dtype=np.float32,
     )
-    return fmdj.time_integration.simulate(
+    return jzfmm.time_integration.simulate(
         particles,
         ts=times,
         cfg=simulation_config(config),
@@ -203,7 +203,7 @@ def make_halo_particles(log10_mass, position, velocity, N, seed):
         * np.cbrt(halo_mass)
         / cl.FIXED_CONCENTRATION
     )
-    return fmdj.data.Particles(
+    return jzfmm.data.Particles(
         pos=(
             jnp.asarray(base_position)
             * scale_radius
@@ -404,7 +404,7 @@ def run(config):
         velocity=reference_particles.vel / cl.VELOCITY_UNIT,
     )
     target_particles = simulate(target_parameters, config)
-    target = fmdj.data.PosMass(
+    target = jzfmm.data.PosMass(
         pos=observed_position(
             target_particles,
             config.redshift_space,
@@ -465,8 +465,8 @@ def run(config):
     base_velocity = jnp.asarray(base_velocity)
     base_mass = jnp.asarray(base_mass)
 
-    distance_config = fmdj.DirectSummationConfig(
-        kernel=fmdj.SoftenedDistanceKernel(
+    distance_config = jzfmm.DirectSummationConfig(
+        kernel=jzfmm.SoftenedDistanceKernel(
             softening=config.loss_softening
         ),
         kahan_summation=True,
@@ -522,14 +522,14 @@ def run(config):
         )
 
         evolved_particles = simulate(parameters, config)
-        particles = fmdj.data.PosMass(
+        particles = jzfmm.data.PosMass(
             pos=observed_position(
                 evolved_particles,
                 config.redshift_space,
             ),
             mass=evolved_particles.mass / cl.MASS_UNIT,
         )
-        target_loss = fmdj.loss.maximum_mean_discrepancy(
+        target_loss = jzfmm.loss.maximum_mean_discrepancy(
             particles,
             target,
             cfg_fmm=distance_config,
@@ -572,15 +572,15 @@ def run(config):
             [reference_position, reference_velocity / omega],
             axis=1,
         )
-        phase_particles = fmdj.data.PosMass(
+        phase_particles = jzfmm.data.PosMass(
             pos=phase_position,
             mass=particle_mass / cl.MASS_UNIT,
         )
-        reference_phase_particles = fmdj.data.PosMass(
+        reference_phase_particles = jzfmm.data.PosMass(
             pos=reference_phase_position,
             mass=base_mass,
         )
-        hernquist_loss = fmdj.loss.maximum_mean_discrepancy(
+        hernquist_loss = jzfmm.loss.maximum_mean_discrepancy(
             phase_particles,
             reference_phase_particles,
             cfg_fmm=distance_config,

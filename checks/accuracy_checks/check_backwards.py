@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 import os
 
-os.environ.setdefault("MPLCONFIGDIR", "/tmp/fmdj-matplotlib")
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/jzfmm-matplotlib")
 
 import aegis
-import fmdj
+import jzfmm
 import jax
 import jax.numpy as jnp
 import matplotlib
@@ -63,29 +63,29 @@ def get_err_estim(
         prof = aegis.profiles.HernquistProfile(a=1.0, M=1.0)
         np.random.seed(42)
         pos, vel, mass = prof.sample_particles(N, "pos_vel_m")
-        part0 = fmdj.data.Particles(
+        part0 = jzfmm.data.Particles(
             pos=np.asarray(pos, dtype=dtype),
             vel=np.asarray(vel, dtype=dtype),
             mass=np.asarray(mass, dtype=dtype),
         )
 
-        cfg = fmdj.SimConfig()
+        cfg = jzfmm.SimConfig()
         cfg.force.kernel.softening = soft
         if double:
             cfg.force.p = 4
         if integrator == "int32":
-            cfg.integrator = fmdj.DKDLatticeConfig(dx=1e-5, dv=1e-5, int_dtype=jnp.int32)
+            cfg.integrator = jzfmm.DKDLatticeConfig(dx=1e-5, dv=1e-5, int_dtype=jnp.int32)
         elif integrator == "int64":
-            cfg.integrator = fmdj.DKDLatticeConfig(dx=1e-5, dv=1e-5, int_dtype=jnp.int64)
+            cfg.integrator = jzfmm.DKDLatticeConfig(dx=1e-5, dv=1e-5, int_dtype=jnp.int64)
         elif integrator == "kdk":
-            cfg.integrator = fmdj.KDKConfig()
+            cfg.integrator = jzfmm.KDKConfig()
         elif integrator != "float":
             raise ValueError(f"Unknown integrator {integrator!r}. Expected 'float', 'kdk', 'int32', or 'int64'.")
 
         tend = prof.tcirc(1.0) * ntc
         ts = jnp.linspace(0.0, tend, nsteps + 1, dtype=part0.pos.dtype)
-        part = fmdj.time_integration.simulate.jit(part0, ts=ts, cfg=cfg)
-        part0b = fmdj.time_integration.simulate.jit(part, ts=ts[::-1], cfg=cfg)
+        part = jzfmm.time_integration.simulate.jit(part0, ts=ts, cfg=cfg)
+        part0b = jzfmm.time_integration.simulate.jit(part, ts=ts[::-1], cfg=cfg)
 
         eps = (
             2.0

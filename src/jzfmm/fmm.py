@@ -20,8 +20,8 @@ from .config import DirectSummationConfig, FMMConfig
 from .data import LocalExpansion
 from .multipoles import _fmm_node_to_child, build_multipole_hierarchy, local_readout_pos_vjp, num_multi, p_of_num_multi, shift_local_to_children_vjp_x
 
-import fmdj_cuda.ffi_fmm as ffi_fmm
-import fmdj_cuda.ffi_pair_summation as ffi_pair_summation
+import jzfmm_cuda.ffi_fmm as ffi_fmm
+import jzfmm_cuda.ffi_pair_summation as ffi_pair_summation
 jax.ffi.register_ffi_target("CountInteractionsAndM2L", ffi_fmm.CountInteractionsAndM2L(), platform="CUDA")
 jax.ffi.register_ffi_target("InsertInteractions", ffi_fmm.InsertInteractions(), platform="CUDA")
 jax.ffi.register_ffi_target("LeafLeafPairSummation", ffi_pair_summation.LeafLeafPairSummation(), platform="CUDA")

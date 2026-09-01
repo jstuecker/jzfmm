@@ -16,7 +16,7 @@ import numpy as np
 import optax
 from jztree.config import LoggingConfig, TreeConfig
 
-import fmdj
+import jzfmm
 from aegis.profiles.analytical import RvirOfMvir
 
 
@@ -156,18 +156,18 @@ class StepRecord(NamedTuple):
     step_seconds: float
 
 
-def default_sim_config() -> fmdj.SimConfig:
-    cfg = fmdj.SimConfig(
-        force=fmdj.FMMConfig(
-            kernel=fmdj.PlummerKernel(
+def default_sim_config() -> jzfmm.SimConfig:
+    cfg = jzfmm.SimConfig(
+        force=jzfmm.FMMConfig(
+            kernel=jzfmm.PlummerKernel(
                 softening=DEFAULT_GRAVITATIONAL_SOFTENING
             ),
         ),
-        external_potential=fmdj.external_potential.HernquistPotential(
+        external_potential=jzfmm.external_potential.HernquistPotential(
             a=HOST_SCALE_RADIUS,
             mass=HOST_MASS,
         ),
-        integrator=fmdj.DKDLatticeConfig(
+        integrator=jzfmm.DKDLatticeConfig(
             dx=LATTICE_DX,
             dv=LATTICE_DV,
             int_dtype=jnp.int32,
@@ -177,28 +177,28 @@ def default_sim_config() -> fmdj.SimConfig:
     return cfg
 
 
-def sim_config_from_dict(values) -> fmdj.SimConfig:
+def sim_config_from_dict(values) -> jzfmm.SimConfig:
     force_values = values["force"].copy()
     force_values["tree"] = force_values["tree"].copy()
     force_values["tree"] = TreeConfig(**force_values["tree"])
-    force_values["kernel"] = fmdj.PlummerKernel(
+    force_values["kernel"] = jzfmm.PlummerKernel(
         **force_values["kernel"]
     )
-    force_values["opening"] = fmdj.OpeningByAngle(
+    force_values["opening"] = jzfmm.OpeningByAngle(
         **force_values["opening"]
     )
 
     integrator_values = values["integrator"].copy()
     int_dtype = integrator_values.pop("int_dtype")
-    integrator = fmdj.DKDLatticeConfig(
+    integrator = jzfmm.DKDLatticeConfig(
         **integrator_values,
         int_dtype=getattr(jnp, int_dtype),
     )
-    return fmdj.SimConfig(
-        force=fmdj.FMMConfig(**force_values),
-        units=fmdj.UnitConfig(**values["units"]),
+    return jzfmm.SimConfig(
+        force=jzfmm.FMMConfig(**force_values),
+        units=jzfmm.UnitConfig(**values["units"]),
         logging=LoggingConfig(**values["logging"]),
-        external_potential=fmdj.external_potential.HernquistPotential(
+        external_potential=jzfmm.external_potential.HernquistPotential(
             **values["external_potential"]
         ),
         integrator=integrator,
@@ -212,7 +212,7 @@ class Config:
     mode: str = "sim"
     integration_time_gyr: float = 1.0
     integration_steps: int = 20
-    sim_config: fmdj.SimConfig = field(default_factory=default_sim_config)
+    sim_config: jzfmm.SimConfig = field(default_factory=default_sim_config)
     loss_mode: str = "distance"
     loss_softening: float = LOSS_SOFTENING
     log10_mass_min: float = LOG10_MASS_MIN
@@ -410,7 +410,7 @@ def map_particles(
             jnp.asarray(base_mass) * halo_mass[i]
         )
 
-    particles = fmdj.data.Particles(
+    particles = jzfmm.data.Particles(
         pos=jnp.concatenate(pos),
         vel=jnp.concatenate(vel),
         mass=jnp.concatenate(mass),
@@ -432,7 +432,7 @@ def map_particles(
             config.integration_steps + 1,
             dtype=np.float32,
         )
-        return fmdj.time_integration.simulate(
+        return jzfmm.time_integration.simulate(
             particles,
             ts=times,
             cfg=config.sim_config,
@@ -447,7 +447,7 @@ def map_particles(
             f"integration_steps={config.integration_steps}; "
             "outputs - 1 must divide integration_steps"
         )
-    simulation_outputs = fmdj.time_integration.simulate_with_outputs(
+    simulation_outputs = jzfmm.time_integration.simulate_with_outputs(
         particles,
         tend=simulation_time,
         nout=number_of_intervals,
@@ -570,17 +570,17 @@ def run(config: Config):
     target = replace(target, mass=target.mass / MASS_UNIT)
 
     if config.loss_mode == "plummer":
-        kernel = fmdj.PlummerKernel(softening=config.loss_softening)
+        kernel = jzfmm.PlummerKernel(softening=config.loss_softening)
         normalize = False
     elif config.loss_mode == "distance":
-        kernel = fmdj.SoftenedDistanceKernel(
+        kernel = jzfmm.SoftenedDistanceKernel(
             softening=config.loss_softening
         )
         normalize = True
     else:
         raise ValueError(f"Unknown loss mode: {config.loss_mode}")
 
-    fmm_config = fmdj.config.FMMConfig(
+    fmm_config = jzfmm.config.FMMConfig(
         kernel=kernel,
         remove_self_interaction=False,
     )
@@ -642,7 +642,7 @@ def run(config: Config):
 
         particles = map_particles(parameters, model_base, config)
         particles = replace(particles, mass=particles.mass / MASS_UNIT)
-        mmd = fmdj.loss.maximum_mean_discrepancy(
+        mmd = jzfmm.loss.maximum_mean_discrepancy(
             part=particles,
             part_target=target,
             cfg_fmm=fmm_config,

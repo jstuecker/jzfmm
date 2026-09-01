@@ -13,7 +13,7 @@ import time
 
 def get_part(n, mode="uniform", seed=0):
 	from jztree_utils import ics
-	import fmdj
+	import jzfmm
 	from jztree.data import PosMass
 	if mode == "grid":
 		ng = int(np.cbrt(n))
@@ -34,7 +34,7 @@ def get_part(n, mode="uniform", seed=0):
 
 
 def bench_distributions():
-	import fmdj
+	import jzfmm
 	from jztree.data import PosMass
 
 	jb = JaxBench(jit_rounds=10, jit_warmup=1)
@@ -52,14 +52,14 @@ def bench_distributions():
 			part = get_part(n, mode=mode)
 
 			softening = 0.1 * float(n) ** (-1.0 / 3.0)
-			cfg_fmm = fmdj.FMMConfig(
-				kernel=fmdj.PlummerKernel(softening=softening),
+			cfg_fmm = jzfmm.FMMConfig(
+				kernel=jzfmm.PlummerKernel(softening=softening),
 			)
 			cfg_fmm.tree.alloc_fac_nodes = 1.2
 			cfg_fmm.alloc_fac_ilist = 64.
 
 			timing, loc = jb.measure(
-				fn_jit=fmdj.fmm.fast_multipole_method.jit,
+				fn_jit=jzfmm.fmm.fast_multipole_method.jit,
 				part=part,
 				cfg_fmm=cfg_fmm,
 				write=False,

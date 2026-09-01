@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from pytest_jax_bench import JaxBench
 import jax
-import fmdj
+import jzfmm
 from jztree_utils import ics
 
 
@@ -31,20 +31,20 @@ def bench_ndev(ndevices):
 
 			softening = 0.1 * (ndev * float(n)) ** (-1.0 / 3.0)
 
-			cfg_fmm = fmdj.FMMConfig(
-				kernel=fmdj.PlummerKernel(softening=softening),
+			cfg_fmm = jzfmm.FMMConfig(
+				kernel=jzfmm.PlummerKernel(softening=softening),
 			)
 
 			if ndev > 1:
 				part = ics.uniform_particles.smap(mesh, jit=True)(int(n), npad=int(max(n*0.2, 1e5)))
-				f = fmdj.fmm.fast_multipole_method.smap(mesh, jit=True)
+				f = jzfmm.fmm.fast_multipole_method.smap(mesh, jit=True)
 				timing = jb.measure(
 					fn_jit=f, part=part, cfg_fmm=cfg_fmm, write=False, result="locz"
 				)[0]
 			else:
 				part = ics.uniform_particles(int(n))
 				timing = jb.measure(
-					fn_jit=fmdj.fmm.fast_multipole_method.jit, part=part, cfg_fmm=cfg_fmm,
+					fn_jit=jzfmm.fmm.fast_multipole_method.jit, part=part, cfg_fmm=cfg_fmm,
 					write=False, result="locz"
 				)[0]
 

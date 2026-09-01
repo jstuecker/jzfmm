@@ -6,10 +6,10 @@ from pathlib import Path
 import csv
 import os
 
-os.environ.setdefault("MPLCONFIGDIR", "/tmp/fmdj-matplotlib")
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/jzfmm-matplotlib")
 
 import aegis
-import fmdj
+import jzfmm
 import jax
 import jax.numpy as jnp
 import matplotlib
@@ -45,7 +45,7 @@ PRECISION_MODES = ("float", "int", "double")
 FORCE_MODES = ("fmm", "direct")
 LOSS_MODES = ("com_y", "radius", "radius2")
 LATTICE_LIMIT = 50.0
-DEFAULT_OPENING_ANGLE = fmdj.OpeningByAngle().theta
+DEFAULT_OPENING_ANGLE = jzfmm.OpeningByAngle().theta
 
 
 def _key_value(value: int | float | str) -> str:
@@ -169,16 +169,16 @@ def sim_config(
     if force_mode not in FORCE_MODES:
         raise ValueError(f"Unknown force mode {force_mode!r}. Expected 'fmm' or 'direct'.")
 
-    cfg = fmdj.SimConfig()
+    cfg = jzfmm.SimConfig()
     cfg.force.kernel.softening = softening
     cfg.force.p = p_order
-    cfg.force.opening = fmdj.OpeningByAngle(theta=opening_angle)
+    cfg.force.opening = jzfmm.OpeningByAngle(theta=opening_angle)
     if force_mode == "direct":
-        cfg.force = fmdj.DirectSummationConfig(kernel=fmdj.PlummerKernel(softening=softening))
+        cfg.force = jzfmm.DirectSummationConfig(kernel=jzfmm.PlummerKernel(softening=softening))
     if precision_mode == "int":
         intmax = np.iinfo(np.int32).max
         prof = aegis.profiles.HernquistProfile(a=1.0, M=1.0)
-        cfg.integrator = fmdj.DKDLatticeConfig(
+        cfg.integrator = jzfmm.DKDLatticeConfig(
             dx=LATTICE_LIMIT / intmax,
             dv=50.0 * prof.vcirc(1.0) / intmax,
             int_dtype=jnp.int32,
@@ -213,7 +213,7 @@ def simulate_loss(
     if ntc != 0.0:
         prof = aegis.profiles.HernquistProfile(a=1.0, M=1.0)
         ts_here = jnp.linspace(0.0, ntc * prof.tcirc(1.0), int(ntc * 100) + 1, dtype=part0.pos.dtype)
-        part0 = fmdj.time_integration.simulate(part0, ts=ts_here, cfg=cfg)
+        part0 = jzfmm.time_integration.simulate(part0, ts=ts_here, cfg=cfg)
     return scalar_loss(part0, loss_mode)
 
 
@@ -231,7 +231,7 @@ def gradient_result(
     double = precision_mode == "double"
     with jax.enable_x64(double):
         pos, vel, mass = sample_ics(N, precision_mode)
-        part0 = fmdj.data.Particles(
+        part0 = jzfmm.data.Particles(
             pos=jnp.asarray(pos),
             vel=jnp.asarray(vel),
             mass=jnp.asarray(mass),
@@ -305,7 +305,7 @@ def loss_experiment(
         loss1, pos, vel, mass, gpos, gvel, gmass = gradient_result(
             N, mode, force_mode, p_order, opening_angle, loss_mode, ntc, softening,
         )
-        part0 = fmdj.data.Particles(
+        part0 = jzfmm.data.Particles(
             pos=jnp.asarray(pos, dtype=dtype),
             vel=jnp.asarray(vel, dtype=dtype),
             mass=jnp.asarray(mass, dtype=dtype),

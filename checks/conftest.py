@@ -4,8 +4,8 @@ import pytest
 import os
 import sys
 from jztree.comm import should_init_jax_distributed
-from fmdj import FMMConfig
-from fmdj.data import Particles, PosMass
+from jzfmm import FMMConfig
+from jzfmm.data import Particles, PosMass
 from jztree.tree import zsort, build_tree_hierarchy
 
 # ------------------------------------------------------------------------------------------------ #

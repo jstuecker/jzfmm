@@ -6,7 +6,7 @@ from jztree.data import PackedArray, PosLvl, TreeHierarchy
 from jztree.jax_ext import pcast_like
 from .config import FMMConfig
 
-import fmdj_cuda.ffi_multipoles as ffi_multipoles
+import jzfmm_cuda.ffi_multipoles as ffi_multipoles
 jax.ffi.register_ffi_target("TranslateLocalToLocal", ffi_multipoles.TranslateLocalToLocal(), platform="CUDA")
 jax.ffi.register_ffi_target("SummarizeMultipoles", ffi_multipoles.SummarizeMultipoles(), platform="CUDA")
 jax.ffi.register_ffi_target("TranslateLocalToLocal_XVJP", ffi_multipoles.TranslateLocalToLocal_XVJP(), platform="CUDA")

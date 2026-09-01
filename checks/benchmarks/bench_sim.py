@@ -3,10 +3,10 @@ import jax
 import jax.numpy as jnp
 import aegis
 from dataclasses import replace
-from fmdj import DirectSummationConfig, SimConfig
-from fmdj.external_potential import NFWPotential
-from fmdj.data import Particles
-from fmdj.time_integration import simulate
+from jzfmm import DirectSummationConfig, SimConfig
+from jzfmm.external_potential import NFWPotential
+from jzfmm.data import Particles
+from jzfmm.time_integration import simulate
 
 
 @pytest.fixture

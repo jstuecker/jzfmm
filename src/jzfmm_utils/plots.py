@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from fmdj.data import Particles
+from jzfmm.data import Particles
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import jax.numpy as jnp
 

@@ -2,10 +2,10 @@ import matplotlib.pyplot as plt
 import jax.numpy as jnp
 import aegis
 from dataclasses import replace
-from fmdj.data import Particles
-from fmdj.config import FMMConfig, KDKConfig, PlummerKernel, SimConfig
-from fmdj.external_potential import NFWPotential
-from fmdj.time_integration import find_center, force_and_potential, simulate_with_outputs
+from jzfmm.data import Particles
+from jzfmm.config import FMMConfig, KDKConfig, PlummerKernel, SimConfig
+from jzfmm.external_potential import NFWPotential
+from jzfmm.time_integration import find_center, force_and_potential, simulate_with_outputs
 
 import argparse
 
@@ -13,7 +13,7 @@ import matplotlib
 matplotlib.use("TkAgg")
 
 from matplotlib.animation import FuncAnimation
-from fmdj_utils.plots import plot_particles_inset
+from jzfmm_utils.plots import plot_particles_inset
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--show", action="store_true", help="Visualize on the fly")

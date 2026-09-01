@@ -2,12 +2,12 @@ import numpy as np
 import aegis
 import jax
 import jax.numpy as jnp
-import fmdj
+import jzfmm
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import os
-from fmdj_utils.plots import plot_particles_inset, time_in_years
+from jzfmm_utils.plots import plot_particles_inset, time_in_years
 from matplotlib.animation import FuncAnimation
 from jztree.config import TreeConfig
 import argparse
@@ -32,7 +32,7 @@ file = "output/coma_part.npz"
 if os.path.exists(file):
     print("Loading Initial Conditions...")
     pdict = np.load(file)
-    part = fmdj.data.Particles(pos = pdict["pos"], mass = pdict["mass"], vel = pdict["vel"])
+    part = jzfmm.data.Particles(pos = pdict["pos"], mass = pdict["mass"], vel = pdict["vel"])
     igal = pdict["igal"]
 else:
     print("Generating Initial Conditions...")
@@ -47,7 +47,7 @@ else:
         mass.append(m)
         igal.append(np.full(len(p), i))
 
-    part = fmdj.data.Particles(
+    part = jzfmm.data.Particles(
         pos = jnp.concatenate(pos),
         mass = jnp.concatenate(mass),
         vel = jnp.concatenate(vel)
@@ -60,7 +60,7 @@ else:
 #                                            Define plot                                           #
 # ------------------------------------------------------------------------------------------------ #
 
-def myplot(t: float, p: fmdj.data.Particles, previous=None, skip=10, dm=True):
+def myplot(t: float, p: jzfmm.data.Particles, previous=None, skip=10, dm=True):
     if previous is None:
         fig, ax = plt.subplots(1, 1, figsize=[6.5, 6])
         ax = plt.gca()
@@ -112,16 +112,16 @@ def update(t_and_p):
     fig, ax, s1, title = previous
     return [s1,title]
 
-cfg_fmm = fmdj.FMMConfig(
-    kernel=fmdj.PlummerKernel(softening=0.1),
+cfg_fmm = jzfmm.FMMConfig(
+    kernel=jzfmm.PlummerKernel(softening=0.1),
     tree=TreeConfig(mass_centered=False, alloc_fac_nodes=2.0),
 )
-cfg = fmdj.SimConfig(force=cfg_fmm)
+cfg = jzfmm.SimConfig(force=cfg_fmm)
 
 if dm:
-    cfg.external_potential = fmdj.external_potential.NFWPotential(coma.rs, coma.rhoc)
+    cfg.external_potential = jzfmm.external_potential.NFWPotential(coma.rs, coma.rhoc)
 
-sim_iter = fmdj.time_integration.simulate_with_outputs(
+sim_iter = jzfmm.time_integration.simulate_with_outputs(
     part, tend=coma.tcirc(150.)*2.5, nout=300, steps_per_output=20, cfg=cfg,
 )
 

@@ -4,10 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 from dataclasses import replace
-from fmdj_utils.ics import gaussian_blob
-from fmdj.data import LocalExpansion
-from fmdj.config import DirectSummationConfig, FMMConfig, PlummerKernel, UnitConfig
-from fmdj.fmm import direct_summation, fast_multipole_method
+from jzfmm_utils.ics import gaussian_blob
+from jzfmm.data import LocalExpansion
+from jzfmm.config import DirectSummationConfig, FMMConfig, PlummerKernel, UnitConfig
+from jzfmm.fmm import direct_summation, fast_multipole_method
 
 part = gaussian_blob(N=int(1024*1024), scale=1.0, mass=1.)
 

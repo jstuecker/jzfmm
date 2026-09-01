@@ -8,9 +8,9 @@ from jztree.data import squeeze_particles
 from jztree.jax_ext import shard_map_constructor
 from jztree_utils import ics
 
-from fmdj.config import DKDConfig, DKDLatticeConfig, FMMConfig, SimConfig
-from fmdj.data import Particles
-from fmdj.time_integration import dequantize_particles, quantize_particles, simulate
+from jzfmm.config import DKDConfig, DKDLatticeConfig, FMMConfig, SimConfig
+from jzfmm.data import Particles
+from jzfmm.time_integration import dequantize_particles, quantize_particles, simulate
 
 
 mesh = jax.sharding.Mesh(jax.devices(), ("gpus",), axis_types=(AxisType.Auto,))

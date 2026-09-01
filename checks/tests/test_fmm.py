@@ -8,9 +8,9 @@ import pytest
 from jztree.data import PosLvl
 from jztree_utils import ics
 
-from fmdj.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, Plummer2DKernel, SoftenedDistanceKernel
-from fmdj.fmm import direct_summation, fast_multipole_method
-from fmdj.multipoles import _fmm_node_to_child, num_multi, summarize_multipoles
+from jzfmm.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, Plummer2DKernel, SoftenedDistanceKernel
+from jzfmm.fmm import direct_summation, fast_multipole_method
+from jzfmm.multipoles import _fmm_node_to_child, num_multi, summarize_multipoles
 
 def _device_array_bytes(x):
     return np.asarray(jax.block_until_ready(x)).tobytes()

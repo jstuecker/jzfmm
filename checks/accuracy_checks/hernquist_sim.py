@@ -1,9 +1,9 @@
 import os
 import aegis
 import jax.numpy as jnp
-import fmdj
-from fmdj.config import FMMConfig, PlummerKernel, SimConfig
-from fmdj.time_integration import simulate_with_outputs
+import jzfmm
+from jzfmm.config import FMMConfig, PlummerKernel, SimConfig
+from jzfmm.time_integration import simulate_with_outputs
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -51,7 +51,7 @@ for N in Ns:
         print(f"[N={N:g}] Sampling initial conditions...")
         np.random.seed(42)
         pos, vel, mass = prof.sample_particles(ntot=N, result="pos_vel_m")
-        part = fmdj.data.Particles(pos=jnp.array(pos), mass=jnp.array(mass), vel=jnp.array(vel))
+        part = jzfmm.data.Particles(pos=jnp.array(pos), mass=jnp.array(mass), vel=jnp.array(vel))
 
         prof_0 = aegis.profiles.ParticleProfile((pos, vel, mass), rbins=rbins)
         save_profile(prof_0, N, 0)

@@ -11,9 +11,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from fmdj.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, UnitConfig
-from fmdj.data import PosMass
-from fmdj.fmm import direct_summation, fast_multipole_method
+from jzfmm.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, UnitConfig
+from jzfmm.data import PosMass
+from jzfmm.fmm import direct_summation, fast_multipole_method
 from jztree.config import TreeConfig
 
 

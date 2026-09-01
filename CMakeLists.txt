@@ -142,35 +142,35 @@ include_directories(SYSTEM ${XLA_DIR})
 
 
 # ----------------------------------------------------------------------------------------------- #
-# Auto-add all modules from src/fmdj_cuda/generated
+# Auto-add all modules from src/jzfmm_cuda/generated
 # ----------------------------------------------------------------------------------------------- #
 
 # Build-time toggle: only generate sources when explicitly requested
-# option(CJ_GENERATE "Generate FFI source files at configure time" OFF)
-# Allow enabling via environment variable too: CJ_GENERATE=1/ON/TRUE
-# if(DEFINED ENV{CJ_GENERATE})
-#   if("$ENV{CJ_GENERATE}" STREQUAL "1" OR "$ENV{CJ_GENERATE}" STREQUAL "ON" OR "$ENV{CJ_GENERATE}" STREQUAL "TRUE")
-#     set(CJ_GENERATE ON CACHE BOOL "Generate FFI source files at configure time" FORCE)
+# option(JZFMM_GENERATE "Generate FFI source files at configure time" OFF)
+# Allow enabling via environment variable too: JZFMM_GENERATE=1/ON/TRUE
+# if(DEFINED ENV{JZFMM_GENERATE})
+#   if("$ENV{JZFMM_GENERATE}" STREQUAL "1" OR "$ENV{JZFMM_GENERATE}" STREQUAL "ON" OR "$ENV{JZFMM_GENERATE}" STREQUAL "TRUE")
+#     set(JZFMM_GENERATE ON CACHE BOOL "Generate FFI source files at configure time" FORCE)
 #   endif()
 # else()
-#   set(CJ_GENERATE OFF CACHE BOOL "Generate FFI source files at configure time" FORCE)
+#   set(JZFMM_GENERATE OFF CACHE BOOL "Generate FFI source files at configure time" FORCE)
 # endif()
 
 # Optionally run the generator so files exist at configure time (opt-in)
-if(DEFINED ENV{CJ_GENERATE} AND ( "$ENV{CJ_GENERATE}" STREQUAL "1" OR "$ENV{CJ_GENERATE}" STREQUAL "ON" OR "$ENV{CJ_GENERATE}" STREQUAL "TRUE") )
-  message(STATUS "CJ_GENERATE=ON: Running CUDA FFI generator script")
+if(DEFINED ENV{JZFMM_GENERATE} AND ( "$ENV{JZFMM_GENERATE}" STREQUAL "1" OR "$ENV{JZFMM_GENERATE}" STREQUAL "ON" OR "$ENV{JZFMM_GENERATE}" STREQUAL "TRUE") )
+  message(STATUS "JZFMM_GENERATE=ON: Running CUDA FFI generator script")
   execute_process(
-    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/src/fmdj_cuda/_generate_ffi.py"
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/src/jzfmm_cuda/_generate_ffi.py"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     COMMAND_ERROR_IS_FATAL ANY
   )
 else()
-  message(STATUS "CJ_GENERATE=OFF: Skipping CUDA FFI generation (enable with -DCJ_GENERATE=ON or CJ_GENERATE=1)")
+  message(STATUS "JZFMM_GENERATE=OFF: Skipping CUDA FFI generation (enable with -DJZFMM_GENERATE=ON or JZFMM_GENERATE=1)")
 endif()
 
 # Pick up all generated .cu files; re-scan on re-configure
 file(GLOB GEN_FFI_CU CONFIGURE_DEPENDS
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/fmdj_cuda/generated/*.cu"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/jzfmm_cuda/generated/*.cu"
 )
 
 foreach(GEN_SRC IN LISTS GEN_FFI_CU)

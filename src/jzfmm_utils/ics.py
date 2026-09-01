@@ -2,7 +2,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 import aegis
-from fmdj.data import PosMass, Particles
+from jzfmm.data import PosMass, Particles
 from jztree.comm import get_rank_info
 from jztree.jax_ext import tree_map_by_len
 

@@ -13,8 +13,8 @@ from jztree.jax_ext import shard_map_constructor
 from jztree.comm import get_rank_info, in_shard_map_context
 from jztree_utils import ics
 
-from fmdj.config import FMMConfig
-from fmdj.fmm import fast_multipole_method
+from jzfmm.config import FMMConfig
+from jzfmm.fmm import fast_multipole_method
 
 
 mesh = jax.sharding.Mesh(jax.devices(), ("gpus",), axis_types=(AxisType.Auto,))

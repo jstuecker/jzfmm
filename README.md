@@ -1,4 +1,4 @@
-# FM-DJ
+# JZ-FMM
 Fast Multipoles Done with Jax
 
 # ToDo:

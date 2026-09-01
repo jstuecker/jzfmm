@@ -5,9 +5,9 @@ import jax
 import pytest
 from jax.sharding import AxisType, PartitionSpec as P
 
-from fmdj.config import FMMConfig
-from fmdj.fmm import _fmm_dual_walk, fast_multipole_method, leaf_leaf_summation
-from fmdj.multipoles import build_multipole_hierarchy
+from jzfmm.config import FMMConfig
+from jzfmm.fmm import _fmm_dual_walk, fast_multipole_method, leaf_leaf_summation
+from jzfmm.multipoles import build_multipole_hierarchy
 from jztree.jax_ext import shard_map_constructor
 from jztree.tree import zsort_and_tree
 from jztree_utils import ics

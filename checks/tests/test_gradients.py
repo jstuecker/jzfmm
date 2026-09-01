@@ -12,13 +12,13 @@ from jztree.tree import _dense_interaction_list
 from jztree.config import TreeConfig
 from jztree_utils import ics
 
-from fmdj.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, SimConfig
-from fmdj.data import PosMass
-from fmdj.multipoles import summarize_multipoles, build_multipole_hierarchy, _fmm_node_to_child
-from fmdj.fmm import _fmm_dual_walk, evaluate_node_node_fmm
-from fmdj.fmm import direct_summation, leaf_leaf_summation, fast_multipole_method
-from fmdj.external_potential import UniformAcceleration
-from fmdj.time_integration import simulate
+from jzfmm.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, SimConfig
+from jzfmm.data import PosMass
+from jzfmm.multipoles import summarize_multipoles, build_multipole_hierarchy, _fmm_node_to_child
+from jzfmm.fmm import _fmm_dual_walk, evaluate_node_node_fmm
+from jzfmm.fmm import direct_summation, leaf_leaf_summation, fast_multipole_method
+from jzfmm.external_potential import UniformAcceleration
+from jzfmm.time_integration import simulate
     
 def my_check_gradient(f, x, epsrel=1e-4, rtol=5e-3, atol=0.):
     dx = jnp.std(x, axis=0, keepdims=True) * epsrel

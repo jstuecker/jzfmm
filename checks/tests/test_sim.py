@@ -1,9 +1,9 @@
 import jax
 import jax.numpy as jnp
 
-from fmdj.config import DKDLatticeConfig, SimConfig
-from fmdj.data import Particles
-from fmdj.time_integration import dequantize_particles, quantize_particles, simulate
+from jzfmm.config import DKDLatticeConfig, SimConfig
+from jzfmm.data import Particles
+from jzfmm.time_integration import dequantize_particles, quantize_particles, simulate
 
 
 def test_lattice_reversibility():
