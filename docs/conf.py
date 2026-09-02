@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import os
 import re
 import sys
 from pathlib import Path
@@ -41,6 +42,8 @@ intersphinx_mapping = {
     "jax": ("https://docs.jax.dev/en/latest/", None),
     "jztree": ("https://jstuecker.github.io/jztree/", None),
 }
+if os.environ.get("JZFMM_DOCS_OFFLINE"):
+    intersphinx_mapping = {}
 
 autodoc_preserve_defaults = True
 autodoc_typehints = "none"

@@ -124,7 +124,7 @@ class PotentialField:
     def potential(
         self, x: jax.Array, t: float | jax.Array = 0., cfg: SimConfig | None = None
     ) -> jax.Array:
-        """Evaluates the potential at positions :paramref:`x`."""
+        """Evaluates the potential at positions ``x``."""
         raise NotImplementedError
     def acceleration(
         self, x: jax.Array, t: float | jax.Array = 0., cfg: SimConfig | None = None

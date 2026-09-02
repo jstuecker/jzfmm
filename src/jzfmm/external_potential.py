@@ -25,7 +25,7 @@ class NFWPotential(PotentialField):
         return - 4. * jnp.pi * self.rs**2 * self.rhoc * G
 
     def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
-        """Evaluates the potential at :paramref:`x`."""
+        """Evaluates the potential at ``x``."""
         u = jnp.linalg.norm(x, axis=-1) / self.rs
         # The -1 is to set phi(r->0) = 0. This is numerically beneficial
         return self.phic(G=cfg.units.G()) * (jnp.log(1. + u) / u - 1.)
@@ -43,7 +43,7 @@ class HernquistPotential(PotentialField):
     mass: float = 1.0
 
     def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
-        """Evaluates the potential at :paramref:`x`."""
+        """Evaluates the potential at ``x``."""
         return -cfg.units.G() * self.mass / (jnp.linalg.norm(x, axis=-1) + self.a)
 
 @dataclass(unsafe_hash=True)
@@ -57,7 +57,7 @@ class UniformAcceleration(PotentialField):
     acc : tuple[float, float, float] = (0., 0., 0.)
 
     def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
-        """Evaluates the potential at :paramref:`x`."""
+        """Evaluates the potential at ``x``."""
         return - (self.acc[0] * x[:,0] + self.acc[1] * x[:,1] + self.acc[2] * x[:,2])
 
 @dataclass(unsafe_hash=True)
@@ -95,7 +95,7 @@ class DiskPotential(PotentialField):
         return pars
 
     def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
-        """Evaluates the potential at :paramref:`x`."""
+        """Evaluates the potential at ``x``."""
         pars = self._mn_pars()
 
         R = jnp.sqrt(x[...,0]**2 + x[...,1]**2)
