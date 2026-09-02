@@ -54,6 +54,7 @@ Project links
    :maxdepth: 2
    :caption: Contents
 
+   installation.md
    attribution.md
    api.rst
    jax_compatibility.rst

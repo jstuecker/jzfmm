@@ -66,8 +66,15 @@ if(DEFINED ENV{CUDAARCHS})
   message(STATUS "User provided CUDAARCHS env: '$ENV{CUDAARCHS}'")
   message(STATUS "CMAKE_CUDA_ARCHITECTURES: '${CMAKE_CUDA_ARCHITECTURES}'")
 else()
-  message(STATUS "Using native CUDA artchitecture")
+  message(STATUS "Using native CUDA architecture")
   set(CMAKE_CUDA_ARCHITECTURES native)
+endif()
+
+if(CMAKE_CUDA_ARCHITECTURES STREQUAL "all")
+  message(WARNING
+    "Building jz-fmm for all supported CUDA architectures. This can take a very long time. "
+    "Set CUDAARCHS=native or CUDAARCHS=<compute capability> to reduce compilation time."
+  )
 endif()
 
 # Now let Cmake detect CUDA
