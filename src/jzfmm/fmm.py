@@ -399,8 +399,25 @@ _leaf_leaf_summation.jit = jax.jit(_leaf_leaf_summation, static_argnames=['cfg_f
 def direct_summation(
         part: PosMass,
         cfg_direct: DirectSummationConfig,
-        G=1,
+        G: float | jax.Array = 1,
     ) -> LocalExpansion:
+    """Evaluates all pair interactions by direct summation.
+
+    **Compatibility:** :compat-jit:`JIT` :compat-shard-local:`Local only`
+    :compat-autodiff:`Autodiff`
+
+    **Helpers:** :helper-jit:`.jit`
+
+    This function does not implement multi-device communication and will run
+    only on local shards when called inside of a ``shard_map``.
+
+    Args:
+        part: Particle positions and masses.
+        cfg_direct: Direct-summation configuration.
+        G: Gravitational constant or multiplicative interaction strength.
+    Returns:
+        Local expansion containing the potential and force at each particle.
+    """
     block_size = 64
     posm = get_pos_mass(part)
     out_type = jax.ShapeDtypeStruct(posm.shape, posm.dtype)
@@ -539,8 +556,30 @@ def _as_posmass(part) -> PosMass:
 
 def fast_multipole_method(
         part: PosMass, cfg_fmm: FMMConfig, th: TreeHierarchy | None = None,
-        result: str = "loc", G=1., pout: int = 1
+        result: str = "loc", G: float = 1., pout: int = 1
     ) -> LocalExpansion:
+    """Evaluates particle interactions with the fast multipole method.
+
+    **Compatibility:** :compat-jit:`JIT` :compat-shard:`Shard map`
+    :compat-autodiff:`Autodiff`
+
+    **Helpers:** :helper-jit:`.jit` :helper-smap:`.smap`
+
+    Args:
+        part: Particle data following the :class:`jztree.data.PosMass`
+            interface.
+        cfg_fmm: Fast-multipole configuration.
+        th: Existing tree hierarchy. If provided, :paramref:`part` must already
+            be in z-order and ``"loc"`` cannot be requested.
+        result: Underscore-separated selection of ``"loc"`` (input-order local
+            expansions), ``"locz"`` (z-order local expansions), ``"partz"``
+            (z-order particles), and ``"tree"`` (tree hierarchy).
+        G: Gravitational constant or multiplicative interaction strength.
+        pout: Output expansion order. Currently only ``1`` is supported,
+            returning the potential and force.
+    Returns:
+        The requested result, or a tuple when multiple results are requested.
+    """
     assert pout == 1, "Only pout=1 (potential only) is supported currently."
     keys = _parse_fmm_result(result)
     in_smap = in_shard_map_context()

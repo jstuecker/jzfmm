@@ -20,7 +20,43 @@ Configuration
 
 Configuration objects select the interaction kernel, opening criterion, force
 solver, units, and integration method. They are static arguments to compiled
-JAX functions, so modifying them generally triggers recompilation.
+JAX functions, so modifying them generally triggers recompilation. Config
+variables are not differentiable and should not be used as optimization
+parameters for :func:`jax.grad` or :func:`jax.vjp`.
+
+Configurations are composable dataclasses: specialized objects can be nested
+to describe a complete simulation. For example, this configuration combines a
+custom tree, interaction kernel, opening criterion, and integrator::
+
+   import jzfmm
+   from jztree.config import TreeConfig
+
+   cfg = jzfmm.SimConfig(
+       force=jzfmm.FMMConfig(
+           tree=TreeConfig(max_leaf_size=64),
+           kernel=jzfmm.PlummerKernel(softening=0.01),
+           opening=jzfmm.OpeningByAngle(theta=0.7),
+           p=6,
+       ),
+       integrator=jzfmm.KDKConfig(),
+   )
+
+Most configurations have sensible defaults, so only parameters relevant to a
+particular simulation need to be changed. Individual settings can conveniently
+be modified after construction, including settings in nested configs::
+
+   cfg = jzfmm.SimConfig()
+   cfg.force.kernel.softening = 0.1
+   cfg.force.p = 6
+
+   # Replace an entire nested config to select a different force solver.
+   cfg.force = jzfmm.DirectSummationConfig(
+       kernel=jzfmm.PlummerKernel(softening=0.1)
+   )
+
+Config hashes include the values of nested configuration objects. Configs
+should therefore not be modified after being added to a dictionary, set, or
+other hash-based container.
 
 .. automodule:: jzfmm.config
    :members: KernelConfig, PlummerKernel, Plummer2DKernel,

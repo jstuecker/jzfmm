@@ -10,6 +10,23 @@ from .config import DirectSummationConfig, DKDConfig, DKDLatticeConfig, FMMConfi
 from .fmm import direct_summation, fast_multipole_method
 
 def force_and_potential(p: Particles, cfg: SimConfig) -> LocalExpansion:
+    """Evaluates particle self-interactions selected by the simulation config.
+
+    **Compatibility:** :compat-jit:`JIT` :compat-shard-partial:`Shard map`
+    :compat-autodiff:`Autodiff`
+
+    **Helpers:** :helper-jit:`.jit`
+
+    Shard-map execution produces a global result with
+    :class:`jzfmm.config.FMMConfig`; direct summation is local only.
+
+    Args:
+        p: Particles at which to evaluate the force and potential.
+        cfg: Simulation configuration selecting the force method and
+            gravitational constant.
+    Returns:
+        Local expansion containing potential and force.
+    """
     cfg_force = cfg.force
     if cfg_force is None:
         dim = p.pos.shape[-1]
@@ -22,7 +39,25 @@ def force_and_potential(p: Particles, cfg: SimConfig) -> LocalExpansion:
     raise TypeError(f"Unsupported force cfg type {type(cfg_force)}")
 force_and_potential.jit = jax.jit(force_and_potential, static_argnames=("cfg",))
 
-def find_center(p: Particles, npot: int = 50, nbind: int | None = None):
+def find_center(
+    p: Particles, npot: int = 50, nbind: int | None = None
+) -> tuple[jax.Array, jax.Array]:
+    """Estimates the position and velocity center of a particle system.
+
+    **Compatibility:** :compat-jit:`JIT` :compat-shard-local:`Local only`
+    :compat-autodiff-untested:`Autodiff untested`
+
+    **Helpers:** :helper-jit:`.jit`
+
+    Args:
+        p: Particles with potentials stored in :paramref:`p.loc`.
+        npot: Number of lowest-potential particles used for the position and
+            initial velocity center.
+        nbind: Number of most-bound particles used for the final velocity
+            center. Defaults to :paramref:`npot`.
+    Returns:
+        Tuple containing the center position and center velocity.
+    """
     if p.loc is None:
         raise ValueError("find_center needs p.loc to contain potentials.")
     if nbind is None:
@@ -172,7 +207,32 @@ def _reverse_timestep_dkd_lattice_vjp(p_next: Particles, gp_next: Particles, dt,
 
     return p_prev, gp_prev
 
-def timestep(p : Particles, dt, cfg: SimConfig, t=0.):
+def timestep(
+    p: Particles,
+    dt: float | jax.Array,
+    cfg: SimConfig,
+    t: float | jax.Array = 0.,
+) -> Particles:
+    """Advances particles by one integration step.
+
+    **Compatibility:** :compat-jit:`JIT` :compat-shard-partial:`Shard map`
+    :compat-autodiff-partial:`Autodiff`
+
+    **Helpers:** :helper-jit:`.jit`
+
+    Shard-map execution produces a global result with
+    :class:`jzfmm.config.FMMConfig`; direct summation is local only. Autodiff is
+    supported for floating-point DKD and KDK integration, but not through the
+    integer operations of :class:`jzfmm.config.DKDLatticeConfig`.
+
+    Args:
+        p: Particles at the start of the step.
+        dt: Step size.
+        cfg: Simulation configuration.
+        t: Time at the start of the step.
+    Returns:
+        Particles at time ``t + dt``.
+    """
     if isinstance(cfg.integrator, KDKConfig):
         return _timestep_kdk(p, dt=dt, cfg=cfg, t=t)
     if isinstance(cfg.integrator, DKDConfig):
@@ -213,6 +273,26 @@ def simulate(
         ts: jax.Array,
         cfg: SimConfig,
     ) -> Particles:
+    """Evolves particles through a sequence of times.
+
+    **Compatibility:** :compat-jit:`JIT` :compat-shard-partial:`Shard map`
+    :compat-autodiff-partial:`Autodiff`
+
+    **Helpers:** :helper-jit:`.jit`
+
+    Shard-map execution produces a global result with
+    :class:`jzfmm.config.FMMConfig`; direct summation is local only.
+    Reverse-mode differentiation is supported with
+    :class:`jzfmm.config.DKDConfig` and :class:`jzfmm.config.DKDLatticeConfig`,
+    but not with :class:`jzfmm.config.KDKConfig`.
+
+    Args:
+        p: Particles at the first time in :paramref:`ts`.
+        ts: One-dimensional sequence of times, including the initial time.
+        cfg: Simulation configuration.
+    Returns:
+        Particles evolved to the final time in :paramref:`ts`.
+    """
     ts = jnp.asarray(ts)
     nsteps = ts.shape[0] - 1
 
@@ -252,10 +332,28 @@ def simulate_with_outputs(
         tend: float, 
         nout: int, 
         steps_per_output: int,
-        cfg: SimConfig,
-        tstart: float = 0.,
-    ) -> Generator[Particles, None, None]:
-    """Don't jit this function!"""
+    cfg: SimConfig,
+    tstart: float = 0.,
+    ) -> Generator[tuple[float | jax.Array, Particles], None, None]:
+    """Runs a simulation and yields particles at regular output times.
+
+    **Compatibility:** :compat-jit-no:`JIT unsupported`
+    :compat-shard-untested:`Shard map untested`
+    :compat-autodiff-no:`Autodiff unsupported`
+
+    This host-side generator compiles and calls :func:`simulate` internally;
+    it should not itself be transformed with JAX.
+
+    Args:
+        p: Particles at :paramref:`tstart`.
+        tend: Total simulated duration.
+        nout: Number of output intervals.
+        steps_per_output: Integration steps per output interval.
+        cfg: Simulation configuration.
+        tstart: Initial simulation time.
+    Yields:
+        ``(time, particles)`` pairs, including the initial state.
+    """
     tp0 = time.perf_counter()
     log("Compiling jitted simulation...", level=1, cfg_log=cfg.logging)
     time_dtype = p.pos.dtype

@@ -7,35 +7,71 @@ from .config import SimConfig, PotentialField
 
 @dataclass(unsafe_hash=True)
 class NFWPotential(PotentialField):
+    """Spherical Navarro-Frenk-White potential.
+
+    The additive constant is chosen so that the potential approaches zero at
+    the center.
+
+    Args:
+        rs: Scale radius.
+        rhoc: Characteristic density.
+    """
+
     rs: float = 1.0
     rhoc: float = 1.0
 
     def phic(self, G: float = 1.) -> float:
+        """Returns the characteristic potential scale."""
         return - 4. * jnp.pi * self.rs**2 * self.rhoc * G
 
     def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
+        """Evaluates the potential at :paramref:`x`."""
         u = jnp.linalg.norm(x, axis=-1) / self.rs
         # The -1 is to set phi(r->0) = 0. This is numerically beneficial
         return self.phic(G=cfg.units.G()) * (jnp.log(1. + u) / u - 1.)
 
 @dataclass(unsafe_hash=True)
 class HernquistPotential(PotentialField):
+    """Spherical Hernquist potential.
+
+    Args:
+        a: Scale radius.
+        mass: Total mass.
+    """
+
     a: float = 1.0
     mass: float = 1.0
 
     def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
+        """Evaluates the potential at :paramref:`x`."""
         return -cfg.units.G() * self.mass / (jnp.linalg.norm(x, axis=-1) + self.a)
 
 @dataclass(unsafe_hash=True)
 class UniformAcceleration(PotentialField):
+    """Potential producing a spatially uniform acceleration.
+
+    Args:
+        acc: Acceleration vector.
+    """
+
     acc : tuple[float, float, float] = (0., 0., 0.)
 
     def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
+        """Evaluates the potential at :paramref:`x`."""
         return - (self.acc[0] * x[:,0] + self.acc[1] * x[:,1] + self.acc[2] * x[:,2])
 
 @dataclass(unsafe_hash=True)
 class DiskPotential(PotentialField):
-    """Potential of a disk, approximated by 3 MN potentials as in arxiv:1502.00627"""
+    """Disk potential approximated by three Miyamoto-Nagai potentials.
+
+    Uses the approximation from `Smith et al. (2015)
+    <https://arxiv.org/abs/1502.00627>`_.
+
+    Args:
+        mass: Total disk mass.
+        scale_radius: Exponential scale radius.
+        height: Disk scale height.
+    """
     mass: float
     scale_radius: float
     height: float
@@ -59,6 +95,7 @@ class DiskPotential(PotentialField):
         return pars
 
     def potential(self, x: jax.Array, t: float = 0., cfg: SimConfig = None) -> jax.Array:
+        """Evaluates the potential at :paramref:`x`."""
         pars = self._mn_pars()
 
         R = jnp.sqrt(x[...,0]**2 + x[...,1]**2)
@@ -72,6 +109,15 @@ class DiskPotential(PotentialField):
 
 @dataclass(unsafe_hash=True)
 class MilkyWayPotential(PotentialField):
+    """Composite Milky-Way-like potential.
+
+    Args:
+        halo: Dark-matter halo potential, or ``None`` to omit it.
+        bulge: Stellar bulge potential, or ``None`` to omit it.
+        star_disk: Stellar disk potential, or ``None`` to omit it.
+        gas_disk: Gas disk potential, or ``None`` to omit it.
+    """
+
     halo: PotentialField | None = field(
         default_factory=lambda: NFWPotential(24.17, 4096193.)
     )  # <=> conc=8.71, M200c=1e12
@@ -89,7 +135,13 @@ class MilkyWayPotential(PotentialField):
         )
     )
 
-    def potential(self, x, t=0, cfg=None):
+    def potential(
+        self,
+        x: jax.Array,
+        t: float | jax.Array = 0.,
+        cfg: SimConfig | None = None,
+    ) -> jax.Array:
+        """Evaluates the sum of all enabled component potentials."""
         val = 0.
         if self.halo is not None:
             val = val + self.halo.potential(x, t, cfg)

@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import inspect
+import re
 import sys
 from pathlib import Path
+
+from docutils import nodes
+from sphinx.util.typing import stringify_annotation
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -38,7 +43,10 @@ intersphinx_mapping = {
 }
 
 autodoc_preserve_defaults = True
-autodoc_typehints = "description"
+autodoc_typehints = "none"
+autodoc_default_options = {
+    "show-inheritance": True,
+}
 
 # These compiled modules are not needed to inspect the Python API. Mocking
 # them lets documentation builds run on machines without CUDA or jz-fmm built.
@@ -84,3 +92,89 @@ def linkcode_resolve(domain: str, info: dict[str, str]) -> str | None:
         pass
 
     return f"https://github.com/jstuecker/jzfmm/blob/main/src/{filename}"
+
+
+def _badge_role(css_class: str, kind: str, refuri: str | None = None):
+    """Create an inline API badge."""
+    def role(name, rawtext, text, lineno, inliner, options=None, content=None):
+        options = options or {}
+        node_type = nodes.reference if refuri is not None else nodes.inline
+        if refuri is not None:
+            options["refuri"] = refuri
+        node = node_type(rawtext, text, classes=[css_class, f"compatibility-{kind}"], **options)
+        return [node], []
+
+    return role
+
+
+def _add_parameter_types(app, what, name, obj, options, lines):
+    """Merge annotations into parameter fields after sphinx-paramlinks."""
+    if what not in {"class", "function", "method"}:
+        return
+
+    try:
+        signature = inspect.signature(obj)
+    except (TypeError, ValueError):
+        return
+
+    annotations = {
+        parameter.name: stringify_annotation(parameter.annotation, mode="smart")
+        for parameter in signature.parameters.values()
+        if parameter.annotation is not inspect.Parameter.empty
+    }
+
+    param_pattern = re.compile(r"^:param ([^:]+):")
+    for index, line in enumerate(lines):
+        match = param_pattern.match(line)
+        if match is None:
+            continue
+        target = match.group(1)
+        parameter_name = target.rsplit(".", 1)[-1].lstrip("*")
+        annotation = annotations.get(parameter_name)
+        if annotation is not None:
+            lines[index] = line.replace(
+                f":param {target}:", f":param {annotation} {target}:", 1
+            )
+
+    return_annotation = signature.return_annotation
+    has_returns = any(line.startswith((":return:", ":returns:")) for line in lines)
+    has_rtype = any(line.startswith(":rtype:") for line in lines)
+    if (
+        has_returns
+        and not has_rtype
+        and return_annotation is not inspect.Signature.empty
+        and return_annotation is not None
+    ):
+        lines.append(
+            f":rtype: {stringify_annotation(return_annotation, mode='smart')}"
+        )
+
+
+def setup(app):
+    capabilities = ("jit", "shard", "autodiff")
+    statuses = {
+        "": "compat-yes",
+        "-partial": "compat-partial",
+        "-untested": "compat-untested",
+        "-no": "compat-no",
+    }
+
+    for capability in capabilities:
+        for suffix, css_class in statuses.items():
+            app.add_role(
+                f"compat-{capability}{suffix}",
+                _badge_role(css_class, capability),
+            )
+
+    app.add_role("compat-shard-local", _badge_role("compat-local", "shard"))
+    app.add_role(
+        "helper-jit",
+        _badge_role("compat-helper", "helper-jit", "jax_compatibility.html#jit-helper"),
+    )
+    app.add_role(
+        "helper-smap",
+        _badge_role("compat-helper", "helper-smap", "jax_compatibility.html#smap-helper"),
+    )
+    # Napoleon and sphinx-paramlinks use the default priority (500). Run after
+    # both have converted and linked the Google-style parameter fields.
+    app.connect("autodoc-process-docstring", _add_parameter_types, priority=600)

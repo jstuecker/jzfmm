@@ -56,4 +56,5 @@ Project links
 
    attribution.md
    api.rst
+   jax_compatibility.rst
    changelog.md

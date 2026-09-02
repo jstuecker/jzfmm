@@ -82,9 +82,25 @@ def maximum_mean_discrepancy(
 ) -> jax.Array:
     """Maximum mean discrepancy between two weighted particle sets.
 
+    **Compatibility:** :compat-jit:`JIT` :compat-shard-partial:`Shard map`
+    :compat-autodiff:`Autodiff`
+
+    **Helpers:** :helper-jit:`.jit` :helper-smap:`.smap`
+
     The MMD is evaluated as a signed kernel energy, using positive masses for
     ``part`` and negative masses for ``part_target``: ``-sum_i m_i phi_i``.
     Self interactions must be enabled so that the kernel diagonal is included.
+    Shard-map execution produces a global result with
+    :class:`jzfmm.config.FMMConfig`; direct summation is local only.
+
+    Args:
+        part: First particle set or position array.
+        part_target: Target particle set or position array.
+        cfg_fmm: FMM or direct-summation kernel configuration, with
+            ``remove_self_interaction=False``.
+        normalize: Whether to normalize each particle set to unit total mass.
+    Returns:
+        Scalar discrepancy between the particle sets.
     """
     if cfg_fmm.remove_self_interaction:
         raise ValueError(

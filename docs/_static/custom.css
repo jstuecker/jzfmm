@@ -28,3 +28,163 @@
         grid-template-columns: 1fr;
     }
 }
+
+.compat-yes,
+.compat-partial,
+.compat-untested,
+.compat-no,
+.compat-local,
+.compat-helper {
+    display: inline-block;
+    margin: 0 0.15rem;
+    padding: 0.08rem 0.45rem;
+    border-radius: 0.7rem;
+    color: #fff;
+    font-size: 0.85em;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.compat-yes {
+    background: #27864b;
+}
+
+.compat-partial {
+    background: #b26a00;
+}
+
+.compat-untested {
+    background: #3977a8;
+}
+
+.compat-no {
+    background: #68737d;
+}
+
+.compat-local {
+    background: #68737d;
+}
+
+.compat-helper {
+    background: #6650a4;
+}
+
+.compat-yes,
+.compat-partial,
+.compat-untested,
+.compat-no,
+.compat-local,
+.compat-helper {
+    position: relative;
+    cursor: help;
+}
+
+.compat-yes::after,
+.compat-partial::after,
+.compat-untested::after,
+.compat-no::after,
+.compat-local::after,
+.compat-helper::after {
+    position: absolute;
+    z-index: 20;
+    bottom: calc(100% + 0.45rem);
+    left: 0;
+    width: max-content;
+    max-width: min(22rem, 75vw);
+    padding: 0.45rem 0.6rem;
+    transform: none;
+    border-radius: 0.25rem;
+    background: #263238;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 400;
+    line-height: 1.35;
+    text-align: left;
+    white-space: normal;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease-in-out;
+}
+
+.compat-yes:hover::after,
+.compat-partial:hover::after,
+.compat-untested:hover::after,
+.compat-no:hover::after,
+.compat-local:hover::after,
+.compat-helper:hover::after {
+    opacity: 1;
+}
+
+.compatibility-jit.compat-yes::after {
+    content: "This function is compatible with jax.jit.";
+}
+
+.compatibility-jit.compat-partial::after {
+    content: "jax.jit is supported with the restrictions described below.";
+}
+
+.compatibility-jit.compat-no::after {
+    content: "This function is not compatible with jax.jit.";
+}
+
+.compatibility-jit.compat-untested::after {
+    content: "Compatibility with jax.jit is expected but has not been tested.";
+}
+
+.compatibility-shard.compat-yes::after {
+    content: "Supports multi-device execution from a JAX shard_map context.";
+}
+
+.compatibility-shard.compat-partial::after {
+    content: "JAX shard_map is supported with the restrictions described below.";
+}
+
+.compatibility-shard.compat-no::after {
+    content: "This function is not compatible with JAX shard_map.";
+}
+
+.compatibility-shard.compat-untested::after {
+    content: "Correct execution with naturally sharded inputs is expected but has not been tested.";
+}
+
+.compatibility-shard.compat-local::after {
+    content: "This function does not implement multi-device communication and will run only on local shards when called inside of a shard_map.";
+}
+
+.compatibility-autodiff.compat-yes::after {
+    content: "Supports reverse-mode differentiation with jax.grad and jax.vjp.";
+}
+
+.compatibility-autodiff.compat-partial::after {
+    content: "jax.grad and jax.vjp are supported with the restrictions described below.";
+}
+
+.compatibility-autodiff.compat-no::after {
+    content: "This function does not support jax.grad or jax.vjp.";
+}
+
+.compatibility-autodiff.compat-untested::after {
+    content: "Compatibility with jax.grad and jax.vjp is expected but has not been tested.";
+}
+
+.compatibility-helper-jit::after {
+    content: "Preconfigured jax.jit wrapper with the appropriate static arguments.";
+}
+
+.compatibility-helper-smap::after {
+    content: "Convenience constructor for jax.shard_map with the expected sharding and static arguments.";
+}
+
+a.compat-helper,
+a.compat-helper:visited,
+a.compat-helper:hover,
+a.compat-helper:focus {
+    color: #fff;
+}
+
+a.compat-helper:hover,
+a.compat-helper:focus {
+    text-decoration: underline;
+}
