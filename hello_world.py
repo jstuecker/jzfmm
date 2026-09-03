@@ -1,4 +1,5 @@
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 import time
 import jax
@@ -12,8 +13,8 @@ parser.add_argument(
     help="Render a movie without opening an interactive window",
 )
 parser.add_argument(
-    "--rewind", action="store_true",
-    help="Integrate backward to the initial state after integrating forward",
+    "--only-forward", action="store_true",
+    help="Stop after the forward integration instead of rewinding",
 )
 args = parser.parse_args()
 
@@ -32,7 +33,7 @@ cfg = SimConfig(force=cfg_fmm)
 cfg.integrator = DKDLatticeConfig()
 
 p0 = gaussian_text(
-    "jz-tree",
+    "JZ-FMM",
     N=1024 * 1024,
     spacing=0.45,
     blob_sigma=0.06,
@@ -63,11 +64,11 @@ def image_step(p, ts, *, cfg):
     return p, particle_image(p.pos)
 
 def simulate_images(p, tend, nout, steps_per_output, cfg, tstart=0., rewind=False):
-    """Advance particles on the GPU while yielding only rendered images."""
+    """Advance particles while rendering the previous frame on the host."""
     time_dtype = p.pos.dtype
-    yield initial_image(p)
     nframes = nout * (2 if rewind else 1)
-    for iframe in range(nframes):
+
+    def compute_frame(p, iframe):
         if iframe < nout:
             i0, i1 = iframe, iframe + 1
         else:
@@ -78,16 +79,31 @@ def simulate_images(p, tend, nout, steps_per_output, cfg, tstart=0., rewind=Fals
         ts = jnp.linspace(t0, t1, steps_per_output + 1, dtype=time_dtype)
         frame_start = time.perf_counter()
         p, rendered = image_step(p, ts, cfg=cfg)
-        rendered.block_until_ready()
-        log(
-            "Reached output {} ({:.2f}s for {} steps)",
-            iframe + 1,
-            time.perf_counter() - frame_start,
-            steps_per_output,
-            level=1,
-            cfg_log=cfg.logging,
-        )
-        yield rendered
+        rendered = np.asarray(rendered)
+        return p, rendered, time.perf_counter() - frame_start
+
+    # JAX's FFI dispatch occupies the calling thread for much of a step. Run it
+    # in a worker so the GPU advances the next frame while Matplotlib renders
+    # the current host image on the main thread.
+    rendered_initial = np.asarray(initial_image(p))
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(compute_frame, p, 0)
+        yield rendered_initial
+
+        for iframe in range(nframes):
+            p, rendered, frame_time = future.result()
+            if iframe + 1 < nframes:
+                future = executor.submit(compute_frame, p, iframe + 1)
+
+            log(
+                "Reached output {} ({:.2f}s for {} steps)",
+                iframe + 1,
+                frame_time,
+                steps_per_output,
+                level=1,
+                cfg_log=cfg.logging,
+            )
+            yield rendered
 
 fig = plt.figure(figsize=(10., 6.), facecolor="black")
 ax = fig.add_axes((0., 0., 1., 1.), facecolor="black")
@@ -101,18 +117,20 @@ image = ax.imshow(
     vmax=6.5
 )
 
-print(np.max(initial_image(p0)))
-
 def update(rendered):
-    image.set_data(np.asarray(rendered))
+    image.set_data(rendered)
     return [image]
 
-sim_iter = simulate_images(
-    p0, tend=10., nout=400, steps_per_output=1, cfg=cfg,
-    rewind=args.rewind,
-)
+def animation_frames():
+    # ``image_step`` donates its particle input. Give every repeated animation
+    # a fresh device copy while retaining ``p0`` as the restart state.
+    p = jax.tree.map(lambda x: x.copy(), p0)
+    return simulate_images(
+        p, tend=8., nout=400, steps_per_output=1, cfg=cfg,
+        rewind=not args.only_forward,
+    )
 
-ani = FuncAnimation(fig, update, frames=sim_iter, blit=True, interval=40, repeat=True,
+ani = FuncAnimation(fig, update, frames=animation_frames, blit=True, interval=1, repeat=True,
                     cache_frame_data=False)
 
 if args.movie:
