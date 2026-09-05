@@ -55,6 +55,7 @@ Project links
    :caption: Contents
 
    installation.md
+   quickstart.md
    attribution.md
    api.rst
    jax_compatibility.rst

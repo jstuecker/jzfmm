@@ -138,6 +138,6 @@ if args.movie:
     import os
     os.makedirs("output", exist_ok=True)
 
-    ani.save("output/nbody_simulation.mp4", dpi=200)
+    ani.save("output/nbody_simulation.mp4", dpi=200, fps=20)
 else:
     plt.show()
