@@ -30,18 +30,6 @@ def _gaussian_particles(pos_mass):
     )
 
 
-def _simulate(part, ts, cfg):
-    return simulate(part, ts=ts, cfg=cfg)
-
-
-_simulate.smap = shard_map_constructor(
-    _simulate,
-    in_specs=(P(-1), None, None),
-    out_specs=P(-1),
-    static_argnames=("cfg",),
-)
-
-
 def _loss(part, ts, cfg):
     part_final = simulate(part, ts=ts, cfg=cfg)
     valid = jnp.arange(part_final.pos.shape[0]) < part_final.num
@@ -71,8 +59,8 @@ def test_distr_sim_reversibility():
     part = dequantize_particles(quantize_particles(part, cfg.integrator), cfg.integrator)
     ts = jnp.linspace(0.0, 0.01, 3, dtype=part.pos.dtype)
 
-    part_final = _simulate.smap(mesh, jit=True)(part, ts, cfg)
-    part_back = _simulate.smap(mesh, jit=True)(part_final, ts[::-1], cfg)
+    part_final = simulate.smap(mesh, jit=True)(part, ts, cfg)
+    part_back = simulate.smap(mesh, jit=True)(part_final, ts[::-1], cfg)
 
     assert jnp.array_equal(part_back.pos, part.pos)
     assert jnp.array_equal(part_back.vel, part.vel)

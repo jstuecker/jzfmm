@@ -3,7 +3,9 @@ from typing import Generator
 import time
 import jax.numpy as jnp
 import jax
+from jax.sharding import PartitionSpec as P
 
+from jztree.jax_ext import shard_map_constructor
 from jztree.tools import log
 from .data import Particles, LocalExpansion
 from .config import DirectSummationConfig, DKDConfig, DKDLatticeConfig, FMMConfig, KDKConfig, SimConfig
@@ -15,7 +17,7 @@ def force_and_potential(p: Particles, cfg: SimConfig) -> LocalExpansion:
     **Compatibility:** :compat-jit:`JIT` :compat-shard-partial:`Shard map`
     :compat-autodiff:`Autodiff`
 
-    **Helpers:** :helper-jit:`.jit`
+    **Helpers:** :helper-jit:`.jit` :helper-smap:`.smap`
 
     Shard-map execution produces a global result with
     :class:`jzfmm.config.FMMConfig`; direct summation is local only.
@@ -326,6 +328,12 @@ def simulate(
     
     return eval(p)
 simulate.jit = jax.jit(simulate, static_argnames=("cfg",))
+simulate.smap = shard_map_constructor(
+    simulate,
+    in_specs=(P(-1), None, None),
+    out_specs=P(-1),
+    static_argnames=("cfg",),
+)
 
 def simulate_with_outputs(
         p : Particles, 

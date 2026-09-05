@@ -197,7 +197,6 @@ tests and reduces selected parametrized tests to a representative case:
 
 ```bash
 cd checks
-source ~/.virtualenvs/uvjax/bin/activate
 pytest --quick
 ```
 
@@ -255,7 +254,6 @@ Build the documentation locally with:
 
 ```bash
 cd docs
-source ~/.virtualenvs/uvjax/bin/activate
 make html
 ```
 
@@ -372,7 +370,6 @@ This instantiates the kernel for direct summation and the leaf-to-leaf forward
 and backward kernels. Regenerate the bindings from the repository root:
 
 ```bash
-source ~/.virtualenvs/uvjax/bin/activate
 python src/jzfmm_cuda/_generate_ffi.py
 ```
 
@@ -380,7 +377,6 @@ Then rebuild the editable installation. Setting `JZFMM_GENERATE=1` makes CMake
 run the generator during configuration as well:
 
 ```bash
-source ~/.virtualenvs/uvjax/bin/activate
 JZFMM_GENERATE=1 uv pip install -e . --no-build-isolation
 ```
 

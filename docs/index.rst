@@ -56,8 +56,8 @@ Project links
 
    installation.md
    quickstart.md
-   attribution.md
+   developer_guide.md
    api.rst
    jax_compatibility.rst
-   developer_guide.md
+   attribution.md
    changelog.md
