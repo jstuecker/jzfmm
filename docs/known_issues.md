@@ -1,5 +1,12 @@
 # Known issues
 
+JAX is evolving rapidly, and newer versions that we have not yet tested may
+occasionally introduce compatibility problems. We aim to provide fixes promptly
+when these arise. Some issues originate in JAX, CUDA, or drivers and are outside
+our direct control; known cases and available workarounds are listed below.
+See the [JAX changelog](https://docs.jax.dev/en/latest/changelog.html) for upstream
+release notes.
+
 (cuda-graph-r535)=
 ## JAX 0.10.2: CUDA graph failure with NVIDIA R535
 
@@ -16,6 +23,10 @@ JAX and in a standalone CUDA test involving graph memset on virtual-memory
 allocations. This points to a driver/CUDA-graph compatibility issue, not our
 custom kernels; it does **not** imply that all CUDA 12 installations are affected.
 
+[NetKet issue #2248](https://github.com/netket/netket/issues/2248) reports the same
+error and command-buffer workaround with JAX 0.10.2 on H100 GPUs. This is a
+related report, not confirmation of the driver-specific cause identified here.
+
 ### Workaround
 
 Set this before starting Python on each process:
@@ -29,6 +40,11 @@ this option. It disables XLA command buffers, but retains JIT compilation and
 GPU execution. With this workaround, selected four-GPU FMM, gradient,
 simulation, kNN, and FoF consistency checks passed. Measured execution times
 were approximately 1–2% slower than the older working JAX baseline.
+
+See JAX's [XLA flag instructions](https://docs.jax.dev/en/latest/xla_flags.html)
+for setting `XLA_FLAGS`, and its
+[GPU performance tips](https://docs.jax.dev/en/latest/gpu_performance_tips.html)
+for documentation of the command-buffer flag.
 
 ### Scope
 
