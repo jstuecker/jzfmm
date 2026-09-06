@@ -1,0 +1,85 @@
+name: Docs (Sphinx -> GitHub Pages)
+
+on:
+  push:
+    branches: ["main", "master"]
+    paths:
+      - "docs/**"
+      - "src/**"
+      - "examples/**"
+      - ".github/workflows/docs-pages.yml"
+  pull_request:
+    branches: ["main", "master"]
+    paths:
+      - "docs/**"
+      - "src/**"
+      - "examples/**"
+      - ".github/workflows/docs-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # jz-fmm needs APIs not present in the published jztree 1.0.3 package.
+      # Revisit this source checkout when jztree 1.1.0 is released.
+      - name: Checkout jz-tree Python sources
+        uses: actions/checkout@v6
+        with:
+          repository: jstuecker/jztree
+          ref: 69daa9fb490f3b67af8726528a21c5ad86ac1f91
+          path: _dependencies/jztree
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install CPU-only docs dependencies
+        run: uv pip install --python "$(command -v python)" -r docs/requirements.txt
+
+      - name: Build HTML docs
+        env:
+          PYTHONPATH: ${{ github.workspace }}/_dependencies/jztree/src
+          JAX_PLATFORMS: cpu
+        run: sphinx-build -W --keep-going -b html docs docs/_build/html
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs/_build/html
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

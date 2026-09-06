@@ -15,6 +15,9 @@ from sphinx.util.typing import stringify_annotation
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT / "src"))
 
+# Documentation inspects Python objects without loading a real CUDA backend.
+os.environ.setdefault("JZTREE_SKIP_JAX_CUDA_CHECK", "1")
+
 # -- Project information -----------------------------------------------------
 
 project = "jz-fmm"
@@ -54,6 +57,7 @@ autodoc_default_options = {
 # These compiled modules are not needed to inspect the Python API. Mocking
 # them lets documentation builds run on machines without CUDA or jz-fmm built.
 autodoc_mock_imports = [
+    "jztree_cuda",
     "jzfmm_cuda",
     "jzfmm_cuda.ffi_fmm",
     "jzfmm_cuda.ffi_multipoles",

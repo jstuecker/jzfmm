@@ -66,13 +66,15 @@ the dependencies and then **jz-fmm**:
 
 ```bash
 pip install "jztree[cuda13]"
-pip install "jax[cuda13]" scikit-build-core nanobind "cmake>=3.24" setuptools-scm
+pip install "jax[cuda13]" "scikit-build-core>=0.11" "nanobind>=2.9.2" "cmake>=3.24"
 pip install -e ".[cuda13]" --no-build-isolation
 ```
 
 ```{note}
 Keep `--no-build-isolation` for editable installations so the build can locate
-the CUDA and JAX packages in the active environment.
+the CUDA and JAX packages in the active environment. With this option, build
+dependencies must already be installed; the prerequisite commands above install
+them explicitly.
 ```
 
 ### CUDA 12
@@ -90,7 +92,7 @@ conda activate jzfmm-cu12
 conda install -c conda-forge pip cuda-nvcc cuda-version=12 cudnn nccl \
     libcufft cuda-cupti libcublas libcusparse
 pip install --upgrade "jax[cuda12-local]"
-pip install scikit-build-core nanobind "cmake>=3.24" setuptools-scm
+pip install "scikit-build-core>=0.11" "nanobind>=2.9.2" "cmake>=3.24"
 pip install "jztree[cuda12]"
 pip install -e . --no-build-isolation
 ```
@@ -110,7 +112,7 @@ Then install JAX for the local toolkit and build **jz-fmm**:
 
 ```bash
 pip install --upgrade "jax[cuda13-local]"  # or jax[cuda12-local]
-pip install scikit-build-core nanobind "cmake>=3.24" setuptools-scm
+pip install "scikit-build-core>=0.11" "nanobind>=2.9.2" "cmake>=3.24"
 pip install -e . --no-build-isolation
 ```
 

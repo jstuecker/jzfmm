@@ -1,0 +1,7 @@
+# CPU-only JAX for API inspection; this is not a runtime compatibility constraint.
+jax==0.9.2
+numpy>=2.2.6
+sphinx>=9,<10
+myst-parser>=5,<6
+sphinx-paramlinks
+sphinx-rtd-theme

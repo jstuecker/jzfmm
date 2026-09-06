@@ -60,5 +60,6 @@ Project links
    developer_guide.md
    api.rst
    jax_compatibility.rst
+   known_issues.md
    attribution.md
    changelog.md
