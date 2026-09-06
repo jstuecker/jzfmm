@@ -191,8 +191,7 @@ The remainder of the Python program is unchanged. `jax.devices()` describes
 the global device set after distributed initialization, and every process must
 execute the same mapped operations in the same order.
 
-If execution fails with `Failed to add memset node to a CUDA graph`, see the
-[known issue and workaround for JAX 0.10.2 with NVIDIA R535](#cuda-graph-r535).
+If you encounter an error, check the [known issues](known_issues.md) page for possible workarounds.
 
 Launch details depend on the cluster. A common arrangement is one process per
 GPU. **Assign several CPU cores to each process:** communication can be very
