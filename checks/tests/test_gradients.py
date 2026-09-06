@@ -14,7 +14,7 @@ from jztree_utils import ics
 
 from jzfmm.config import DirectSummationConfig, FMMConfig, OpeningByAngle, PlummerKernel, SimConfig
 from jzfmm.data import PosMass
-from jzfmm.multipoles import summarize_multipoles, build_multipole_hierarchy, _fmm_node_to_child
+from jzfmm.multipoles import summarize_multipoles, build_multipole_hierarchy, _fmm_node_to_child, iter_multi
 from jzfmm.fmm import _evaluate_node_node_fmm, _fmm_dual_walk
 from jzfmm.fmm import _leaf_leaf_summation, direct_summation, fast_multipole_method
 from jzfmm.external_potential import UniformAcceleration
@@ -40,8 +40,16 @@ def test_m2m_gradients(pos_mass_z, tree_hierarchy):
     node = tree_hierarchy.poslvl(0)
     child = PosLvl(pos=pos_mass_z.pos, lvl=jnp.zeros(len(pos_mass_z.pos), dtype=jnp.int32))
 
+    # Compare physical moments: singleton leaves can have scales near float32
+    # position resolution. A fixed finite-difference step spans thousands of
+    # those node widths and makes high-degree normalized moments dominate.
+    dim = pos_mass_z.pos.shape[-1]
+    degree = jnp.array([sum(n) for n in iter_multi(cfg_fmm.p, dim=dim)])
+    scale_exp = (node.lvl + dim - 1) // dim
+    moment_scale = jnp.exp2((scale_exp[:, None] * degree).astype(pos_mass_z.pos.dtype))
+
     def m2m(x,m):
-        return summarize_multipoles(spl, m, node, replace(child, pos=x), cfg_fmm=cfg_fmm)
+        return summarize_multipoles(spl, m, node, replace(child, pos=x), cfg_fmm=cfg_fmm) * moment_scale
 
     check_grads(lambda m: m2m(pos_mass_z.pos, m), (pos_mass_z.mass,), order=1, modes=("rev",), eps=1e-3)
     check_grads(lambda x: m2m(x, pos_mass_z.mass), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-3)
@@ -61,7 +69,9 @@ def test_l2l_gradients(pos_mass_z, tree_hierarchy):
         return _fmm_node_to_child(ispl, loc, node, replace(child, pos=x), cfg_fmm=cfg_fmm, pout=1)
 
     loc = loc.at[:,1:4].set(0.)
-    check_grads(lambda x: l2l(x, loc), (pos_mass_z.pos,), order=1, modes=("rev",), eps=1e-2)
+    # A larger step has appreciable truncation error; much smaller steps lose
+    # accuracy to float32 cancellation in this million-particle projection.
+    check_grads(lambda x: l2l(x, loc), (pos_mass_z.pos,), order=1, modes=("rev",), eps=3e-3)
     # For multipole gradients we need to use smarter finit difference steps than jax's default:
     my_check_gradient(lambda l: l2l(pos_mass_z.pos, l).sum(), loc, epsrel=5e-2)
 
@@ -124,7 +134,9 @@ def test_force_gradients(dim):
     part.num = None # currently causes some problems with gradients
     part.num_total = None # currently causes some problems with gradients
     part.mass = jnp.broadcast_to(part.mass, part.pos.shape[:-1])
-    cfg_fmm = FMMConfig(kernel=PlummerKernel(softening=0.05), p=4, kahan_summation=True, opening=OpeningByAngle(theta=0.8))
+    # The 2D fixture needs a stricter opening for p=4 to meet the force and
+    # gradient accuracy tolerances against direct summation.
+    cfg_fmm = FMMConfig(kernel=PlummerKernel(softening=0.05), p=4, kahan_summation=True, opening=OpeningByAngle(theta=0.6 if dim == 2 else 0.8))
     
     ispl = jnp.arange(part.pos.shape[0]//32 + 1, dtype=jnp.int32) * 32
     ilist = _dense_interaction_list.jit(len(ispl)-1, len(ispl)-1, (len(ispl)-1)**2)
