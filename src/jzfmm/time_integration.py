@@ -17,7 +17,7 @@ def force_and_potential(p: Particles, cfg: SimConfig) -> LocalExpansion:
     **Compatibility:** :compat-jit:`JIT` :compat-shard-partial:`Shard map`
     :compat-autodiff:`Autodiff`
 
-    **Helpers:** :helper-jit:`.jit` :helper-smap:`.smap`
+    **Helpers:** :helper-jit:`.jit`
 
     Shard-map execution produces a global result with
     :class:`jzfmm.config.FMMConfig`; direct summation is local only.
@@ -280,7 +280,7 @@ def simulate(
     **Compatibility:** :compat-jit:`JIT` :compat-shard-partial:`Shard map`
     :compat-autodiff-partial:`Autodiff`
 
-    **Helpers:** :helper-jit:`.jit`
+    **Helpers:** :helper-jit:`.jit` :helper-smap:`.smap`
 
     Shard-map execution produces a global result with
     :class:`jzfmm.config.FMMConfig`; direct summation is local only.

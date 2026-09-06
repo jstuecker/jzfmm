@@ -333,4 +333,15 @@ plt.show()
 
 The reconstruction above is intentionally simplified. A realistic application should use more particles and time steps, a physically motivated equilibrium profile for the satellite (or even better: cosmological initial conditions), an observationally appropriate loss function, possibly many more degrees of freedom and a better optimization method. As discussed in the article, optimization can be quite tricky in these loss landscapes and needs to be investigated carefully in future work.
 
-The [API reference](https://jstuecker.github.io/jzfmm/api.html) describes the available kernels, integrators, external potentials, and compatibility helpers. Multi-GPU execution will be covered in a separate guide.
+The [API reference](https://jstuecker.github.io/jzfmm/api.html) describes the available kernels, integrators, external potentials, and compatibility helpers. For distributed execution, see the [multi-GPU guide](multi_gpu_guide.md).
+
+## Error handling
+
+Runtime checks inside jitted computations use jz-tree's host callbacks to raise
+errors, which can produce long JAX tracebacks with messages such as
+`CpuCallback error`. Look for the **Relevant Error Message** section: it
+contains the actual cause and often a hint for resolving it. For example, if
+an interaction list exceeds its allocated capacity, increase the indicated
+allocation factor in the configuration. See
+[jz-tree's error-handling section](https://jstuecker.github.io/jztree/quickstart.html#error-handling)
+for an example and further explanation.

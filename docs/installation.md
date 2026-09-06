@@ -1,5 +1,13 @@
 # Installation
 
+## Requirements
+
+Right now **jz-fmm** is only supported on NVIDIA GPUs with CUDA 12 or CUDA 13
+compatibility. The installed NVIDIA driver must support the selected CUDA
+version.
+
+Future updates may include CPU and AMD GPU support.
+
 ## Via pip
 
 The easiest way to install **jz-fmm** is from a pre-built wheel. Select the

@@ -56,6 +56,7 @@ Project links
 
    installation.md
    quickstart.md
+   multi_gpu_guide.md
    developer_guide.md
    api.rst
    jax_compatibility.rst
