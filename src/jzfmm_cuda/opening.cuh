@@ -37,7 +37,7 @@ struct OpeningCriterion<OPENING_BY_ANGLE> {
         int scale_exp = max(levelsA[dim - 1], levelsB[dim - 1]);
         const tvec dx_max = absmax(dx);
         if(dx_max != tvec(0))
-            scale_exp = max(scale_exp, ilogb(dx_max));
+            scale_exp = max(scale_exp, normal_ilogb(dx_max));
 
         const Vec<dim,tvec> dx_scaled = mulpow2(dx, -scale_exp);
         const Vec<dim,tvec> extent_scaled =

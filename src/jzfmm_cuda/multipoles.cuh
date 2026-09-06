@@ -607,7 +607,7 @@ __device__ __forceinline__ void m2l_translator(
     int scale_exp = max(source_exp, target_exp);
     const tvec dx_max = absmax(dx);
     if(dx_max != tvec(0))
-        scale_exp = max(scale_exp, ilogb(dx_max));
+        scale_exp = max(scale_exp, normal_ilogb(dx_max));
 
     dx = mulpow2(dx, -scale_exp);
     const int source_dexp = source_exp - scale_exp;
@@ -665,6 +665,19 @@ __device__ __forceinline__ void m2l_translator(
         Dn.template get<0>() = G[q];
     });
 
+    constexpr int nscale = (p + 1) * (p + 2) / 2;
+    // One combined source/target exponent per degree pair (21 at p=5).
+    RegisterArray<nscale,int> scale_exponents;
+    ct_static_for<0, p + 1>([&](auto kd_constant) {
+        constexpr int kd = decltype(kd_constant)::value;
+        ct_static_for<0, p - kd + 1>([&](auto nd_constant) {
+            constexpr int nd = decltype(nd_constant)::value;
+            constexpr int index = kd * (p + 1) - kd * (kd - 1) / 2 + nd;
+            const int exponent = nd * source_dexp + kd * target_dexp;
+            scale_exponents.template get<index>() = exponent;
+        });
+    });
+
     ct_static_for<0, ncomb>([&](auto kflat_constant) {
         constexpr int kflat = decltype(kflat_constant)::value;
         constexpr int kx = ct_flat_component<kflat, dim, 0>();
@@ -695,12 +708,13 @@ __device__ __forceinline__ void m2l_translator(
                 constexpr int nfac =
                     ct_factorial(nx) * ct_factorial(ny) * ct_factorial(nz);
                 constexpr double inv_nfac = 1.0 / static_cast<double>(nfac);
-                const int term_exp = ndegree * source_dexp
-                    + kdegree * target_dexp;
-                Lnew += mulpow2(
-                    Dn.template get<dflat>() * Mp[nflat] * tvec(inv_nfac),
-                    term_exp
-                );
+                constexpr int scale_index =
+                    kdegree * (p + 1) - kdegree * (kdegree - 1) / 2 + ndegree;
+                const tvec weight = scale_weight_by_power_of_two(
+                    tvec(inv_nfac), scale_exponents.template get<scale_index>());
+                // Reuse this product across target coefficients of the same degree.
+                const tvec scaled_mp = Mp[nflat] * weight;
+                Lnew += Dn.template get<dflat>() * scaled_mp;
             }
         });
 

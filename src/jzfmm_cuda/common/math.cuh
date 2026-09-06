@@ -130,12 +130,48 @@ __device__ __forceinline__ Vec<dim,int32_t> lvl_vec(const int level) {
     return lvec;
 }
 
+// Performance experiment: assumes the constructed result is a normal power of two.
+// Deliberately no range checks or extreme-exponent fallback.
+template<typename T>
+__device__ __forceinline__ T normal_pow2(int exponent) {
+    if constexpr (std::is_same_v<T, float>)
+        return __uint_as_float((static_cast<unsigned>(exponent) + 127u) << 23);
+    else
+        return __longlong_as_double((static_cast<unsigned long long>(exponent) + 1023ull) << 52);
+}
+
+// Scale a positive normal weight by 2^exponent (exponent <= 0).
+// Flush weights below the normal range to zero; no general ldexp fallback.
+// Adjusting exponent bits avoids an extra multiply for constant factorial weights.
+template<typename T>
+__device__ __forceinline__ T scale_weight_by_power_of_two(T value, int exponent) {
+    if constexpr (std::is_same_v<T, float>) {
+        const unsigned bits = __float_as_uint(value);
+        const int result_exponent = int(bits >> 23) + exponent;
+        const unsigned scaled_bits = bits + (static_cast<unsigned>(exponent) << 23);
+        return result_exponent > 0 ? __uint_as_float(scaled_bits) : T(0);
+    } else {
+        const auto bits = static_cast<unsigned long long>(__double_as_longlong(value));
+        const int result_exponent = int(bits >> 52) + exponent;
+        const auto scaled_bits = bits + (static_cast<unsigned long long>(exponent) << 52);
+        return result_exponent > 0 ? __longlong_as_double(scaled_bits) : T(0);
+    }
+}
+
+template<typename T>
+__device__ __forceinline__ int normal_ilogb(T positive_value) {
+    if constexpr (std::is_same_v<T, float>)
+        return int((__float_as_uint(positive_value) >> 23) & 255u) - 127;
+    else
+        return int((__double_as_longlong(positive_value) >> 52) & 2047ll) - 1023;
+}
+
 template <typename tvec>
 __device__ __forceinline__ tvec mulpow2(tvec val, int pow) {
     if constexpr (std::is_same_v<tvec, float>)
-        return ldexpf(val, pow);
+        return val * normal_pow2<tvec>(pow);
     else if constexpr (std::is_same_v<tvec, double>)
-        return ldexp(val, pow);
+        return val * normal_pow2<tvec>(pow);
     else if constexpr (std::is_same_v<tvec, int32_t>)
         return pow >= 0 ? val << pow : val >> -pow;
     else if constexpr (std::is_same_v<tvec, int64_t>)
