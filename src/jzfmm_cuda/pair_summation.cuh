@@ -60,9 +60,9 @@ __forceinline__ __device__ PosMass<dim,tvec> VJP_GFPhiToGXM(
 
     Vec<3,tvec> coeffs;
     RadialKernel<radial_kernel_kind>::template r2_derivative_coeffs<2,tvec>(r2, radial_kernel, coeffs);
-    tvec K = r2 > tvec(1e-20) ? coeffs[0] : tvec(0);
-    tvec f1 = r2 > tvec(1e-20) ? coeffs[1] : tvec(0);
-    tvec f2 = r2 > tvec(1e-20) ? coeffs[2] : tvec(0);
+    tvec K = coeffs[0];
+    tvec f1 = coeffs[1];
+    tvec f2 = coeffs[2];
 
     Vec<dim,tvec> gm_diff = xmi.mass * gj.grad - xmj.mass * gi.grad;
     tvec fgdiff = f2*gm_diff.dot(dx) + f1 * (gi.pot * xmj.mass + gj.pot * xmi.mass);
@@ -344,7 +344,7 @@ __global__ void BwdLeafLeafPairSummation(
 
         for(int ib=read_b_offset; ib < seg_mgr.num_loaded; ib += n_write) {
             PosMass<dim,tvec> gxm_inc = VJP_GFPhiToGXM<radial_kernel_kind,dim,tvec>(xm_a, xm_b[ib], gloc_a, gloc_b[ib], radial_kernel);
-            kahan_add_vec(gxm_a.asvec, gxm_inc.asvec, gxm_a_kahan.asvec);
+            add_vec<kahan>(gxm_a.asvec, gxm_inc.asvec, gxm_a_kahan.asvec);
         }
         __syncthreads();
     }

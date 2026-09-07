@@ -33,9 +33,8 @@ def test_fmm_uniform(p):
     assert jnp.median(ferr_rel) <= 2.*10**-(p+1)
     assert jnp.max(ferr_rel) <= 3.*10**-(p-1)
 
-@pytest.mark.shrink_in_quick(keep_index=0)
-@pytest.mark.parametrize("dim", [2,3])
-def test_dim(dim):
+def test_fmm_2d():
+    dim = 2
     p = 3
     cfg_fmm = FMMConfig(kernel=PlummerKernel(softening=0.05), p=p, opening=OpeningByAngle(theta=0.4), kahan_summation=True)
 

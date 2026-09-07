@@ -542,61 +542,66 @@ __global__ void TranslateLocalToLocal_XVJP(
         return;
     }
     const int parent_exp = expansion_exponent<dim,tvec>(node.level);
-    Vec<ncomb,tvec> loc_in;
-    #pragma unroll
-    for (int iM = 0; iM < ncomb; iM++) {
-        loc_in[iM] = loc_node[inode * ncomb + iM];
-    }
-    
+    RegisterArray<ncomb,tvec> loc_in;
+    ct_static_for<0, ncomb>([&](auto iM_constant) {
+        constexpr int iM = decltype(iM_constant)::value;
+        loc_in.template get<iM>() = loc_node[inode * ncomb + iM];
+    });
+
     for(int ichild = istart; ichild < iend; ichild++) {
         const Node<dim,tvec> child = children[ichild];
         const int child_exp = expansion_exponent<dim,tvec>(child.level);
         const int child_dexp = child_exp - parent_exp;
         Vec<dim,tvec> dpos = mulpow2(child.center - node.center, -parent_exp);
 
-        Vec<ncomb,tvec> loc_child;
-
-        Vec<ncomb,tvec> loc_src;
-        #pragma unroll
-        for (int i = 0; i < ncomb; i++) {
-            loc_src[i] = loc_in[i];
-        }
-
-        shift_local_to_local<p,dim,tvec>(loc_src, loc_child, dpos);
-
-        for_each_multiindex<p,dim>([&](int im, int msum, int (&)[dim]) {
-            loc_child[im] = mulpow2(loc_child[im], msum * child_dexp);
+        RegisterArray<ncomb,tvec> loc_work;
+        ct_static_for<0, ncomb>([&](auto iM_constant) {
+            constexpr int iM = decltype(iM_constant)::value;
+            loc_work.template get<iM>() = loc_in.template get<iM>();
+        });
+        shift_local_to_local_inplace<p,dim,tvec>(loc_work, dpos);
+        ct_static_for<0, ncomb>([&](auto iM_constant) {
+            constexpr int iM = decltype(iM_constant)::value;
+            constexpr int degree = ct_flat_degree<iM, dim>();
+            loc_work.template get<iM>() =
+                mulpow2(loc_work.template get<iM>(), degree * child_dexp);
         });
 
-        Vec<ncomb,tvec> gloc_child;
-        #pragma unroll
-        for (int iM = 0; iM < NCOMB(pout, dim); iM++) {
-            gloc_child[iM] = g_loc_child[ichild * NCOMB(pout, dim) + iM];
-        }
+        RegisterArray<ncomb,tvec> gloc_child;
+        ct_static_for<0, ncomb>([&](auto iM_constant) {
+            constexpr int iM = decltype(iM_constant)::value;
+            gloc_child.template get<iM>() = tvec(0);
+            if(iM < NCOMB(pout, dim))
+                gloc_child.template get<iM>() = g_loc_child[ichild * NCOMB(pout, dim) + iM];
+        });
 
-        #pragma unroll
-        for (int a=0; a < dim; a++) {
+        // Keep the full translated expansion: position derivatives need one
+        // degree above the cotangent order, including for node children.
+        ct_static_for<0, dim>([&](auto ax_constant) {
+            constexpr int ax = decltype(ax_constant)::value;
             tvec gxa = tvec(0);
-            for_each_multiindex<p,dim>([&](int im, int msum, int (&m)[dim]) {
-                const int ma = m[a];
-
-                int b[dim];
-                copy_multiindex<dim>(m, b);
-                b[a] += 1;
-                const int bsum = msum + 1;
-
-                if((msum > pout) || (bsum > p))
-                    return;
-
-                int ib = multi_to_flat<dim>(b);
-                    
-                gxa += mulpow2(
-                    gloc_child[im] * loc_child[ib] * tvec(ma + 1), -child_exp
-                );
+            ct_static_for<0, ncomb>([&](auto iM_constant) {
+                constexpr int iM = decltype(iM_constant)::value;
+                constexpr int kx = ct_flat_component<iM, dim, 0>();
+                constexpr int ky = ct_flat_component<iM, dim, 1>();
+                constexpr int kz = []() constexpr {
+                    if constexpr (dim == 3)
+                        return ct_flat_component<iM, dim, 2>();
+                    else
+                        return 0;
+                }();
+                constexpr int degree = kx + ky + kz;
+                if constexpr (degree + 1 <= p) {
+                    constexpr int ma = ax == 0 ? kx : (ax == 1 ? ky : kz);
+                    constexpr int ib = ct_multi_to_flat<dim,
+                        kx + (ax == 0), ky + (ax == 1), kz + (ax == 2)>();
+                    if(degree <= pout)
+                        gxa += mulpow2(gloc_child.template get<iM>()
+                            * loc_work.template get<ib>() * tvec(ma + 1), -child_exp);
+                }
             });
-
-            g_xchild[ichild][a] = gxa;
-        }
+            g_xchild[ichild][ax] = gxa;
+        });
     }
 }
 
