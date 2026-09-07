@@ -41,11 +41,15 @@ struct OpeningCriterion<OPENING_BY_ANGLE> {
 
         const Vec<dim,tvec> dx_scaled = mulpow2(dx, -scale_exp);
         const Vec<dim,tvec> extent_scaled =
-            exp2<tvec>(levelsA - scale_exp)
-            + exp2<tvec>(levelsB - scale_exp);
+            nonpositive_exp2<tvec>(levelsA - scale_exp)
+            + nonpositive_exp2<tvec>(levelsB - scale_exp);
 
-        return tvec(0.25) * extent_scaled.norm2()
-            >= params.theta * params.theta * dx_scaled.norm2();
+        // These cells have no finite multipole expansion. Use a predicate,
+        // rather than an early return, to avoid another traversal branch.
+        const bool unbounded = unbounded_node<dim,tvec>(nodeA.level)
+            | unbounded_node<dim,tvec>(nodeB.level);
+        return unbounded | (tvec(0.25) * extent_scaled.norm2()
+            >= params.theta * params.theta * dx_scaled.norm2());
     }
 };
 

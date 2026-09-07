@@ -130,8 +130,31 @@ __device__ __forceinline__ Vec<dim,int32_t> lvl_vec(const int level) {
     return lvec;
 }
 
-// Performance experiment: assumes the constructed result is a normal power of two.
-// Deliberately no range checks or extreme-exponent fallback.
+// Geometric levels include sign-spanning (unbounded) cells. Their expansions
+// are unused: the opening criterion always descends into their children.
+template<int dim, typename T>
+__device__ __forceinline__ bool unbounded_node(int level) {
+    constexpr int max_exp = std::is_same_v<T, float> ? 128 : 1024;
+    // The largest per-axis level is ceil(level / dim).
+    return level > dim * (max_exp - 1);
+}
+
+// Expansion normalization need not equal the geometric extent. The floor
+// covers tiny/coincident cells; the ceiling keeps both 2^exponent and its
+// reciprocal normal, allowing unchecked scaling in the hot M2L kernel.
+template<typename T>
+__device__ __forceinline__ int bounded_expansion_exponent(int exponent) {
+    constexpr int min_exp = std::is_same_v<T, float> ? -32 : -256;
+    constexpr int max_exp = std::is_same_v<T, float> ? 126 : 1022;
+    return min(max(exponent, min_exp), max_exp);
+}
+
+template<int dim, typename T>
+__device__ __forceinline__ int expansion_exponent(int level) {
+    return bounded_expansion_exponent<T>(lvl_vec<dim>(level)[dim - 1]);
+}
+
+// Only call with an exponent giving a normal power of two.
 template<typename T>
 __device__ __forceinline__ T normal_pow2(int exponent) {
     if constexpr (std::is_same_v<T, float>)
@@ -166,12 +189,24 @@ __device__ __forceinline__ int normal_ilogb(T positive_value) {
         return int((__double_as_longlong(positive_value) >> 52) & 2047ll) - 1023;
 }
 
+// Keep the exceptional path out of line so its temporaries do not compete
+// with the expansion coefficients for registers in the usual case.
+template <typename tvec>
+__device__ __noinline__ tvec mulpow2_extreme(tvec val, int pow) {
+    return ldexp(val, pow);
+}
+
 template <typename tvec>
 __device__ __forceinline__ tvec mulpow2(tvec val, int pow) {
-    if constexpr (std::is_same_v<tvec, float>)
-        return val * normal_pow2<tvec>(pow);
-    else if constexpr (std::is_same_v<tvec, double>)
-        return val * normal_pow2<tvec>(pow);
+    if constexpr (std::is_same_v<tvec, float> || std::is_same_v<tvec, double>) {
+        constexpr int min_exp = std::is_same_v<tvec, float> ? -126 : -1022;
+        constexpr int max_exp = std::is_same_v<tvec, float> ? 127 : 1023;
+        if (pow >= min_exp && pow <= max_exp)
+            return val * normal_pow2<tvec>(pow);
+        // Scale the value, not a separately rounded 2^pow: zero stays zero and
+        // a small coefficient can survive a large positive scale difference.
+        return mulpow2_extreme(val, pow);
+    }
     else if constexpr (std::is_same_v<tvec, int32_t>)
         return pow >= 0 ? val << pow : val >> -pow;
     else if constexpr (std::is_same_v<tvec, int64_t>)
@@ -186,12 +221,14 @@ __device__ __forceinline__ Vec<dim,tvec> mulpow2(Vec<dim,tvec> val, int pow) {
     return val;
 }
 
+// Opening-criterion extents are divided by their maximum scale, so these
+// exponents are nonpositive. Use the cheap, underflow-safe weight scaling.
 template<typename tout, int dim, typename tin>
-__device__ __forceinline__ Vec<dim,tout> exp2(const Vec<dim,tin>& exponent) {
+__device__ __forceinline__ Vec<dim,tout> nonpositive_exp2(const Vec<dim,tin>& exponent) {
     Vec<dim,tout> result;
     #pragma unroll
     for(int i = 0; i < dim; i++)
-        result[i] = mulpow2(tout(1), int(exponent[i]));
+        result[i] = scale_weight_by_power_of_two(tout(1), int(exponent[i]));
     return result;
 }
 

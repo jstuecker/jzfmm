@@ -74,7 +74,7 @@ __global__ void CountInteractionsAndM2L(
         if(threadIdx.x < num_childrenA) {
             Node<dim,tvec> child = children_recv[offsetA + threadIdx.x];
             childA[threadIdx.x] = child;
-            scale_expA[threadIdx.x] = lvl_vec<dim>(child.level)[dim - 1];
+            scale_expA[threadIdx.x] = expansion_exponent<dim,tvec>(child.level);
         }
 
         int num_open[MAX_NUMA];
@@ -181,7 +181,7 @@ __global__ void CountInteractionsAndM2L(
             if(any_interacts) {
                 posB[threadIdx.x] = childB.center;
                 scale_expB[threadIdx.x] =
-                    lvl_vec<dim>(children_src[id].level)[dim - 1];
+                    expansion_exponent<dim,tvec>(children_src[id].level);
                 for(int k=0; k<ncomb_mp; k++) {
                     mpB[threadIdx.x][k] = mp_src[id * ncomb_mp + k];
                 }

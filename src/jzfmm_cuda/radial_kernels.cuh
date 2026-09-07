@@ -7,6 +7,8 @@ static constexpr int RADIAL_KERNEL_PLUMMER = 0;
 static constexpr int RADIAL_KERNEL_PLUMMER_2D = 1;
 static constexpr int RADIAL_KERNEL_SOFTENED_DISTANCE = 2;
 
+// scale_exp is zero for direct interactions, or bounded_expansion_exponent
+// for M2L: both 2^scale_exp and its reciprocal are normal floating-point values.
 template<int radial_kernel_kind>
 struct RadialKernel;
 
@@ -31,7 +33,7 @@ struct RadialKernel<RADIAL_KERNEL_PLUMMER> {
     ) {
         // s = r^2 / R^2, R = 2^scale_exp
         // coeffs[n] = 2^n d^n/ds^n K(R sqrt(s)).
-        const tvec softening = mulpow2(params.softening, -scale_exp);
+        const tvec softening = params.softening * normal_pow2<tvec>(-scale_exp);
         tvec rinv = rsqrt(scaled_r2 + softening * softening);
         tvec rinv2 = rinv * rinv;
         coeffs[0] = -rinv;
@@ -41,7 +43,7 @@ struct RadialKernel<RADIAL_KERNEL_PLUMMER> {
             coeffs[n] = -tvec(2*n - 1) * coeffs[n-1] * rinv2;
         }
 
-        coeffs = mulpow2(coeffs, -scale_exp);
+        coeffs = coeffs * normal_pow2<tvec>(-scale_exp);
     }
 };
 
@@ -66,7 +68,7 @@ struct RadialKernel<RADIAL_KERNEL_PLUMMER_2D> {
     ) {
         // s = r^2 / R^2, R = 2^scale_exp
         // coeffs[n] = 2^n d^n/ds^n K(R sqrt(s)).
-        const tvec softening = mulpow2(params.softening, -scale_exp);
+        const tvec softening = params.softening * normal_pow2<tvec>(-scale_exp);
         const tvec rsoft2 = scaled_r2 + softening * softening;
         const tvec sinv = tvec(1) / rsoft2;
         coeffs[0] = tvec(0.5) * log(rsoft2)
@@ -104,7 +106,7 @@ struct RadialKernel<RADIAL_KERNEL_SOFTENED_DISTANCE> {
     ) {
         // s = r^2 / R^2, R = 2^scale_exp
         // coeffs[n] = 2^n d^n/ds^n K(R sqrt(s)).
-        const tvec softening = mulpow2(params.softening, -scale_exp);
+        const tvec softening = params.softening * normal_pow2<tvec>(-scale_exp);
         const tvec rsoft = sqrt(scaled_r2 + softening * softening);
         coeffs[0] = rsoft;
 
@@ -119,7 +121,7 @@ struct RadialKernel<RADIAL_KERNEL_SOFTENED_DISTANCE> {
             }
         }
 
-        coeffs = mulpow2(coeffs, scale_exp);
+        coeffs = coeffs * normal_pow2<tvec>(scale_exp);
     }
 };
 

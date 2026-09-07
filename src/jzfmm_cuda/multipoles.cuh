@@ -314,7 +314,7 @@ __global__ __launch_bounds__(32, 1) void SummarizeMultipoles(
 
     int istart = isplit[inode], iend = isplit[inode + 1];
 
-    if(istart >= iend) {
+    if(istart >= iend || unbounded_node<dim,tvec>(nodes[inode].level)) {
         for(int iM=0; iM < ncomb; iM++) {
             mp_out[inode * ncomb + iM] = tvec(0);
         }
@@ -333,10 +333,10 @@ __global__ __launch_bounds__(32, 1) void SummarizeMultipoles(
     }
 
     const Node<dim,tvec> node = nodes[inode];
-    const int parent_exp = lvl_vec<dim>(node.level)[dim - 1];
+    const int parent_exp = expansion_exponent<dim,tvec>(node.level);
     for(int ichild = istart; ichild < iend; ichild++) {
         const Node<dim,tvec> child = children[ichild];
-        const int child_exp = lvl_vec<dim>(child.level)[dim - 1];
+        const int child_exp = expansion_exponent<dim,tvec>(child.level);
         const int child_dexp = child_exp - parent_exp;
         RegisterArray<ncomb,tvec> mp_new;
         ct_static_for<0, ncomb>([&](auto iM_constant) {
@@ -475,7 +475,13 @@ __global__ void TranslateLocalToLocal(
         return;
     
     const Node<dim,tvec> node = nodes[inode];
-    const int parent_exp = lvl_vec<dim>(node.level)[dim - 1];
+    if (unbounded_node<dim,tvec>(node.level)) {
+        for (int ichild = istart; ichild < iend; ichild++)
+            for (int im = 0; im < NCOMB(pout, dim); im++)
+                loc_child[ichild * NCOMB(pout, dim) + im] = tvec(0);
+        return;
+    }
+    const int parent_exp = expansion_exponent<dim,tvec>(node.level);
     RegisterArray<ncomb,tvec> loc_in;
     ct_static_for<0, ncomb>([&](auto iM_constant) {
         constexpr int iM = decltype(iM_constant)::value;
@@ -484,7 +490,7 @@ __global__ void TranslateLocalToLocal(
     
     for(int ichild = istart; ichild < iend; ichild++) {
         const Node<dim,tvec> child = children[ichild];
-        const int child_exp = lvl_vec<dim>(child.level)[dim - 1];
+        const int child_exp = expansion_exponent<dim,tvec>(child.level);
         const int child_dexp = child_exp - parent_exp;
         Vec<dim,tvec> dpos = mulpow2(child.center - node.center, -parent_exp);
 
@@ -529,7 +535,13 @@ __global__ void TranslateLocalToLocal_XVJP(
         return;
     
     const Node<dim,tvec> node = nodes[inode];
-    const int parent_exp = lvl_vec<dim>(node.level)[dim - 1];
+    if (unbounded_node<dim,tvec>(node.level)) {
+        for (int ichild = istart; ichild < iend; ichild++)
+            for (int a = 0; a < dim; a++)
+                g_xchild[ichild][a] = tvec(0);
+        return;
+    }
+    const int parent_exp = expansion_exponent<dim,tvec>(node.level);
     Vec<ncomb,tvec> loc_in;
     #pragma unroll
     for (int iM = 0; iM < ncomb; iM++) {
@@ -538,7 +550,7 @@ __global__ void TranslateLocalToLocal_XVJP(
     
     for(int ichild = istart; ichild < iend; ichild++) {
         const Node<dim,tvec> child = children[ichild];
-        const int child_exp = lvl_vec<dim>(child.level)[dim - 1];
+        const int child_exp = expansion_exponent<dim,tvec>(child.level);
         const int child_dexp = child_exp - parent_exp;
         Vec<dim,tvec> dpos = mulpow2(child.center - node.center, -parent_exp);
 
@@ -609,7 +621,8 @@ __device__ __forceinline__ void m2l_translator(
     if(dx_max != tvec(0))
         scale_exp = max(scale_exp, normal_ilogb(dx_max));
 
-    dx = mulpow2(dx, -scale_exp);
+    scale_exp = bounded_expansion_exponent<tvec>(scale_exp);
+    dx = dx * normal_pow2<tvec>(-scale_exp);
     const int source_dexp = source_exp - scale_exp;
     const int target_dexp = target_exp - scale_exp;
     Vec<p + 1,tvec> G;
