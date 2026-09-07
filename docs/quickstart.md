@@ -14,13 +14,21 @@ Multi-GPU execution will be discussed in a separate guide.
 
 ## Verify the installation
 
-From the repository root, run:
-
 ```bash
 python hello_world.py
 ```
 
+Run this from the directory containing the script (the repository root if you cloned it). If you installed via pip without cloning the repository, download the standalone script into your working directory:
+
+```bash
+curl -fLO https://raw.githubusercontent.com/jstuecker/jzfmm/main/hello_world.py
+```
+
+Alternatively, save [hello_world.py](https://raw.githubusercontent.com/jstuecker/jzfmm/main/hello_world.py) from your browser.
+
 This evolves roughly one million particles spelling `JZ-FMM` and then reverses the integration. The simulation is run backwards in the end to show that the integer-lattice drift-kick-drift integrator and deterministic force evaluation recover the initial state exactly. Use `python hello_world.py --only-forward` to omit the rewind. Using `--movie` will render a movie instead of displaying it live, in case you are working remotely.
+
+The script checks the GUI or encoder requirements before starting the simulation. Movies are streamed to `output/nbody_simulation.mp4` at 20 fps and 1024 × 576 resolution. The terminal reports the time taken by the simulation steps; the display speed may be limited by the Matplotlib rendering backend.
 
 ```python
 from dataclasses import replace
@@ -70,20 +78,21 @@ satellite = make_satellite()
 cfg_fmm = jzfmm.FMMConfig()
 units = jzfmm.UnitConfig()
 
-loc = jzfmm.fmm.fast_multipole_method.jit(satellite, cfg_fmm=cfg_fmm, G=units.G())
-loc.values.block_until_ready()
-
-benchmark_start = time.perf_counter()
-for _ in range(10):
+for i in range(5): # compile and also warmup GPU
     loc = jzfmm.fmm.fast_multipole_method.jit(satellite, cfg_fmm=cfg_fmm, G=units.G())
     loc.values.block_until_ready()
 
-mean_time = (time.perf_counter() - benchmark_start) / 10
+benchmark_start = time.perf_counter()
+for _ in range(40):
+    loc = jzfmm.fmm.fast_multipole_method.jit(satellite, cfg_fmm=cfg_fmm, G=units.G())
+    loc.values.block_until_ready()
+
+mean_time = (time.perf_counter() - benchmark_start) / 40
 print(f"Mean time for 1,000,000 particles: {mean_time:.3f} s")
 ```
 
 ```text
-Mean time for 1,000,000 particles: 0.044 s
+Mean time for 1,000,000 particles: 0.028 s
 ```
 
 (Executed on a mobile NVIDIA RTX 4070 in my case.) The returned `loc` object is a `LocalExpansion`. It stores the local Taylor expansion of the potential evaluated at every particle. `loc.force()` extracts the corresponding force vectors. Here a tiny visualization of some of the forces:
@@ -145,15 +154,15 @@ orbit_snapshots = list(jzfmm.time_integration.simulate_with_outputs(
 ```
 
 ```text
-[time_integration.py:358] Compiling jitted simulation...
-[time_integration.py:371] Compilation done after 2.18s
-[time_integration.py:385] Reached output 1 (1.44s for 20 steps)
-[time_integration.py:385] Reached output 2 (1.35s for 20 steps)
-[time_integration.py:385] Reached output 3 (1.06s for 20 steps)
-[time_integration.py:385] Reached output 4 (1.19s for 20 steps)
-[time_integration.py:385] Reached output 5 (0.96s for 20 steps)
-[time_integration.py:385] Reached output 6 (1.24s for 20 steps)
-[time_integration.py:389] Total simulation time: 9.44s for 120 steps
+[time_integration.py:366] Compiling jitted simulation...
+[time_integration.py:379] Compilation done after 2.53s
+[time_integration.py:393] Reached output 1 (0.92s for 20 steps)
+[time_integration.py:393] Reached output 2 (0.94s for 20 steps)
+[time_integration.py:393] Reached output 3 (0.75s for 20 steps)
+[time_integration.py:393] Reached output 4 (0.96s for 20 steps)
+[time_integration.py:393] Reached output 5 (0.81s for 20 steps)
+[time_integration.py:393] Reached output 6 (0.96s for 20 steps)
+[time_integration.py:397] Total simulation time: 7.88s for 120 steps
 ```
 
 ```python
@@ -259,17 +268,17 @@ print(f"Recovered COM position: {com_pos}")
 ```text
 Target COM position:    [25.  0.  0.]
  0: loss=182.2, com_pos=[ 70.  12. -30.]
- 5: loss=110.5, com_pos=[ 49.893353   -1.0784497 -22.555832 ]
-10: loss=19.34, com_pos=[ 28.526016 -10.602095 -12.753241]
-15: loss=7.04, com_pos=[25.986996  -8.2861    -6.1037536]
-20: loss=3.072, com_pos=[26.151875  -5.749845  -2.8131852]
-25: loss=1.399, com_pos=[25.942873  -3.9522347 -1.2609113]
-30: loss=0.6897, com_pos=[25.725378  -2.7701433 -0.6006299]
-35: loss=0.3762, com_pos=[25.55297    -2.0362887  -0.31989875]
-40: loss=0.2284, com_pos=[25.44269   -1.5794615 -0.1923656]
-45: loss=0.1531, com_pos=[25.36702    -1.2893038  -0.12879054]
-50: loss=0.1116, com_pos=[25.316004   -1.0984068  -0.09415147]
-Recovered COM position: [25.30786   -1.0684593 -0.0892236]
+ 5: loss=110.5, com_pos=[ 49.893353   -1.0784526 -22.555832 ]
+10: loss=19.34, com_pos=[ 28.52592  -10.602045 -12.75319 ]
+15: loss=7.04, com_pos=[25.987001 -8.286052 -6.103718]
+20: loss=3.07, com_pos=[26.148773  -5.74695   -2.8117695]
+25: loss=1.396, com_pos=[25.935814  -3.9480772 -1.2598283]
+30: loss=0.6892, com_pos=[25.737083   -2.7650678  -0.60030824]
+35: loss=0.376, com_pos=[25.543392  -2.0367284 -0.3194755]
+40: loss=0.228, com_pos=[25.44389    -1.5775563  -0.19215903]
+45: loss=0.1528, com_pos=[25.366676   -1.2880461  -0.12863967]
+50: loss=0.1114, com_pos=[25.315706   -1.0973232  -0.09403995]
+Recovered COM position: [25.307571   -1.0674025  -0.08911773]
 ```
 
 ```python

@@ -7,7 +7,6 @@ import subprocess
 import tempfile
 import jax
 import jax.numpy as jnp
-import matplotlib
 import numpy as np
 
 parser = argparse.ArgumentParser()
@@ -20,6 +19,14 @@ parser.add_argument(
     help="Stop after the forward integration instead of rewinding",
 )
 args = parser.parse_args()
+
+try:
+    import matplotlib
+except ModuleNotFoundError as exc:
+    if exc.name != "matplotlib":
+        raise
+    parser.exit(1, "This demo requires Matplotlib. Install it in this Python environment "
+                   "with `pip install matplotlib`, then run the script again.\n")
 
 if args.movie:
     matplotlib.use("Agg")
