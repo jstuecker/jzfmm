@@ -151,7 +151,7 @@ def particles_blob(npart):
 
 @pytest.fixture
 def particles_nfw(npart):
-    import aegis
+    aegis = pytest.importorskip("aegis", reason="NFW particle fixture requires optional aegis")
     prof = aegis.profiles.NFWProfile(conc=10., r200c=10.)
     pos0, vel0, m = prof.sample_particles(npart, result="pos_vel_m", rpmin=1e-3, ramax=10.)
 

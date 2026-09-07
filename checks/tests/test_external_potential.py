@@ -1,9 +1,10 @@
 import jax.numpy as jnp
 import jax
-import aegis
 import pytest
 from jzfmm.config import SimConfig
 from jzfmm.external_potential import NFWPotential
+
+aegis = pytest.importorskip("aegis", reason="NFW reference comparison requires optional aegis")
 
 def test_nfw_acc():
     cfg = SimConfig()

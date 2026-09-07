@@ -1,12 +1,13 @@
 import pytest
 import jax
 import jax.numpy as jnp
-import aegis
 from dataclasses import replace
 from jzfmm import DirectSummationConfig, SimConfig
 from jzfmm.external_potential import NFWPotential
 from jzfmm.data import Particles
 from jzfmm.time_integration import simulate
+
+aegis = pytest.importorskip("aegis", reason="NFW benchmarks require optional aegis")
 
 
 @pytest.fixture

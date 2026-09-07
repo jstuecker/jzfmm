@@ -2,6 +2,9 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 import time
+from pathlib import Path
+import subprocess
+import tempfile
 import jax
 import jax.numpy as jnp
 import matplotlib
@@ -18,9 +21,58 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-matplotlib.use("Agg" if args.movie else "TkAgg")
+if args.movie:
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
+from matplotlib.animation import FFMpegWriter, FuncAnimation
+
+
+def movie_writer():
+    """Find an MP4 encoder and check it before doing any simulation work."""
+    if not FFMpegWriter.isAvailable():
+        try:
+            import imageio_ffmpeg
+            matplotlib.rcParams["animation.ffmpeg_path"] = imageio_ffmpeg.get_ffmpeg_exe()
+        except (ImportError, RuntimeError) as exc:
+            raise RuntimeError(
+                "Movie export requires FFmpeg. Install it on your system or run "
+                "`pip install imageio-ffmpeg` in this Python environment."
+            ) from exc
+    writer = FFMpegWriter(
+        fps=20, codec="libx264",
+        extra_args=["-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"],
+    )
+    with tempfile.TemporaryDirectory(prefix="jzfmm-encoder-") as directory:
+        command = [
+            writer.bin_path(), "-v", "error", "-f", "rawvideo", "-pixel_format", "rgb24",
+            "-video_size", "2x2", "-i", "pipe:0", "-frames:v", "1",
+            "-c:v", writer.codec, *writer.extra_args, str(Path(directory) / "probe.mp4"),
+        ]
+        try:
+            subprocess.run(command, input=bytes(12), capture_output=True, check=True, timeout=15)
+        except (OSError, subprocess.SubprocessError) as exc:
+            detail = getattr(exc, "stderr", b"") or b""
+            raise RuntimeError(
+                "FFmpeg could not encode an H.264 MP4. Use an FFmpeg build with libx264 "
+                "support (for example from imageio-ffmpeg). " + detail.decode(errors="replace")
+            ) from exc
+    return writer
+
+
+IMAGE_SHAPE = (576, 1024)
+try:
+    writer = movie_writer() if args.movie else None
+    fig = plt.figure(figsize=(IMAGE_SHAPE[1] / 100, IMAGE_SHAPE[0] / 100),
+                     dpi=100, facecolor="black")
+    if not args.movie and fig.canvas.required_interactive_framework is None:
+        raise RuntimeError("The selected Matplotlib backend cannot open an interactive window.")
+except (ImportError, RuntimeError, OSError) as exc:
+    hint = "" if args.movie else (
+        " Install a GUI toolkit (e.g. `pip install PySide6`, or Ubuntu's python3-tk "
+        "for the matching system Python) and use a graphical session. "
+        "You can select a backend with MPLBACKEND=QtAgg, or use --movie without a display."
+    )
+    parser.exit(1, f"{exc}{hint}\n")
 
 from jzfmm.config import DKDLatticeConfig, FMMConfig, PlummerKernel, SimConfig, TreeConfig
 from jzfmm.time_integration import simulate
@@ -41,7 +93,6 @@ p0 = gaussian_text(
     angular_velocity=0.15,
     mass=1e7,
 )
-IMAGE_SHAPE = (288*2, 512*2)
 XBOUNDS = (-10., 10.)
 YBOUNDS = (-10.*9./16, 10.*9./16)
 
@@ -105,7 +156,6 @@ def simulate_images(p, tend, nout, steps_per_output, cfg, tstart=0., rewind=Fals
             )
             yield rendered
 
-fig = plt.figure(figsize=(10., 6.), facecolor="black")
 ax = fig.add_axes((0., 0., 1., 1.), facecolor="black")
 ax.set_axis_off()
 image = ax.imshow(
@@ -130,14 +180,15 @@ def animation_frames():
         rewind=not args.only_forward,
     )
 
-ani = FuncAnimation(fig, update, frames=animation_frames, blit=True, interval=1, repeat=True,
-                    cache_frame_data=False)
-
 if args.movie:
-    plt.close()
-    import os
-    os.makedirs("output", exist_ok=True)
-
-    ani.save("output/nbody_simulation.mp4", dpi=200, fps=20)
+    Path("output").mkdir(exist_ok=True)
+    # Stream frames directly; no animation cache or Pillow fallback is needed.
+    with writer.saving(fig, "output/nbody_simulation.mp4", dpi=100):
+        for rendered in animation_frames():
+            update(rendered)
+            writer.grab_frame()
+    plt.close(fig)
 else:
+    ani = FuncAnimation(fig, update, frames=animation_frames, blit=fig.canvas.supports_blit,
+                        interval=1, repeat=True, cache_frame_data=False)
     plt.show()
