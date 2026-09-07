@@ -10,18 +10,26 @@ Future updates may include CPU and AMD GPU support.
 
 ## Via pip
 
-The easiest way to install **jz-fmm** is from a pre-built wheel. Select the
-extra matching the CUDA version used by JAX. For CUDA 13, use
+The easiest way to install **jz-fmm** is from a pre-built wheel. First install
+JAX with GPU support, then install **jz-fmm** with the matching CUDA extra.
+Installing `jzfmm[cuda12]` or `jzfmm[cuda13]` selects our CUDA binaries but does
+not install JAX's GPU plugin and CUDA libraries. For CUDA 13, use
 
 ```bash
+pip install "jax[cuda13]"
 pip install "jzfmm[cuda13]"
 ```
 
 and for CUDA 12, use
 
 ```bash
+pip install "jax[cuda12]"
 pip install "jzfmm[cuda12]"
 ```
+
+If a matching GPU-enabled JAX installation already works, keep it and skip the
+first command. See the [JAX installation guide](https://docs.jax.dev/en/latest/installation.html)
+for other CUDA setups.
 
 The supported Python versions will follow the available JAX and binary-wheel
 versions. Building from source may work outside the published wheel range, but
@@ -65,8 +73,8 @@ CUDA 13 packages include `nvcc`. In an activated virtual environment, install
 the dependencies and then **jz-fmm**:
 
 ```bash
-pip install "jztree[cuda13]"
 pip install "jax[cuda13]" "scikit-build-core>=0.11" "nanobind>=2.9.2" "cmake>=3.24"
+pip install "jztree[cuda13]"
 pip install -e ".[cuda13]" --no-build-isolation
 ```
 

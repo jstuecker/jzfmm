@@ -23,7 +23,7 @@ os.environ.setdefault("JZTREE_SKIP_JAX_CUDA_CHECK", "1")
 project = "jz-fmm"
 author = "Jens St\N{LATIN SMALL LETTER U WITH DIAERESIS}cker"
 copyright = f"2026, {author}"
-release = "0.1.0"
+release = "1.0.0"
 
 # -- General configuration ---------------------------------------------------
 

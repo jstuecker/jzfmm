@@ -1,12 +1,18 @@
 cmake_minimum_required(VERSION 3.24)
 
+set(JZFMM_CUDA_MAJOR "" CACHE STRING "Required CUDA major version; empty means auto-detect")
+set(JZFMM_BACKEND_PACKAGE_NAME "jzfmm_cuda" CACHE STRING "Python package for compiled extensions")
+if(JZFMM_CUDA_MAJOR AND NOT JZFMM_CUDA_MAJOR MATCHES "^[0-9]+$")
+  message(FATAL_ERROR "JZFMM_CUDA_MAJOR must be empty or a numeric major version")
+endif()
+
 # ================== Make sure we have a valid python interpreter =================================
 # (We need it to define some paths)
 if(DEFINED ENV{PYTHON_EXECUTABLE} AND NOT DEFINED Python_EXECUTABLE)
   set(Python_EXECUTABLE "$ENV{PYTHON_EXECUTABLE}" CACHE FILEPATH "Python executable to use")
 endif()
 
-find_package(Python 3.10 REQUIRED COMPONENTS Interpreter Development.Module)
+find_package(Python 3.11 REQUIRED COMPONENTS Interpreter Development.Module)
 message(STATUS "Using Python: ${Python_EXECUTABLE}")
 
 if (NOT Python_Development.Module_FOUND)
@@ -80,6 +86,17 @@ endif()
 # Now let Cmake detect CUDA
 project(${SKBUILD_PROJECT_NAME} LANGUAGES CXX CUDA)
 
+if(NOT CMAKE_CUDA_COMPILER_VERSION MATCHES "^([0-9]+)\\.")
+  message(FATAL_ERROR "Could not determine CUDA major version from ${CMAKE_CUDA_COMPILER_VERSION}")
+endif()
+set(_detected_cuda_major "${CMAKE_MATCH_1}")
+if(JZFMM_CUDA_MAJOR AND NOT JZFMM_CUDA_MAJOR STREQUAL _detected_cuda_major)
+  message(FATAL_ERROR
+    "Requested CUDA ${JZFMM_CUDA_MAJOR} backend, but compiler is CUDA ${CMAKE_CUDA_COMPILER_VERSION}"
+  )
+endif()
+set(JZFMM_CUDA_MAJOR "${_detected_cuda_major}")
+
 find_package(nanobind CONFIG REQUIRED)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -144,5 +161,15 @@ foreach(GEN_SRC IN LISTS GEN_FFI_CU)
   target_compile_options(${MOD_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-O3> $<$<COMPILE_LANGUAGE:CUDA>:-O3>)
   target_compile_features(${MOD_NAME} PRIVATE cxx_std_17)
 
-  install(TARGETS ${MOD_NAME} LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME}_cuda)
+  install(TARGETS ${MOD_NAME} LIBRARY DESTINATION ${JZFMM_BACKEND_PACKAGE_NAME})
 endforeach()
+
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/jzfmm_cuda/__init__.py.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/jzfmm_cuda/__init__.py"
+  @ONLY
+)
+install(
+  FILES "${CMAKE_CURRENT_BINARY_DIR}/jzfmm_cuda/__init__.py"
+  DESTINATION ${JZFMM_BACKEND_PACKAGE_NAME}
+)

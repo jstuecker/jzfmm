@@ -1,0 +1,31 @@
+[build-system]
+requires = ["scikit-build-core>=0.11", "nanobind>=2.9.2", "jax>=0.8.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "jzfmm-cu12"
+version = "1.0.0"
+description = "CUDA 12 backend for jz-fmm"
+readme = "README.md"
+authors = [{ name = "Jens Stücker", email = "jens.stuecker@univie.ac.at" }]
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "jztree-cu12>=1.1.0",
+    "jax>=0.8.0",
+    "numpy>=2.2.6",
+]
+
+[project.urls]
+Homepage = "https://jstuecker.github.io/jzfmm/"
+Repository = "https://github.com/jstuecker/jzfmm"
+Issues = "https://github.com/jstuecker/jzfmm/issues"
+
+[tool.scikit-build]
+cmake.version = ">=3.24"
+cmake.source-dir = "../.."
+cmake.define = { JZFMM_CUDA_MAJOR = "12", JZFMM_BACKEND_PACKAGE_NAME = "jzfmm_cuda" }
+wheel.packages = []
+logging.level = "INFO"
+editable.rebuild = false

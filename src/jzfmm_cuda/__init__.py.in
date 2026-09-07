@@ -1,0 +1,3 @@
+"""Compiled CUDA backend for jz-fmm."""
+
+CUDA_MAJOR = @JZFMM_CUDA_MAJOR@

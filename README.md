@@ -10,11 +10,11 @@ It includes:
 
 **[Documentation](https://jstuecker.github.io/jzfmm/)** · [Installation](https://jstuecker.github.io/jzfmm/installation.html) · [Getting started](https://jstuecker.github.io/jzfmm/quickstart.html) · [Attribution](https://jstuecker.github.io/jzfmm/attribution.html)
 
-## Performance
+## Multi-GPU scaling
 
-![Force accuracy versus evaluation time for jz-fmm, GADGET-4, and PKDGRAV3](docs/_static/hernquist_performance_comparison.png)
+![jz-fmm performance across particle counts and one to 64 GPUs](docs/_static/fmm_devices.png)
 
-Comparison of force accuracy and evaluation time for a Hernquist sphere with 40 million particles. All codes were benchmarked on one node with four NVIDIA A100 GPUs and a 32-core CPU; a fairer hardware allocation for the CPU-only GADGET-4 comparison would use approximately 4–8 times as many CPU cores. See the [documentation](https://jstuecker.github.io/jzfmm/) for benchmark details and multi-GPU scaling results.
+Performance across particle counts and one to 64 GPUs. In the GPU-saturating regime, efficiency decreases by less than a factor of two from one to 64 devices. See the [documentation](https://jstuecker.github.io/jzfmm/) for benchmark details and force-accuracy comparisons.
 
 ## Attribution
 

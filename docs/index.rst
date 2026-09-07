@@ -8,9 +8,28 @@ tree construction, traversal, and distributed communication. Its high-level
 interface is written in JAX, while performance-critical operations use a CUDA
 backend through JAX's foreign function interface.
 
-The implementation includes single- and multi-GPU force evaluation, direct
-summation for reference calculations, time integration, and custom gradient
-rules for differentiating through simulations.
+Features
+--------
+
+* **GPU-native force evaluation:** the fast multipole method on one or many
+  GPUs, including multi-host execution, with isolated boundary conditions.
+* **Differentiable simulations:** gradients with respect to particle positions,
+  velocities, and masses through force calculations and time integration.
+* **Reproducible forces:** bit-perfect reproducibility of repeated FMM
+  calculations with the same inputs and configuration on the same hardware.
+* **Reversible time integration:** bit-perfect backwards integration with the
+  integer-lattice integrator, alongside a standard floating-point integrator.
+* **Configurable accuracy:** selectable multipole orders in two and three
+  dimensions, with single- and double-precision calculations.
+* **Extensibility:** custom external potentials and support for adding new
+  interaction kernels beyond gravitational N-body applications.
+* **Convenient Python/JAX interface:** compose force calculations, integrators,
+  and external potentials to customize N-body simulations in a few lines of
+  Python, while retaining JIT-compiled GPU performance.
+* **Reference calculations:** direct summation for checking approximate forces.
+
+Start with the :doc:`quickstart`, see :doc:`multi_gpu_guide` for distributed
+execution, or consult :doc:`jax_compatibility` for function-specific support.
 
 Performance and scaling
 -----------------------
