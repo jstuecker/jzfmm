@@ -97,3 +97,47 @@ a guarantee for all single-GPU workloads. No newer driver release has yet been
 verified to resolve the issue.
 
 For JAX **0.11.1**, use the [complete validated workaround above](#jax-0-11-distributed), which also addresses the ragged all-to-all rejection and communication stall on this cluster.
+
+## Performance
+
+For particle distributions with large empty regions and a few particles spread
+across otherwise sparsely populated space, a small subset of tree nodes can
+become spatially very large. These nodes may require interactions with almost
+every other node. This concentrates work in a few GPU execution blocks and can
+cause severe load imbalance, even when the total interaction count increases
+only modestly.
+
+In such cases, enabling tree regularization through
+{class}`jztree.config.RegularizationConfig` in
+{class}`jztree.config.TreeConfig` may help. For a simulation, the default
+regularization settings can be enabled before compiling the evaluation:
+
+```python
+from jztree.config import RegularizationConfig
+
+cfg = jzfmm.SimConfig()
+cfg.force.tree.regularization = RegularizationConfig()
+```
+
+For standalone force evaluations, set `cfg_fmm.tree.regularization` instead.
+The default regularization parameters are `regularize_percentile=90` and
+`max_volume_fac=20`; regularization itself is disabled by default.
+
+For example, in a satellite reconstruction benchmark using the
+[gradient-descent study code](https://github.com/jstuecker/jzfmm/blob/main/checks/gradient_descent/cluster.py)
+(see also the [satellite reconstruction tutorial](quickstart.md#reconstructing-a-satellite-with-differentiable-simulations)),
+with $10^7$ particles, 40 time steps, and force accuracy level 0
+($p=5$, $\theta=0.8$) on one A100 GPU, regularization reduced a full
+simulation-and-gradient evaluation from **21.59 s to 14.08 s**: **34.8% less
+time**, or a **1.53-fold speedup**. The improvement came primarily from removing expensive force
+evaluations at particular particle configurations. At the most expensive
+step, the force evaluation fell from **666 ms to 104 ms**. Without
+regularization, one receiving leaf containing only **20 particles** required
+near-field interactions with **all 452,270 source leaves**, encompassing all
+**10 million particles**. With regularization, the maximum over receiving
+leaves was **95 source leaves**, and the maximum number of near-field source
+particles was **2,216**. These are maxima in the rebuilt tree, rather than a
+comparison of the same node before and after regularization.
+
+Regularization is not a universal performance improvement: it can substantially
+slow down other distributions. Check both accuracy and timing for the intended workload. Future updates of jz-fmm may include more robust ways of handling these scenarios.
