@@ -126,8 +126,8 @@ The default regularization parameters are `regularize_percentile=90` and
 For example, in a satellite reconstruction benchmark using the
 [gradient-descent study code](https://github.com/jstuecker/jzfmm/blob/main/checks/gradient_descent/cluster.py)
 (see also the [satellite reconstruction tutorial](satellite-reconstruction)),
-with $10^7$ particles, 40 time steps, and force accuracy level 0
-($p=5$, $\theta=0.8$) on one A100 GPU, regularization reduced a full
+with {math}`10^7` particles, 40 time steps, and force accuracy level 0
+({math}`p=5`, {math}`\theta=0.8`) on one A100 GPU, regularization reduced a full
 simulation-and-gradient evaluation from **21.59 s to 14.08 s**: **34.8% less
 time**, or a **1.53-fold speedup**. The improvement came primarily from removing expensive force
 evaluations at particular particle configurations. At the most expensive
