@@ -1,3 +1,4 @@
+import argparse
 import csv
 import json
 from pathlib import Path
@@ -62,9 +63,9 @@ def mass_and_concentration(parameters, config):
     return log10_mass, concentration
 
 
-def summarize_run(npz_file, config_file, job):
+def summarize_run(npz_file, config_file, job, accuracy=grid.ACCURACY):
     config = json.loads(config_file.read_text())
-    grid.validate_config(config_file, job)
+    grid.validate_config(config_file, job, accuracy)
     with np.load(npz_file) as result:
         history = result["history"]
         if not len(history):
@@ -179,14 +180,20 @@ def validate_groups(summary, targets):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--accuracy", type=int, choices=range(3), default=1)
+    parser.add_argument("--output-directory", type=Path)
+    args = parser.parse_args()
     directory = Path(__file__).resolve().parent
-    logs = directory / "logs" / "convergence_grid"
+    logs = args.output_directory or directory / "logs" / (
+        "convergence_grid" if args.accuracy == 1 else f"convergence_grid_accuracy{args.accuracy}"
+    )
     analysis = logs / "analysis"
     analysis.mkdir(parents=True, exist_ok=True)
 
     jobs = grid.make_jobs()
     manifest = json.loads((logs / "manifest.json").read_text())
-    expected_manifest = json.loads(json.dumps(grid.manifest_values(jobs)))
+    expected_manifest = json.loads(json.dumps(grid.manifest_values(jobs, args.accuracy)))
     if manifest != expected_manifest:
         raise RuntimeError("Grid manifest does not match the expected setup")
 
@@ -199,7 +206,7 @@ def main():
                 f"Missing output for run {job['run_id']}: "
                 f"{npz_file}, {config_file}"
             )
-        values, target = summarize_run(npz_file, config_file, job)
+        values, target = summarize_run(npz_file, config_file, job, args.accuracy)
         summary[index] = values
         targets.append(target)
         if (index + 1) % 500 == 0:
@@ -229,6 +236,13 @@ def main():
     (analysis / "validation.json").write_text(
         json.dumps(validation, indent=2) + "\n"
     )
+
+    import matplotlib
+    matplotlib.use("Agg")
+    from cluster_plots import plot_convergence_summary
+    fig, _ = plot_convergence_summary(summary)
+    for suffix in ("pdf", "png"):
+        fig.savefig(analysis / f"convergence.{suffix}", bbox_inches="tight", dpi=200)
 
     print(f"Saved {analysis / 'summary.npz'}")
     print(f"Saved {analysis / 'summary.csv'}")

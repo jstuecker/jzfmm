@@ -40,14 +40,14 @@ def make_jobs():
     return jobs
 
 
-def manifest_values(jobs):
+def manifest_values(jobs, accuracy=ACCURACY):
     return {
         "description": (
             "One-halo convergence grid ordered by initialization round"
         ),
         "N": N,
         "Nhaloes": NHALOES,
-        "accuracy": ACCURACY,
+        "accuracy": accuracy,
         "sim_softening_kpc": SIM_SOFTENING,
         "loss_softening_kpc": LOSS_SOFTENING,
         "max_steps": MAX_STEPS,
@@ -81,7 +81,7 @@ def output_paths(logs, run_id):
     return logs / f"{stem}.npz", logs / f"{stem}.json"
 
 
-def validate_config(config_file, job):
+def validate_config(config_file, job, accuracy=ACCURACY):
     config = json.loads(config_file.read_text())
     expected = {
         "N": N,
@@ -111,8 +111,8 @@ def validate_config(config_file, job):
         )
     force = config["sim_config"]["force"]
     force_expected = {
-        "p": 6,
-        "opening theta": 0.7,
+        "p": (5, 6, 7)[accuracy],
+        "opening theta": (0.8, 0.7, 0.6)[accuracy],
         "softening": SIM_SOFTENING,
     }
     force_actual = {
@@ -174,7 +174,7 @@ def print_summary(job, total, result, skipped=False):
     )
 
 
-def command_for_job(directory, logs, job):
+def command_for_job(directory, logs, job, accuracy=ACCURACY):
     command = [
         sys.executable,
         "cluster.py",
@@ -182,7 +182,7 @@ def command_for_job(directory, logs, job):
         f"--Nhaloes={NHALOES}",
         f"--integration_time_gyr={job['time_gyr']}",
         f"--integration_steps={job['integration_steps']}",
-        f"--accurate={ACCURACY}",
+        f"--accurate={accuracy}",
         f"--sim_softening={SIM_SOFTENING}",
         f"--loss_softening={LOSS_SOFTENING}",
         f"--steps={MAX_STEPS}",
@@ -201,8 +201,8 @@ def command_for_job(directory, logs, job):
     return command
 
 
-def run_job(directory, logs, job):
-    command = command_for_job(directory, logs, job)
+def run_job(directory, logs, job, accuracy=ACCURACY):
+    command = command_for_job(directory, logs, job, accuracy)
     process = subprocess.Popen(
         command,
         cwd=directory,
@@ -241,6 +241,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-run", type=int, default=1)
     parser.add_argument("--end-run", type=int, default=len(jobs))
+    parser.add_argument("--accuracy", type=int, choices=range(3), default=ACCURACY)
+    parser.add_argument("--output-directory", type=Path)
     args = parser.parse_args()
     if not 1 <= args.start_run <= len(jobs):
         parser.error(f"--start-run must be in [1, {len(jobs)}]")
@@ -250,11 +252,14 @@ def main():
         )
 
     directory = Path(__file__).resolve().parent
-    logs = directory / "logs" / "convergence_grid"
+    logs = args.output_directory or directory / "logs" / (
+        "convergence_grid" if args.accuracy == 1 else f"convergence_grid_accuracy{args.accuracy}"
+    )
+    logs = logs.resolve()
     logs.mkdir(parents=True, exist_ok=True)
     write_or_check_manifest(
         logs / "manifest.json",
-        manifest_values(jobs),
+        manifest_values(jobs, args.accuracy),
     )
 
     start = time.monotonic()
@@ -267,7 +272,7 @@ def main():
                 f"{npz_file}, {config_file}"
             )
         if npz_file.exists():
-            validate_config(config_file, job)
+            validate_config(config_file, job, args.accuracy)
             print_summary(
                 job,
                 len(jobs),
@@ -282,11 +287,11 @@ def main():
             f"initial {job['initial_seed']}",
             flush=True,
         )
-        stop_after_run = run_job(directory, logs, job)
+        stop_after_run = run_job(directory, logs, job, args.accuracy)
         if stop_after_run:
             preserve_partial_output(npz_file, config_file)
             break
-        validate_config(config_file, job)
+        validate_config(config_file, job, args.accuracy)
         print_summary(
             job,
             len(jobs),

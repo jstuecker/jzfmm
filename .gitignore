@@ -1,5 +1,9 @@
 # Specific Directories
-output
+# Generated figures, tables, and experiment artifacts.
+/output/
+/outputs/
+# Local cluster submission scripts and environment configuration.
+/jobs/clgrid/
 checks/old_benchmarks/logs/
 checks/benchmarks/.results
 checks/benchmarks/benchmarks/.results
