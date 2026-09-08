@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "jzfmm-cu12"
-version = "1.0.0"
+version = "1.0.1"
 description = "CUDA 12 backend for jz-fmm"
 readme = "README.md"
 authors = [{ name = "Jens Stücker", email = "jens.stuecker@univie.ac.at" }]

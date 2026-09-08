@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jzfmm"
-version = "1.0.0"
+version = "1.0.1"
 description = "GPU-native fast multipole method and differentiable N-body simulations in JAX"
 readme = "README.md"
 authors = [{ name = "Jens Stücker", email = "jens.stuecker@univie.ac.at" }]
@@ -23,8 +23,8 @@ Repository = "https://github.com/jstuecker/jzfmm"
 Issues = "https://github.com/jstuecker/jzfmm/issues"
 
 [project.optional-dependencies]
-cuda12 = ["jzfmm-cu12==1.0.0"]
-cuda13 = ["jzfmm-cu13==1.0.0"]
+cuda12 = ["jzfmm-cu12==1.0.1"]
+cuda13 = ["jzfmm-cu13==1.0.1"]
 
 [tool.setuptools]
 package-dir = {"" = "../../src"}
