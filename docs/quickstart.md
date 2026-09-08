@@ -183,6 +183,7 @@ plt.show()
 
 ![Evolution of a satellite in a Hernquist potential](_static/quickstart/satellite_snapshots.png)
 
+(satellite-reconstruction)=
 ## Reconstructing a satellite with differentiable simulations
 
 We finish with a small inverse problem based on the disrupting satellite above. Its initial center-of-mass position is now unknown, while its initial center-of-mass velocity is assumed to be known. We generate a target from the same Hernquist-orbit setup and use gradient descent to recover the initial position vector.
