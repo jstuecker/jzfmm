@@ -8,7 +8,7 @@ It includes:
 - Time integration and external potential contributions.
 - Differentiation through force calculations and simulations with JAX.
 
-**[Documentation](https://jstuecker.github.io/jzfmm/)** · [Installation](https://jstuecker.github.io/jzfmm/installation.html) · [Getting started](https://jstuecker.github.io/jzfmm/quickstart.html) · [Attribution](https://jstuecker.github.io/jzfmm/attribution.html)
+**[Documentation](https://jstuecker.github.io/jzfmm/)** · [Paper](https://arxiv.org/abs/2609.09307) · [Installation](https://jstuecker.github.io/jzfmm/installation.html) · [Getting started](https://jstuecker.github.io/jzfmm/quickstart.html) · [Attribution](https://jstuecker.github.io/jzfmm/attribution.html)
 
 ## Multi-GPU scaling
 
@@ -18,4 +18,8 @@ Performance across particle counts and one to 64 GPUs. In the GPU-saturating reg
 
 ## Attribution
 
-**jz-fmm** was written by Jens Stücker and is available under the MIT license. If you publish work using **jz-fmm**, please cite the accompanying paper once its citation information is available. See the [attribution page](https://jstuecker.github.io/jzfmm/attribution.html) for funding and acknowledgement details.
+**jz-fmm** was written by Jens Stücker and is available under the MIT license. If you publish work using **jz-fmm**, please cite:
+
+Jens Stücker and Oskar Foldal (2026), [*JZ-FMM: GPU-native differentiable N-body simulations with the Fast Multipole Method*](https://arxiv.org/abs/2609.09307), arXiv:2609.09307.
+
+See the [attribution page](https://jstuecker.github.io/jzfmm/attribution.html) for BibTeX, funding and acknowledgement details.
