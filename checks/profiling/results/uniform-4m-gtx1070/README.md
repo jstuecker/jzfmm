@@ -1,5 +1,17 @@
 # Uniform 4-million-particle force-evaluation breakdown
 
+> **Updated component accounting:** the original plane totals below used a
+> broader trace grouping that included some setup/translation work. The sweep
+> analysis corrected that grouping. Near-field and measured total times are
+> unchanged. Use the corrected Node2Node values here for comparisons; the
+> tables farther below retain the historical grouping.
+
+| Case | Plane 0 (ms) | Plane 1 | Plane 2 | Plane 3 |
+|---|---:|---:|---:|---:|
+| Original defaults | 49.03 | 17.54 | 5.45 | 12.72 |
+
+Corrected samples are in `corrected-accounting/`. The [epsilon sweep](../epsilon-sweep-uniform-4m/README.md) explains the revised event accounting.
+
 Measured on 2026-09-12, NVIDIA GeForce GTX 1070 (8 GiB), driver 580.178.04,
 AMD Ryzen 5 3600, 16 GiB host RAM. Upstream source commit:
 `47ec34b0d71d3a45cc8913790f84358108308628`.

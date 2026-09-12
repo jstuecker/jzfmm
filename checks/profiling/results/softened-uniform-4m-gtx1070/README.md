@@ -1,5 +1,19 @@
 # Softened opening: uniform 4-million-particle experiment
 
+> **Updated component accounting:** the original plane totals below used a
+> broader trace grouping that included some setup/translation work. The sweep
+> analysis corrected that grouping. Near-field and measured total times are
+> unchanged. Use the corrected Node2Node values here for comparisons; the
+> tables farther below retain the historical grouping.
+
+| Case | Plane 0 (ms) | Plane 1 | Plane 2 | Plane 3 |
+|---|---:|---:|---:|---:|
+| Rebuilt defaults | 49.27 | 17.63 | 5.48 | 12.78 |
+| Larger epsilon, geometric | 49.74 | 17.81 | 5.53 | 12.94 |
+| Larger epsilon, softened | 52.97 | 18.03 | 5.70 | 13.10 |
+
+Corrected samples are in `corrected-accounting/`. The [epsilon sweep](../epsilon-sweep-uniform-4m/README.md) explains the revised event accounting.
+
 The requested softened-distance criterion reduces full force-evaluation time
 from **188.61 ms to 172.88 ms (8.34% less time;
 1.091× speedup)** at the same enlarged kernel softening.

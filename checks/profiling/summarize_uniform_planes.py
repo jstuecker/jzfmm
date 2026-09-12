@@ -10,6 +10,7 @@ import statistics
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('directory', type=Path)
+    parser.add_argument('--step-name', default='full_force')
     args = parser.parse_args()
     root = args.directory
     timing = json.loads((root/'timings.json').read_text())
@@ -19,7 +20,7 @@ def main():
     gpu_pids = {e['pid'] for e in events if e.get('name') == 'process_name' and '/device:GPU:' in e.get('args', {}).get('name', '')}
     assert len(gpu_pids) == 1, 'This analysis is for one GPU'
     gpu = sorted([e for e in events if e.get('pid') in gpu_pids and e.get('ph') == 'X'], key=lambda e:e['ts'])
-    steps = sorted([e for e in events if e.get('name') == 'full_force' and e.get('ph') == 'X'], key=lambda e:e['ts'])
+    steps = sorted([e for e in events if e.get('name') == args.step_name and e.get('ph') == 'X'], key=lambda e:e['ts'])
     assert steps and gpu, 'Missing CUDA trace or step annotations'
     rows = []
     details = []
@@ -37,17 +38,26 @@ def main():
         assert len(count) == len(insert) == timing['num_planes'] and len(leaf) == 1
         row = {'step': int(step['args']['step_num']), 'profiled_wall_ms': step['dur']/1000,
                'leaf_leaf_ms': leaf[0]['dur']/1000}
+        translations = {i for i,e in enumerate(ev) if 'void TranslateLocalToLocal<' in e['name']}
+        translation_events = translations | {i-1 for i in translations if i > 0 and ev[i-1]['name'].startswith('Memset')}
+        assigned = set()
         for plane, c, ins in zip(reversed(range(timing['num_planes'])), count, insert):
             assert c < ins and (ins < count[count.index(c)+1] if c != count[-1] else True)
             # Include the count-array memset belonging to the same FFI call.
             begin = c
-            while begin > 0 and ev[begin-1].get('args',{}).get('hlo_op') == ev[c].get('args',{}).get('hlo_op'):
+            if begin > 0 and ev[begin-1]['name'].startswith('Memset'):
                 begin -= 1
-            row[f'plane_{plane}_ms'] = sum(e['dur'] for e in ev[begin:ins+1])/1000
+            stage = set(range(begin, ins+1)) - translation_events
+            assert not (assigned & stage), 'Overlapping plane accounting'
+            assigned |= stage
+            row[f'plane_{plane}_ms'] = sum(ev[i]['dur'] for i in sorted(stage))/1000
             details.append({'step':row['step'], 'plane':plane,
                 'm2l_count_ms':ev[c]['dur']/1000, 'insert_ms':ev[ins]['dur']/1000,
                 'total_ms':row[f'plane_{plane}_ms']})
+        row['interaction_sum_ms'] = row['leaf_leaf_ms'] + sum(row[f'plane_{p}_ms'] for p in range(timing['num_planes']))
+        row['gpu_total_ms'] = sum(e['dur'] for e in ev)/1000
         row['other_gpu_ms'] = sum(e['dur'] for e in ev)/1000 - row['leaf_leaf_ms'] - sum(row[f'plane_{p}_ms'] for p in range(timing['num_planes']))
+        assert row['other_gpu_ms'] >= -1e-8, 'Double-counted GPU events'
         row['host_gaps_ms'] = row['profiled_wall_ms'] - sum(e['dur'] for e in ev)/1000
         rows.append(row)
     for name, data in [('trace_samples.csv',rows), ('plane_details.csv',details)]:
