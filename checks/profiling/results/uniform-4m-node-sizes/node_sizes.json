@@ -1,0 +1,226 @@
+{
+  "n": 4000000,
+  "seed": 0,
+  "config": {
+    "tree": {
+      "max_leaf_size": 32,
+      "coarse_fac": 4.0,
+      "stop_coarsen": 1024,
+      "regularization": null,
+      "alloc_fac_nodes": 1.2,
+      "nsamp": 1024,
+      "mass_centered": false
+    },
+    "kernel": {
+      "softening": 0.001
+    },
+    "p": 5,
+    "opening": {
+      "theta": 0.8
+    },
+    "alloc_fac_ilist": 64.0,
+    "alloc_fac_comm_nodes": 1.5,
+    "alloc_fac_comm_particles": 1.5,
+    "kahan_summation": false,
+    "remove_self_interaction": true
+  },
+  "spacing": 0.006299605249474367,
+  "softening_comparison": 0.0188988157484231,
+  "radius_definition": "Half the cell bounding-box diagonal; not a fitted particle-cloud radius",
+  "planes": [
+    {
+      "plane": 0,
+      "nodes": 177069,
+      "mean_particles_per_node": 22.590063760454964,
+      "radius_over_spacing": {
+        "mean": 2.575505580453068,
+        "p10": 2.148015057810316,
+        "median": 2.148015057810316,
+        "p90": 3.0377520269369764,
+        "p95": 3.0377520269369764,
+        "min": 1.8602356077752333,
+        "max": 3.7204712155504667
+      },
+      "particle_weighted_radius_over_spacing": {
+        "mean": 2.6650996861369554,
+        "median": 3.0377520269369764
+      },
+      "fraction_nodes_radius_below_3_spacing": 0.5194811062354223,
+      "histogram": [
+        {
+          "morton_level": -19,
+          "nodes": 30,
+          "particles": 472,
+          "radius_over_spacing": 1.8602356077752333,
+          "side_lengths_over_spacing": [
+            1.2401570718501556,
+            2.480314143700311,
+            2.480314143700311
+          ]
+        },
+        {
+          "morton_level": -18,
+          "nodes": 91954,
+          "particles": 1674737,
+          "radius_over_spacing": 2.148015057810316,
+          "side_lengths_over_spacing": [
+            2.480314143700311,
+            2.480314143700311,
+            2.480314143700311
+          ]
+        },
+        {
+          "morton_level": -17,
+          "nodes": 85084,
+          "particles": 2324759,
+          "radius_over_spacing": 3.0377520269369764,
+          "side_lengths_over_spacing": [
+            2.480314143700311,
+            2.480314143700311,
+            4.960628287400622
+          ]
+        },
+        {
+          "morton_level": -16,
+          "nodes": 1,
+          "particles": 32,
+          "radius_over_spacing": 3.7204712155504667,
+          "side_lengths_over_spacing": [
+            2.480314143700311,
+            4.960628287400622,
+            4.960628287400622
+          ]
+        }
+      ]
+    },
+    {
+      "plane": 1,
+      "nodes": 41741,
+      "mean_particles_per_node": 95.82904099087229,
+      "radius_over_spacing": {
+        "mean": 4.048576053172219,
+        "p10": 3.7204712155504667,
+        "median": 4.296030115620632,
+        "p90": 4.296030115620632,
+        "p95": 4.296030115620632,
+        "min": 3.7204712155504667,
+        "max": 4.296030115620632
+      },
+      "particle_weighted_radius_over_spacing": {
+        "mean": 4.120924665878335,
+        "median": 4.296030115620632
+      },
+      "fraction_nodes_radius_below_3_spacing": 0.0,
+      "histogram": [
+        {
+          "morton_level": -16,
+          "nodes": 17946,
+          "particles": 1216942,
+          "radius_over_spacing": 3.7204712155504667,
+          "side_lengths_over_spacing": [
+            2.480314143700311,
+            4.960628287400622,
+            4.960628287400622
+          ]
+        },
+        {
+          "morton_level": -15,
+          "nodes": 23795,
+          "particles": 2783058,
+          "radius_over_spacing": 4.296030115620632,
+          "side_lengths_over_spacing": [
+            4.960628287400622,
+            4.960628287400622,
+            4.960628287400622
+          ]
+        }
+      ]
+    },
+    {
+      "plane": 2,
+      "nodes": 9323,
+      "mean_particles_per_node": 429.046444277593,
+      "radius_over_spacing": {
+        "mean": 7.109651901305007,
+        "p10": 6.075504053873953,
+        "median": 7.440942431100933,
+        "p90": 7.440942431100933,
+        "p95": 7.440942431100933,
+        "min": 6.075504053873953,
+        "max": 7.440942431100933
+      },
+      "particle_weighted_radius_over_spacing": {
+        "mean": 7.238691309148913,
+        "median": 7.440942431100933
+      },
+      "fraction_nodes_radius_below_3_spacing": 0.0,
+      "histogram": [
+        {
+          "morton_level": -14,
+          "nodes": 2262,
+          "particles": 592487,
+          "radius_over_spacing": 6.075504053873953,
+          "side_lengths_over_spacing": [
+            4.960628287400622,
+            4.960628287400622,
+            9.921256574801244
+          ]
+        },
+        {
+          "morton_level": -13,
+          "nodes": 7061,
+          "particles": 3407513,
+          "radius_over_spacing": 7.440942431100933,
+          "side_lengths_over_spacing": [
+            4.960628287400622,
+            9.921256574801244,
+            9.921256574801244
+          ]
+        }
+      ]
+    },
+    {
+      "plane": 3,
+      "nodes": 2077,
+      "mean_particles_per_node": 1925.8545979778526,
+      "radius_over_spacing": {
+        "mean": 12.05162487383487,
+        "p10": 12.151008107747906,
+        "median": 12.151008107747906,
+        "p90": 12.151008107747906,
+        "p95": 12.151008107747906,
+        "min": 8.592060231241264,
+        "max": 12.151008107747906
+      },
+      "particle_weighted_radius_over_spacing": {
+        "mean": 12.097758239882644,
+        "median": 12.151008107747906
+      },
+      "fraction_nodes_radius_below_3_spacing": 0.0,
+      "histogram": [
+        {
+          "morton_level": -12,
+          "nodes": 58,
+          "particles": 59849,
+          "radius_over_spacing": 8.592060231241264,
+          "side_lengths_over_spacing": [
+            9.921256574801244,
+            9.921256574801244,
+            9.921256574801244
+          ]
+        },
+        {
+          "morton_level": -11,
+          "nodes": 2019,
+          "particles": 3940151,
+          "radius_over_spacing": 12.151008107747906,
+          "side_lengths_over_spacing": [
+            9.921256574801244,
+            9.921256574801244,
+            19.84251314960249
+          ]
+        }
+      ]
+    }
+  ]
+}
