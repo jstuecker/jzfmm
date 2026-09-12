@@ -120,7 +120,31 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         { {0, 6, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 3, float>) },
         { {0, 6, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 6, 3, double>) },
         { {0, 7, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 7, 3, float>) },
-        { {0, 7, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 7, 3, double>) }
+        { {0, 7, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<0, 7, 3, double>) },
+        { {1, 1, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 1, 2, float>) },
+        { {1, 1, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 1, 2, double>) },
+        { {1, 1, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 1, 3, float>) },
+        { {1, 1, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 1, 3, double>) },
+        { {1, 2, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2, 2, float>) },
+        { {1, 2, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2, 2, double>) },
+        { {1, 2, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2, 3, float>) },
+        { {1, 2, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 2, 3, double>) },
+        { {1, 3, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3, 2, float>) },
+        { {1, 3, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3, 2, double>) },
+        { {1, 3, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3, 3, float>) },
+        { {1, 3, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 3, 3, double>) },
+        { {1, 4, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 4, 2, float>) },
+        { {1, 4, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 4, 2, double>) },
+        { {1, 4, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 4, 3, float>) },
+        { {1, 4, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 4, 3, double>) },
+        { {1, 5, 2, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 5, 2, float>) },
+        { {1, 5, 2, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 5, 2, double>) },
+        { {1, 5, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 5, 3, float>) },
+        { {1, 5, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 5, 3, double>) },
+        { {1, 6, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 6, 3, float>) },
+        { {1, 6, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 6, 3, double>) },
+        { {1, 7, 3, DT::F32}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 7, 3, float>) },
+        { {1, 7, 3, DT::F64}, reinterpret_cast<TFunc>(&CountInteractionsAndM2L<1, 7, 3, double>) }
     };
 
     const TTuple key = TTuple(opening_criterion_kind, p, dim, tvec);
@@ -130,7 +154,7 @@ ffi::Error CountInteractionsAndM2LFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (opening_criterion_kind, p, dim, tvec)"\
             " in CountInteractionsAndM2LFFIHost -- Only supporting:\n"\
-            "(0, 1, 2, float), (0, 1, 2, double), (0, 1, 3, float), (0, 1, 3, double), (0, 2, 2, float), (0, 2, 2, double), (0, 2, 3, float), (0, 2, 3, double), (0, 3, 2, float), (0, 3, 2, double), (0, 3, 3, float), (0, 3, 3, double), (0, 4, 2, float), (0, 4, 2, double), (0, 4, 3, float), (0, 4, 3, double), (0, 5, 2, float), (0, 5, 2, double), (0, 5, 3, float), (0, 5, 3, double), (0, 6, 3, float), (0, 6, 3, double), (0, 7, 3, float), (0, 7, 3, double)"
+            "(0, 1, 2, float), (0, 1, 2, double), (0, 1, 3, float), (0, 1, 3, double), (0, 2, 2, float), (0, 2, 2, double), (0, 2, 3, float), (0, 2, 3, double), (0, 3, 2, float), (0, 3, 2, double), (0, 3, 3, float), (0, 3, 3, double), (0, 4, 2, float), (0, 4, 2, double), (0, 4, 3, float), (0, 4, 3, double), (0, 5, 2, float), (0, 5, 2, double), (0, 5, 3, float), (0, 5, 3, double), (0, 6, 3, float), (0, 6, 3, double), (0, 7, 3, float), (0, 7, 3, double), (1, 1, 2, float), (1, 1, 2, double), (1, 1, 3, float), (1, 1, 3, double), (1, 2, 2, float), (1, 2, 2, double), (1, 2, 3, float), (1, 2, 3, double), (1, 3, 2, float), (1, 3, 2, double), (1, 3, 3, float), (1, 3, 3, double), (1, 4, 2, float), (1, 4, 2, double), (1, 4, 3, float), (1, 4, 3, double), (1, 5, 2, float), (1, 5, 2, double), (1, 5, 3, float), (1, 5, 3, double), (1, 6, 3, float), (1, 6, 3, double), (1, 7, 3, float), (1, 7, 3, double)"
         );
     }
     const void* instance = it->second;
@@ -234,7 +258,11 @@ ffi::Error InsertInteractionsFFIHost(
         { {0, 2, DT::F32}, reinterpret_cast<TFunc>(&InsertInteractions<0, 2, float>) },
         { {0, 2, DT::F64}, reinterpret_cast<TFunc>(&InsertInteractions<0, 2, double>) },
         { {0, 3, DT::F32}, reinterpret_cast<TFunc>(&InsertInteractions<0, 3, float>) },
-        { {0, 3, DT::F64}, reinterpret_cast<TFunc>(&InsertInteractions<0, 3, double>) }
+        { {0, 3, DT::F64}, reinterpret_cast<TFunc>(&InsertInteractions<0, 3, double>) },
+        { {1, 2, DT::F32}, reinterpret_cast<TFunc>(&InsertInteractions<1, 2, float>) },
+        { {1, 2, DT::F64}, reinterpret_cast<TFunc>(&InsertInteractions<1, 2, double>) },
+        { {1, 3, DT::F32}, reinterpret_cast<TFunc>(&InsertInteractions<1, 3, float>) },
+        { {1, 3, DT::F64}, reinterpret_cast<TFunc>(&InsertInteractions<1, 3, double>) }
     };
 
     const TTuple key = TTuple(opening_criterion_kind, dim, tvec);
@@ -244,7 +272,7 @@ ffi::Error InsertInteractionsFFIHost(
         return ffi::Error::Internal(
             "\nUnsupported template parameter combination for (opening_criterion_kind, dim, tvec)"\
             " in InsertInteractionsFFIHost -- Only supporting:\n"\
-            "(0, 2, float), (0, 2, double), (0, 3, float), (0, 3, double)"
+            "(0, 2, float), (0, 2, double), (0, 3, float), (0, 3, double), (1, 2, float), (1, 2, double), (1, 3, float), (1, 3, double)"
         );
     }
     const void* instance = it->second;
