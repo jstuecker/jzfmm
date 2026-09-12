@@ -108,6 +108,24 @@ class OpeningByAngle(OpeningCriterionConfig):
         return jnp.asarray([self.theta], dtype=dtype)
 
 @dataclass(unsafe_hash=True, slots=True)
+class OpeningBySoftenedAngle(OpeningCriterionConfig):
+    """Experimental angle criterion using sqrt(r**2 + softening**2).
+
+    This approximates the convergence benefit of a smooth kernel; it is not
+    an error guarantee. Set softening to the same value as the radial kernel.
+    A zero softening recovers OpeningByAngle. Unbounded nodes still open.
+    """
+
+    theta: float = 0.8
+    softening: float = 1e-3
+
+    def kind_id(self) -> int:
+        return 1
+
+    def params(self, dtype: jax.typing.DTypeLike = jnp.float32) -> jax.Array:
+        return jnp.asarray([self.theta, self.softening], dtype=dtype)
+
+@dataclass(unsafe_hash=True, slots=True)
 class PotentialField:
     """Base class for external potential fields.
 

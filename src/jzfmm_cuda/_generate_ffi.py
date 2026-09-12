@@ -13,7 +13,7 @@ p_instance_values = (1, 2, 3, 4, 5, 6, 7)
 p_m2l_instance_values = (1, 2, 3, 4, 5, 6, 7)
 p_l2l_instance_values = (1, 2, 3, 4, 5, 6, 7)
 radial_kernel_instance_values = (0, 1, 2)
-opening_criterion_instance_values = (0,)
+opening_criterion_instance_values = (0, 1)
 default_includes = ["../common/math.cuh"]
 
 def add_dtype_template(func, buf_from, pos_types=float_types):
