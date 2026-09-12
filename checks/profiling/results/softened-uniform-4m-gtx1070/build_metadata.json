@@ -1,0 +1,16 @@
+{
+  "source_commit": "d6b6eea68d7abd5e6c612ead1a1f8e29a65fd1c6",
+  "cuda": "12.9.86",
+  "gcc": "14.3.1",
+  "architecture": "sm_61",
+  "build": "Release; -O3; --ftemplate-depth=512; no fast-math flag",
+  "backend": "ffi_fmm rebuilt with both opening kinds; ffi_multipoles and ffi_pair_summation are unchanged installed jzfmm 1.0.1 CUDA12 binaries",
+  "binary_sha256": {
+    "ffi_multipoles.cpython-312-x86_64-linux-gnu.so": "e233047ac45031aabad3406bf90c1b0476758212e198b951be9c820a3727efde",
+    "ffi_pair_summation.cpython-312-x86_64-linux-gnu.so": "e08f118e21cd800961965be688d9488307f0454027e60582025257bceedcd03e",
+    "ffi_fmm.cpython-312-x86_64-linux-gnu.so": "35a76d98c71327da23fb0a1e2a67e9702cd88f9861893b74c03f6009498fb25e"
+  },
+  "toolchain_root": "/home/bender/Work/toolchains",
+  "runtime_env": "/home/bender/.venvs/jzfmm",
+  "build_env": "/home/bender/Work/toolchains/jzfmm-build-env"
+}
