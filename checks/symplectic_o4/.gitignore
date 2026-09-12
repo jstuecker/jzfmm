@@ -1,0 +1,3 @@
+__pycache__/
+results/nbody/initial.npz
+results/nbody/*/t*.npz

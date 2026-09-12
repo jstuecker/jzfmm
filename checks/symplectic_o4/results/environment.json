@@ -1,0 +1,15 @@
+{
+  "jax": "0.11.1",
+  "jaxlib": "0.11.1",
+  "jax-cuda12-plugin": "0.11.1",
+  "jax-cuda12-pjrt": "0.11.1",
+  "jzfmm": "1.0.1",
+  "jztree": "1.1.0",
+  "numpy": "2.5.3",
+  "scipy": "1.18.1",
+  "matplotlib": "3.11.1",
+  "python": "3.12.14",
+  "source_base": "47ec34b",
+  "device": "GTX 1070 8 GiB",
+  "driver": "580.178.04"
+}

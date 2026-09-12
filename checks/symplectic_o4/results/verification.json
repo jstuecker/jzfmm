@@ -1,0 +1,17 @@
+{
+  "analytic_rows": 810,
+  "nbody_cases": 26,
+  "nbody_outputs": 130,
+  "all_numeric_results_finite": true,
+  "identical_force_configs_within_comparisons": true,
+  "resolved_bracketed_nbody_matches": 18,
+  "speedup_min": 0.49729192683242346,
+  "speedup_max": 0.6314636488851979,
+  "checks": [
+    "analytic force gradient, convergence, reversibility and reference refinement",
+    "independent softened-binary full GPU step validation",
+    "explicit Plummer pair contraction vs GPU VJP",
+    "Python syntax and shell syntax",
+    "git diff --check"
+  ]
+}
